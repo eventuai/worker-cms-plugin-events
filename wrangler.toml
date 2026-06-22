@@ -3,9 +3,15 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-# The CMS forwards this secret on every hook / admin / publish call.
-# Set it to the same value as the CMS's PLUGIN_SECRET:
+# The CMS forwards this secret on every hook / admin / publish call, and this
+# plugin sends it back on every F1 write-back call. Set it to the same value as
+# the CMS's PLUGIN_SECRET:
 #   wrangler secret put PLUGIN_SECRET
+
+[vars]
+# Base URL of the CMS Worker — where this plugin reaches the F1 page read/write
+# API ({CMS_URL}/__cms/*) to read events and create/update guest pages.
+CMS_URL = "https://cms.eventuai.com"
 
 # ── EDM email backbone (uncomment + provision when wiring send) ────────────────
 # Outbound email — Cloudflare Email Service binding (or use Resend over fetch):
