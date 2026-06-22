@@ -20,11 +20,14 @@ import {
   localized,
   type CmsPage,
 } from './cms';
+import { adminView } from './templates/views';
 
 interface PluginEnv {
   PLUGIN_SECRET?: string;
   /** Base URL of the CMS Worker (for the F1 write-back API), e.g. https://cms.eventuai.com */
   CMS_URL?: string;
+  /** Plugin-owned Liquid templates and other view assets. */
+  VIEWS: Fetcher;
 }
 
 type BlueprintEntry = string | Record<string, BlueprintEntry[]>;
@@ -238,66 +241,6 @@ function placeholderQrSvg(data: string): string {
 </svg>`;
 }
 
-// ── Admin views ───────────────────────────────────────────────────────────────
-// Each admin page is returned as an HTML *fragment* with `x-cms-chrome: 1`; the
-// CMS admin proxy wraps it in the standard admin layout (sidebar, fonts,
-// /assets/admin.css), so these pages share the CMS shell. admin.css is purged to
-// the classes CMS templates use, so we ship a small self-contained <style> using
-// the CMS palette (indigo-600 actions, gray-900 headings, white cards) rather
-// than relying on Tailwind utilities being present. Inline styles are allowed by
-// the CMS's strict CSP; inline scripts are not (and these pages need none).
-
-const VIEW_STYLE = `<style>
-  .ev-wrap{max-width:64rem;margin:0 auto;padding:1.5rem 1rem}
-  .ev-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}
-  .ev-back{display:inline-block;font-size:.75rem;color:#6b7280;text-decoration:none;margin-bottom:.25rem}
-  .ev-back:hover{color:#4f46e5}
-  .ev-h1{font-size:1.5rem;line-height:2rem;font-weight:700;color:#111827;margin:0}
-  .ev-sub{font-size:.875rem;color:#6b7280;margin:.25rem 0 0}
-  .ev-card{background:#fff;border-radius:.75rem;box-shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);overflow:hidden}
-  .ev-card-pad{padding:1.5rem}
-  .ev-actions{display:flex;gap:.5rem;flex-wrap:wrap}
-  .ev-btn{display:inline-block;padding:.5rem 1rem;border-radius:.5rem;font-size:.875rem;font-weight:600;text-decoration:none;border:1px solid transparent;cursor:pointer}
-  .ev-btn-primary{background:#4f46e5;color:#fff}
-  .ev-btn-primary:hover{background:#4338ca}
-  .ev-btn-secondary{background:#fff;color:#374151;border-color:#d1d5db}
-  .ev-btn-secondary:hover{background:#f9fafb}
-  table.ev-table{width:100%;border-collapse:collapse;font-size:.875rem}
-  .ev-table thead{background:#f9fafb}
-  .ev-table th{text-align:left;font-size:.6875rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;padding:.5rem 1rem;font-weight:600}
-  .ev-table td{padding:.625rem 1rem;border-top:1px solid #f3f4f6;color:#374151}
-  .ev-table a{color:#4f46e5;text-decoration:none;font-weight:500}
-  .ev-empty{padding:2rem;text-align:center;color:#9ca3af;font-size:.875rem}
-  .ev-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}
-  @media(min-width:640px){.ev-stats{grid-template-columns:repeat(6,1fr)}}
-  .ev-stat{border:1px solid #e5e7eb;border-radius:.5rem;padding:.75rem;text-align:center}
-  .ev-stat b{display:block;font-size:1.5rem;font-weight:700;color:#111827}
-  .ev-stat span{font-size:.6875rem;color:#6b7280}
-  .ev-field{display:block;margin-bottom:.75rem}
-  .ev-field span{display:block;font-size:.875rem;color:#374151;margin-bottom:.25rem}
-  .ev-input{display:block;width:100%;padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:.5rem;font-size:.875rem;box-sizing:border-box}
-  .ev-badge{display:inline-block;padding:.125rem .5rem;border-radius:9999px;font-size:.75rem;font-weight:600;background:#f3f4f6;color:#374151}
-  .ev-prose code{background:#f3f4f6;padding:.1rem .3rem;border-radius:.25rem;font-size:.8125rem}
-</style>`;
-
-/** Wraps a body fragment for the CMS admin chrome (sidebar + layout). */
-function view(title: string, body: string): Response {
-  return new Response(`${VIEW_STYLE}<div class="ev-wrap">${body}</div>`, {
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'x-cms-chrome': '1',
-      // Encoded so non-ASCII titles stay header-safe; the CMS proxy decodes it.
-      'x-cms-title': encodeURIComponent(title),
-    },
-  });
-}
-
-function esc(value: unknown): string {
-  return String(value ?? '').replace(/[&<>"]/g, (ch) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string
-  ));
-}
-
 const ADMIN_BASE = `/admin/plugins/${PLUGIN_ID}`;
 
 function redirect(to: string): Response {
@@ -305,14 +248,8 @@ function redirect(to: string): Response {
 }
 
 /** Renders an error panel when the CMS link is unconfigured or returns an error. */
-function errorPanel(message: string): Response {
-  return view('Error', `
-    <div class="ev-head"><h1 class="ev-h1">Cannot reach the CMS</h1></div>
-    <div class="ev-card ev-card-pad ev-prose">
-      <p class="ev-sub">${esc(message)}</p>
-      <p class="ev-sub" style="margin-top:.75rem">Set <code>CMS_URL</code> and <code>PLUGIN_SECRET</code> on this plugin Worker
-      (the secret must match the value shown in the CMS admin), then reload.</p>
-    </div>`);
+function errorPanel(views: Fetcher, message: string): Promise<Response> {
+  return adminView(views, 'Error', 'error', { message });
 }
 
 // ── Admin router ──────────────────────────────────────────────────────────────
@@ -323,7 +260,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   const section = segments[0] || 'events';
 
   if (section === 'rsvp' || section === 'edm') {
-    return view(section.toUpperCase(), sectionPlaceholder(section));
+    return sectionPlaceholder(env.VIEWS, section);
   }
 
   // section === 'events'
@@ -331,7 +268,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   try {
     cms = new CmsClient(env);
   } catch (error) {
-    if (error instanceof CmsNotConfiguredError) return errorPanel(error.message);
+    if (error instanceof CmsNotConfiguredError) return errorPanel(env.VIEWS, error.message);
     throw error;
   }
 
@@ -342,27 +279,22 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
 
     if (eventId && sub === 'adhoc-checkin') {
       if (request.method === 'POST') return adhocCheckinSubmit(cms, eventId, request);
-      return adhocCheckinForm(cms, eventId);
+      return adhocCheckinForm(cms, env.VIEWS, eventId);
     }
-    if (eventId && sub === 'all-guests') return allGuests(cms, eventId);
-    if (eventId) return eventDashboard(cms, eventId);
-    return eventsList(cms);
+    if (eventId && sub === 'all-guests') return allGuests(cms, env.VIEWS, eventId);
+    if (eventId) return eventDashboard(cms, env.VIEWS, eventId);
+    return eventsList(cms, env.VIEWS);
   } catch (error) {
-    if (error instanceof CmsApiError) return errorPanel(`CMS responded ${error.status} (${error.code}).`);
+    if (error instanceof CmsApiError) return errorPanel(env.VIEWS, `CMS responded ${error.status} (${error.code}).`);
     throw error;
   }
 }
 
-function sectionPlaceholder(section: string): string {
+function sectionPlaceholder(views: Fetcher, section: string): Promise<Response> {
   const note = section === 'rsvp'
     ? 'Guest management, bulk add/remove, and the public multilingual RSVP form (write-back via F1) live here.'
     : 'Compose/render/preview EDMs, mail lists, scheduled blasts (Cron + Queue), unsubscribe, and attachments live here.';
-  return `
-    <div class="ev-head"><div><h1 class="ev-h1">${section.toUpperCase()}</h1><p class="ev-sub">Events Suite</p></div></div>
-    <div class="ev-card ev-card-pad">
-      <p style="color:#374151;margin:0">${esc(note)}</p>
-      <p class="ev-sub" style="margin-top:.75rem">Blueprints and blocks for this section are already registered — author records in the CMS editor.</p>
-    </div>`;
+  return adminView(views, section.toUpperCase(), 'placeholder', { title: section.toUpperCase(), note });
 }
 
 // ── Guest rollups (mirrors the legacy event dashboard tallies) ────────────────
@@ -395,112 +327,82 @@ function rollupGuests(guests: CmsPage[]): Rollup {
   return r;
 }
 
-function statTiles(r: Rollup): string {
-  const tile = (label: string, value: number, color?: string) =>
-    `<div class="ev-stat"><b${color ? ` style="color:${color}"` : ''}>${value}</b><span>${label}</span></div>`;
-  return `<div class="ev-stats">
-    ${tile('Guests', r.guests)}
-    ${tile('Headcount', r.total)}
-    ${tile('Confirmed', r.confirmed, '#059669')}
-    ${tile('Declined', r.declined, '#e11d48')}
-    ${tile('To invite', r.toBeInvited, '#b45309')}
-    ${tile('Checked-in', r.checkedIn, '#4f46e5')}
-  </div>`;
+function statTiles(r: Rollup): Array<{ label: string; value: number; color?: string }> {
+  return [
+    { label: 'Guests', value: r.guests },
+    { label: 'Headcount', value: r.total },
+    { label: 'Confirmed', value: r.confirmed, color: '#059669' },
+    { label: 'Declined', value: r.declined, color: '#e11d48' },
+    { label: 'To invite', value: r.toBeInvited, color: '#b45309' },
+    { label: 'Checked-in', value: r.checkedIn, color: '#4f46e5' },
+  ];
 }
 
 // ── Events section views ──────────────────────────────────────────────────────
 
-async function eventsList(cms: CmsClient): Promise<Response> {
+async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
   const { pages } = await cms.list('event', { limit: 200 });
-  const rows = pages.map((e) =>
-    `<tr>
-      <td><a href="${ADMIN_BASE}/events/${e.id}">${esc(e.name)}</a></td>
-      <td style="color:#6b7280">${esc(attr(e.lect, 'start'))}</td>
-      <td style="text-align:right"><a href="/admin/pages/${e.id}/edit">Edit ↗</a></td>
-    </tr>`,
-  ).join('') || `<tr><td colspan="3" class="ev-empty">No events yet.</td></tr>`;
-
-  return view('Events', `
-    <div class="ev-head">
-      <div><h1 class="ev-h1">Events</h1><p class="ev-sub">Manage events, guests and check-in.</p></div>
-      <a class="ev-btn ev-btn-primary" href="/admin/pages/new?page_type=event">New event</a>
-    </div>
-    <div class="ev-card">
-      <table class="ev-table">
-        <thead><tr><th>Name</th><th>Start</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`);
+  return adminView(views, 'Events', 'events', {
+    events: pages.map((event) => ({
+      name: event.name,
+      start: attr(event.lect, 'start'),
+      dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
+      editHref: `/admin/pages/${event.id}/edit`,
+    })),
+  });
 }
 
-async function eventDashboard(cms: CmsClient, eventId: number): Promise<Response> {
+async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
   const [event, guestList] = await Promise.all([
     cms.get(eventId),
     cms.list('guest', { parentId: eventId, limit: 500 }),
   ]);
   const r = rollupGuests(guestList.pages);
 
-  return view(event.name, `
-    <div class="ev-head">
-      <div><a class="ev-back" href="${ADMIN_BASE}/events">← Events</a><h1 class="ev-h1">${esc(event.name)}</h1></div>
-      <div class="ev-actions">
-        <a class="ev-btn ev-btn-primary" href="${ADMIN_BASE}/events/${eventId}/adhoc-checkin">Adhoc check-in</a>
-        <a class="ev-btn ev-btn-secondary" href="${ADMIN_BASE}/events/${eventId}/all-guests">All guests</a>
-        <a class="ev-btn ev-btn-secondary" href="/admin/pages/${eventId}/edit">Edit event ↗</a>
-      </div>
-    </div>
-    <div class="ev-card ev-card-pad">${statTiles(r)}</div>`);
+  return adminView(views, event.name, 'event-dashboard', {
+    eventName: event.name,
+    eventsHref: `${ADMIN_BASE}/events`,
+    adhocCheckinHref: `${ADMIN_BASE}/events/${eventId}/adhoc-checkin`,
+    guestsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    editHref: `/admin/pages/${eventId}/edit`,
+    stats: statTiles(r),
+  });
 }
 
-async function allGuests(cms: CmsClient, eventId: number): Promise<Response> {
+async function allGuests(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
   const [event, guestList] = await Promise.all([
     cms.get(eventId),
     cms.list('guest', { parentId: eventId, limit: 500 }),
   ]);
-  const rows = guestList.pages.map((g) => {
-    const status = attr(g.lect, 'status') || 'to be invited';
-    const checkedIn = items(g.lect, 'checkin').length > 0;
-    return `<tr>
-      <td><a href="/admin/pages/${g.id}/edit">${esc(g.name || localized(g.lect, 'name'))}</a></td>
-      <td>${esc(attr(g.lect, 'email'))}</td>
-      <td><span class="ev-badge">${esc(status)}</span></td>
-      <td>${checkedIn ? '✅' : ''}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="4" class="ev-empty">No guests yet.</td></tr>`;
-
-  return view(`Guests — ${event.name}`, `
-    <div class="ev-head">
-      <div><a class="ev-back" href="${ADMIN_BASE}/events/${eventId}">← ${esc(event.name)}</a><h1 class="ev-h1">All guests (${guestList.total})</h1></div>
-    </div>
-    <div class="ev-card">
-      <table class="ev-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>In</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`);
+  return adminView(views, `Guests — ${event.name}`, 'guests', {
+    eventName: event.name,
+    eventHref: `${ADMIN_BASE}/events/${eventId}`,
+    total: guestList.total,
+    guests: guestList.pages.map((guest) => ({
+      name: guest.name || localized(guest.lect, 'name'),
+      email: attr(guest.lect, 'email'),
+      status: attr(guest.lect, 'status') || 'to be invited',
+      checkedIn: items(guest.lect, 'checkin').length > 0,
+      editHref: `/admin/pages/${guest.id}/edit`,
+    })),
+  });
 }
 
-async function adhocCheckinForm(cms: CmsClient, eventId: number): Promise<Response> {
+async function adhocCheckinForm(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
   const event = await cms.get(eventId);
-  const field = (name: string, label: string, type = 'text') =>
-    `<label class="ev-field"><span>${label}</span>
-      <input class="ev-input" name="${name}" type="${type}"></label>`;
-  return view(`Adhoc check-in — ${event.name}`, `
-    <div class="ev-head">
-      <div><a class="ev-back" href="${ADMIN_BASE}/events/${eventId}">← ${esc(event.name)}</a><h1 class="ev-h1">Adhoc check-in</h1></div>
-    </div>
-    <div class="ev-card ev-card-pad" style="max-width:32rem">
-      <form method="post">
-        ${field('name', 'Name')}
-        ${field('last_name', 'Last name')}
-        ${field('email', 'Email', 'email')}
-        ${field('phone', 'Phone')}
-        ${field('organization', 'Organization')}
-        ${field('job_title', 'Job title')}
-        ${field('plus_guests', 'Plus guests', 'number')}
-        <button class="ev-btn ev-btn-primary" type="submit">Add &amp; check in</button>
-      </form>
-    </div>`);
+  return adminView(views, `Adhoc check-in — ${event.name}`, 'adhoc-checkin', {
+    eventName: event.name,
+    eventHref: `${ADMIN_BASE}/events/${eventId}`,
+    fields: [
+      { name: 'name', label: 'Name', type: 'text' },
+      { name: 'last_name', label: 'Last name', type: 'text' },
+      { name: 'email', label: 'Email', type: 'email' },
+      { name: 'phone', label: 'Phone', type: 'text' },
+      { name: 'organization', label: 'Organization', type: 'text' },
+      { name: 'job_title', label: 'Job title', type: 'text' },
+      { name: 'plus_guests', label: 'Plus guests', type: 'number' },
+    ],
+  });
 }
 
 async function adhocCheckinSubmit(cms: CmsClient, eventId: number, request: Request): Promise<Response> {

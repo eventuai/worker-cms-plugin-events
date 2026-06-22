@@ -1,0 +1,33 @@
+<style>
+  .ev-wrap{max-width:64rem;margin:0 auto;padding:1.5rem 1rem}
+  .ev-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}
+  .ev-back{display:inline-block;font-size:.75rem;color:#6b7280;text-decoration:none;margin-bottom:.25rem}
+  .ev-back:hover{color:#4f46e5}
+  .ev-h1{font-size:1.5rem;line-height:2rem;font-weight:700;color:#111827;margin:0}
+  .ev-sub{font-size:.875rem;color:#6b7280;margin:.25rem 0 0}
+  .ev-card{background:#fff;border-radius:.75rem;box-shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);overflow:hidden}
+  .ev-card-pad{padding:1.5rem}
+  .ev-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+  .ev-btn{display:inline-block;padding:.5rem 1rem;border-radius:.5rem;font-size:.875rem;font-weight:600;text-decoration:none;border:1px solid transparent;cursor:pointer}
+  .ev-btn-primary{background:#4f46e5;color:#fff}
+  .ev-btn-primary:hover{background:#4338ca}
+  .ev-btn-secondary{background:#fff;color:#374151;border-color:#d1d5db}
+  .ev-btn-secondary:hover{background:#f9fafb}
+  table.ev-table{width:100%;border-collapse:collapse;font-size:.875rem}
+  .ev-table thead{background:#f9fafb}
+  .ev-table th{text-align:left;font-size:.6875rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;padding:.5rem 1rem;font-weight:600}
+  .ev-table td{padding:.625rem 1rem;border-top:1px solid #f3f4f6;color:#374151}
+  .ev-table a{color:#4f46e5;text-decoration:none;font-weight:500}
+  .ev-empty{padding:2rem;text-align:center;color:#9ca3af;font-size:.875rem}
+  .ev-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}
+  @media(min-width:640px){.ev-stats{grid-template-columns:repeat(6,1fr)}}
+  .ev-stat{border:1px solid #e5e7eb;border-radius:.5rem;padding:.75rem;text-align:center}
+  .ev-stat b{display:block;font-size:1.5rem;font-weight:700;color:#111827}
+  .ev-stat span{font-size:.6875rem;color:#6b7280}
+  .ev-field{display:block;margin-bottom:.75rem}
+  .ev-field span{display:block;font-size:.875rem;color:#374151;margin-bottom:.25rem}
+  .ev-input{display:block;width:100%;padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:.5rem;font-size:.875rem;box-sizing:border-box}
+  .ev-badge{display:inline-block;padding:.125rem .5rem;border-radius:9999px;font-size:.75rem;font-weight:600;background:#f3f4f6;color:#374151}
+  .ev-prose code{background:#f3f4f6;padding:.1rem .3rem;border-radius:.25rem;font-size:.8125rem}
+</style>
+<div class="ev-wrap">{{ content }}</div>

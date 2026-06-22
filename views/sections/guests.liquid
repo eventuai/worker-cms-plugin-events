@@ -1,0 +1,20 @@
+<div class="ev-head">
+  <div><a class="ev-back" href="{{ eventHref | escape }}">← {{ eventName | escape }}</a><h1 class="ev-h1">All guests ({{ total }})</h1></div>
+</div>
+<div class="ev-card">
+  <table class="ev-table">
+    <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>In</th></tr></thead>
+    <tbody>
+      {% for guest in guests %}
+        <tr>
+          <td><a href="{{ guest.editHref | escape }}">{{ guest.name | escape }}</a></td>
+          <td>{{ guest.email | escape }}</td>
+          <td><span class="ev-badge">{{ guest.status | escape }}</span></td>
+          <td>{% if guest.checkedIn %}✅{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="ev-empty">No guests yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,4 @@
+{
+  "sections": { "main": { "type": "event-dashboard" } },
+  "order": ["main"]
+}

@@ -1,0 +1,4 @@
+{
+  "sections": { "main": { "type": "adhoc-checkin" } },
+  "order": ["main"]
+}

@@ -1,0 +1,12 @@
+<div class="ev-head">
+  <div><a class="ev-back" href="{{ eventHref | escape }}">← {{ eventName | escape }}</a><h1 class="ev-h1">Adhoc check-in</h1></div>
+</div>
+<div class="ev-card ev-card-pad" style="max-width:32rem">
+  <form method="post">
+    {% for field in fields %}
+      <label class="ev-field"><span>{{ field.label | escape }}</span>
+        <input class="ev-input" name="{{ field.name | escape }}" type="{{ field.type | escape }}"></label>
+    {% endfor %}
+    <button class="ev-btn ev-btn-primary" type="submit">Add &amp; check in</button>
+  </form>
+</div>

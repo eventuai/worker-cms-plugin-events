@@ -1,0 +1,15 @@
+<div class="ev-head">
+  <div><a class="ev-back" href="{{ eventsHref | escape }}">← Events</a><h1 class="ev-h1">{{ eventName | escape }}</h1></div>
+  <div class="ev-actions">
+    <a class="ev-btn ev-btn-primary" href="{{ adhocCheckinHref | escape }}">Adhoc check-in</a>
+    <a class="ev-btn ev-btn-secondary" href="{{ guestsHref | escape }}">All guests</a>
+    <a class="ev-btn ev-btn-secondary" href="{{ editHref | escape }}">Edit event ↗</a>
+  </div>
+</div>
+<div class="ev-card ev-card-pad">
+  <div class="ev-stats">
+    {% for stat in stats %}
+      <div class="ev-stat"><b{% if stat.color %} style="color:{{ stat.color | escape }}"{% endif %}>{{ stat.value }}</b><span>{{ stat.label | escape }}</span></div>
+    {% endfor %}
+  </div>
+</div>

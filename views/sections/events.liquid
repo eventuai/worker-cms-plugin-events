@@ -1,0 +1,20 @@
+<div class="ev-head">
+  <div><h1 class="ev-h1">Events</h1><p class="ev-sub">Manage events, guests and check-in.</p></div>
+  <a class="ev-btn ev-btn-primary" href="/admin/pages/new?page_type=event">New event</a>
+</div>
+<div class="ev-card">
+  <table class="ev-table">
+    <thead><tr><th>Name</th><th>Start</th><th></th></tr></thead>
+    <tbody>
+      {% for event in events %}
+        <tr>
+          <td><a href="{{ event.dashboardHref | escape }}">{{ event.name | escape }}</a></td>
+          <td style="color:#6b7280">{{ event.start | escape }}</td>
+          <td style="text-align:right"><a href="{{ event.editHref | escape }}">Edit ↗</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="ev-empty">No events yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
