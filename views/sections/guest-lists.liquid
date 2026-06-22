@@ -15,7 +15,7 @@
           <td><a href="{{ list.href | escape }}">{{ list.name | escape }}</a></td>
           <td>{% if list.eventHref %}<a href="{{ list.eventHref | escape }}">{{ list.eventName | escape }}</a>{% else %}{{ list.eventName | escape }}{% endif %}</td>
           <td>{% if list.allowCheckin %}<span class="ev-badge">Enabled</span>{% else %}<span class="ev-badge">Disabled</span>{% endif %}</td>
-          <td style="text-align:right"><a href="{{ list.href | escape }}">Manage →</a></td>
+          <td style="text-align:right"><a href="{{ list.href | escape }}">Manage →</a> <form method="post" action="{{ list.deleteAction | escape }}" class="ev-inline-form" onsubmit="return confirm('Delete this guest list and its guests?')"><button class="ev-text-button" type="submit">Delete</button></form></td>
         </tr>
       {% else %}
         <tr><td colspan="4" class="ev-empty">No guest lists yet. Create one to begin inviting guests.</td></tr>

@@ -130,6 +130,43 @@ describe('events admin', () => {
     expect(cmsFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('shows every event guest list with its RSVP summary', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: { id: 12, page_type: 'event', name: 'Town & Country', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        expect(url.searchParams.get('page_id')).toBe('12');
+        expect(url.searchParams.get('include')).toBe('guest_summary');
+        return Response.json({
+          pages: [{
+            id: 34, page_type: 'mail_list', name: 'VIP', page_id: 12, lect: {},
+            guest_summary: {
+              guest_count: 4, guest_total: 6, onhold_count: 1, to_be_invited_count: 1,
+              invited_count: 1, confirmed_count: 1, declined_count: 0, unconfirmed_count: 0,
+              checked_in_count: 1, checked_in_total: 2,
+            },
+          }], total: 1,
+        });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/12', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Guest lists');
+    expect(html).toContain('VIP');
+    expect(html).toContain('6 people');
+    expect(html).toContain('Confirmed 1');
+    expect(html).toContain('Checked-in');
+  });
+
   it('creates and checks in an adhoc guest through the CMS write-back API', async () => {
     const cmsRequests: Array<{ url: URL; init?: RequestInit }> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -204,6 +241,75 @@ describe('events admin', () => {
       page_type: 'mail_list', name: 'VIP guests', page_id: 7,
       lect: { _pointers: { event: '7' }, allow_checkin: 'yes' },
     });
+  });
+
+  it('deletes a guest list and returns to its event lists', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8' && init?.method === 'DELETE') return Response.json({ ok: true, id: 8 });
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/delete', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp?event=7');
+    expect(cmsFetch).toHaveBeenLastCalledWith(
+      'https://cms.test/__cms/pages/8',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('keeps a valid guest list usable when its parent event can no longer be read', async () => {
+    const listId = 21841367058779;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === `/__cms/pages/${listId}`) {
+        return Response.json({ page: { id: listId, page_type: 'mail_list', page_id: 7, name: 'Recovered list', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ error: 'not_found' }, { status: 404 });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request(`/__plugin/admin/rsvp/${listId}/guests/new`, {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('New guest');
+  });
+
+  it('redirects legacy event-based guest URLs to the event Adhoc list', async () => {
+    const eventId = 21841367058779;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === `/__cms/pages/${eventId}`) {
+        return Response.json({ page: { id: eventId, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 222, page_type: 'mail_list', page_id: eventId, name: 'Adhoc', lect: {} }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request(`/__plugin/admin/rsvp/${eventId}/guests/new`, {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/222/guests/new');
   });
 });
 

@@ -39,6 +39,20 @@ export interface CmsPage {
   updated_at: string;
   lect: Record<string, unknown>;
   tags?: number[];
+  guest_summary?: GuestListSummary;
+}
+
+export interface GuestListSummary {
+  guest_count: number;
+  guest_total: number;
+  onhold_count: number;
+  to_be_invited_count: number;
+  invited_count: number;
+  confirmed_count: number;
+  declined_count: number;
+  unconfirmed_count: number;
+  checked_in_count: number;
+  checked_in_total: number;
 }
 
 export interface CmsPageInput {
@@ -101,13 +115,14 @@ export class CmsClient {
   /** List pages of a type, optionally filtered by parent page id (e.g. guests of an event). */
   async list(
     pageType: string,
-    opts: { parentId?: number; q?: string; limit?: number; offset?: number } = {},
+    opts: { parentId?: number; q?: string; limit?: number; offset?: number; includeGuestSummary?: boolean } = {},
   ): Promise<{ pages: CmsPage[]; total: number }> {
     const params = new URLSearchParams({ page_type: pageType });
     if (opts.parentId != null) params.set('page_id', String(opts.parentId));
     if (opts.q) params.set('q', opts.q);
     if (opts.limit != null) params.set('limit', String(opts.limit));
     if (opts.offset != null) params.set('offset', String(opts.offset));
+    if (opts.includeGuestSummary) params.set('include', 'guest_summary');
     return this.json(await this.call('GET', `/pages?${params.toString()}`));
   }
 

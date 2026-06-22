@@ -1,5 +1,6 @@
 import {
   CmsClient,
+  CmsApiError,
   attr,
   items,
   localized,
@@ -16,7 +17,8 @@ type GuestStatus = typeof GUEST_STATUSES[number];
 
 interface GuestListContext {
   list: CmsPage;
-  event: CmsPage;
+  event: CmsPage | null;
+  eventId: number | null;
 }
 
 export async function handleRsvpAdmin(
@@ -36,6 +38,19 @@ export async function handleRsvpAdmin(
   const listId = pageId(segments[0]);
   if (!listId) return new Response('not found', { status: 404 });
 
+  // Legacy event screens linked guest actions directly to an event id. Keep
+  // those links working by routing them through that event's Adhoc list.
+  const target = await cms.get(listId);
+  if (target.page_type === 'event') {
+    const adhocList = await ensureAdhocGuestList(cms, target.id);
+    if (segments[1] === 'guests' && segments[2] === 'new' && request.method === 'POST') {
+      return createGuest(request, cms, adhocList.id);
+    }
+    const rest = segments.slice(1).join('/');
+    return redirect(`${ADMIN_BASE}/rsvp/${adhocList.id}${rest ? `/${rest}` : ''}`);
+  }
+
+  if (segments[1] === 'delete' && request.method === 'POST') return deleteGuestList(cms, listId);
   if (segments[1] === 'export') return exportGuests(cms, listId);
   if (segments[1] === 'import') {
     if (request.method === 'POST') return importGuests(request, cms, listId);
@@ -157,14 +172,15 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const guests = selectedStatus ? pages.filter((guest) => guestStatus(guest) === selectedStatus) : pages;
 
   return adminView(views, `${context.list.name} — RSVP`, 'guest-list', {
-    eventName: context.event.name,
-    eventHref: `${ADMIN_BASE}/events/${context.event.id}`,
+    eventName: context.event?.name ?? 'Event',
+    eventHref: context.event ? `${ADMIN_BASE}/events/${context.event.id}` : `${ADMIN_BASE}/rsvp`,
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
-    listsHref: `${ADMIN_BASE}/rsvp?event=${context.event.id}`,
+    listsHref: context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`,
     newGuestHref: `${ADMIN_BASE}/rsvp/${listId}/guests/new`,
     importHref: `${ADMIN_BASE}/rsvp/${listId}/import`,
     exportHref: `${ADMIN_BASE}/rsvp/${listId}/export`,
+    deleteAction: `${ADMIN_BASE}/rsvp/${listId}/delete`,
     q,
     selectedStatus: selectedStatus ?? '',
     statuses: GUEST_STATUSES,
@@ -186,7 +202,7 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
 
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
     title: guest ? 'Edit guest' : 'New guest',
-    eventName: context.event.name,
+    eventName: context.event?.name ?? 'Event',
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     action,
@@ -200,7 +216,7 @@ async function createGuest(request: Request, cms: CmsClient, listId: number): Pr
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const form = await request.formData();
-  const input = guestInput(form, context.event.id, listId);
+  const input = guestInput(form, context.eventId, listId);
   if (!input.name) return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/new`);
 
   await cms.create({ page_type: 'guest', page_id: listId, name: input.name, lect: input.lect });
@@ -213,7 +229,7 @@ async function updateGuest(request: Request, cms: CmsClient, listId: number, gue
   if (!context || guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
 
   const form = await request.formData();
-  const input = guestInput(form, context.event.id, listId, guest);
+  const input = guestInput(form, context.eventId, listId, guest);
   if (!input.name) return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`);
   await cms.update(guestId, { name: input.name, lect: input.lect });
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
@@ -224,6 +240,13 @@ async function deleteGuest(cms: CmsClient, listId: number, guestId: number): Pro
   if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
   await cms.remove(guestId);
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+}
+
+async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  await cms.remove(listId);
+  return redirect(context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`);
 }
 
 async function updateGuestStatus(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
@@ -263,7 +286,7 @@ async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Prom
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   return adminView(views, `Import guests — ${context.list.name}`, 'guest-import', {
-    eventName: context.event.name,
+    eventName: context.event?.name ?? 'Event',
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     action: `${ADMIN_BASE}/rsvp/${listId}/import`,
@@ -305,7 +328,7 @@ async function importGuests(request: Request, cms: CmsClient, listId: number): P
       ['cc', value(row, 'cc')],
       ['remarks', value(row, 'remarks', 'notes')],
     ]);
-    inputs.push(guestPageInput(name, fields, context.event.id, listId));
+    inputs.push(guestPageInput(name, fields, context.eventId, listId));
   }
 
   for (const chunk of chunks(inputs, 200)) await cms.batchCreate(chunk);
@@ -337,10 +360,15 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
 async function guestListContext(cms: CmsClient, listId: number): Promise<GuestListContext | null> {
   const list = await cms.get(listId);
   if (list.page_type !== 'mail_list') return null;
-  const eventId = list.page_id ?? pageId(pointer(list.lect, 'event'));
-  if (!eventId) return null;
-  const event = await cms.get(eventId);
-  return event.page_type === 'event' ? { list, event } : null;
+  const eventId = pageId(list.page_id) ?? pageId(pointer(list.lect, 'event'));
+  if (!eventId) return { list, event: null, eventId: null };
+  try {
+    const event = await cms.get(eventId);
+    return { list, event: event.page_type === 'event' ? event : null, eventId };
+  } catch (error) {
+    if (error instanceof CmsApiError && error.status === 404) return { list, event: null, eventId };
+    throw error;
+  }
 }
 
 function guestListRow(list: CmsPage, event?: CmsPage): Record<string, unknown> {
@@ -349,6 +377,7 @@ function guestListRow(list: CmsPage, event?: CmsPage): Record<string, unknown> {
     eventName: event?.name ?? 'Unknown event',
     eventHref: event ? `${ADMIN_BASE}/events/${event.id}` : '',
     href: `${ADMIN_BASE}/rsvp/${list.id}`,
+    deleteAction: `${ADMIN_BASE}/rsvp/${list.id}/delete`,
     allowCheckin: attr(list.lect, 'allow_checkin') !== 'no',
   };
 }
@@ -394,7 +423,7 @@ function guestStatus(guest: CmsPage): GuestStatus {
 
 function guestInput(
   form: FormData,
-  eventId: number,
+  eventId: number | null,
   listId: number,
   existing?: CmsPage,
 ): { name: string; lect: Record<string, unknown> } {
@@ -415,7 +444,7 @@ function guestInput(
   return { name, lect: { ...(existing?.lect ?? {}), ...input.lect } };
 }
 
-function guestPageInput(name: string, fields: Map<string, string>, eventId: number, listId: number): CmsPageInput {
+function guestPageInput(name: string, fields: Map<string, string>, eventId: number | null, listId: number): CmsPageInput {
   return {
     page_type: 'guest',
     page_id: listId,
@@ -433,7 +462,7 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
       prefer_language: fields.get('prefer_language') ?? '',
       cc: fields.get('cc') ?? '',
       remarks: fields.get('remarks') ?? '',
-      _pointers: { event: String(eventId), mail_list: String(listId) },
+      _pointers: { ...(eventId ? { event: String(eventId) } : {}), mail_list: String(listId) },
     },
   };
 }

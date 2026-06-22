@@ -16,8 +16,8 @@ import {
   CmsNotConfiguredError,
   PLUGIN_ID,
   attr,
-  items,
   type CmsPage,
+  type GuestListSummary,
 } from './cms';
 import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, type EdmEnv, type EmailDelivery } from './edm';
@@ -294,27 +294,6 @@ interface Rollup {
   checkedIn: number; checkedInTotal: number;
 }
 
-function rollupGuests(guests: CmsPage[]): Rollup {
-  const r: Rollup = { guests: 0, total: 0, confirmed: 0, declined: 0, unconfirmed: 0, invited: 0, toBeInvited: 0, onhold: 0, checkedIn: 0, checkedInTotal: 0 };
-  for (const g of guests) {
-    const plus = parseInt(attr(g.lect, 'plus_guests'), 10) || 0;
-    const headcount = plus + 1;
-    r.guests += 1;
-    r.total += headcount;
-    const status = (attr(g.lect, 'status') || 'to be invited').toLowerCase();
-    if (status === 'confirmed') r.confirmed += 1;
-    else if (status === 'decline' || status === 'declined') r.declined += 1;
-    else if (status === 'unconfirmed') r.unconfirmed += 1;
-    else if (status === 'invited') r.invited += 1;
-    else if (status === 'onhold') r.onhold += 1;
-    else r.toBeInvited += 1;
-
-    const checkins = items(g.lect, 'checkin');
-    if (checkins.length > 0) { r.checkedIn += 1; r.checkedInTotal += headcount; }
-  }
-  return r;
-}
-
 function statTiles(r: Rollup): Array<{ label: string; value: number; color?: string }> {
   return [
     { label: 'Guests', value: r.guests },
@@ -324,6 +303,32 @@ function statTiles(r: Rollup): Array<{ label: string; value: number; color?: str
     { label: 'To invite', value: r.toBeInvited, color: '#b45309' },
     { label: 'Checked-in', value: r.checkedIn, color: '#4f46e5' },
   ];
+}
+
+function rollupGuestListSummaries(lists: CmsPage[]): Rollup {
+  const r: Rollup = { guests: 0, total: 0, confirmed: 0, declined: 0, unconfirmed: 0, invited: 0, toBeInvited: 0, onhold: 0, checkedIn: 0, checkedInTotal: 0 };
+  for (const list of lists) {
+    const summary = list.guest_summary ?? emptyGuestListSummary();
+    r.guests += summary.guest_count;
+    r.total += summary.guest_total;
+    r.confirmed += summary.confirmed_count;
+    r.declined += summary.declined_count;
+    r.unconfirmed += summary.unconfirmed_count;
+    r.invited += summary.invited_count;
+    r.toBeInvited += summary.to_be_invited_count;
+    r.onhold += summary.onhold_count;
+    r.checkedIn += summary.checked_in_count;
+    r.checkedInTotal += summary.checked_in_total;
+  }
+  return r;
+}
+
+function emptyGuestListSummary(): GuestListSummary {
+  return {
+    guest_count: 0, guest_total: 0, onhold_count: 0, to_be_invited_count: 0,
+    invited_count: 0, confirmed_count: 0, declined_count: 0, unconfirmed_count: 0,
+    checked_in_count: 0, checked_in_total: 0,
+  };
 }
 
 // ── Events section views ──────────────────────────────────────────────────────
@@ -341,11 +346,11 @@ async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
 }
 
 async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
-  const [event, guestList] = await Promise.all([
+  const [event, guestLists] = await Promise.all([
     cms.get(eventId),
-    cms.list('guest', { parentId: eventId, limit: 500 }),
+    cms.list('mail_list', { parentId: eventId, limit: 500, includeGuestSummary: true }),
   ]);
-  const r = rollupGuests(guestList.pages);
+  const r = rollupGuestListSummaries(guestLists.pages);
 
   return adminView(views, event.name, 'event-dashboard', {
     eventName: event.name,
@@ -355,6 +360,12 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
     editHref: `/admin/pages/${eventId}/edit`,
     stats: statTiles(r),
+    guestLists: guestLists.pages.map((list) => ({
+      name: list.name,
+      href: `${ADMIN_BASE}/rsvp/${list.id}`,
+      summary: list.guest_summary ?? emptyGuestListSummary(),
+    })),
+    newGuestListHref: `${ADMIN_BASE}/rsvp/new?event_id=${eventId}`,
   });
 }
 

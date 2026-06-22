@@ -14,3 +14,26 @@
     {% endfor %}
   </div>
 </div>
+<div class="ev-card" style="margin-top:1rem">
+  <div class="ev-head" style="padding:1rem 1rem 0;margin-bottom:.75rem">
+    <div><h2 class="ev-h2">Guest lists</h2><p class="ev-sub">Invitation, RSVP and check-in summary by list.</p></div>
+    <a class="ev-btn ev-btn-secondary" href="{{ newGuestListHref | escape }}">New guest list</a>
+  </div>
+  <table class="ev-table">
+    <thead><tr><th>Guest list</th><th>Guests</th><th>Invitation</th><th>RSVP</th><th>Check-in</th><th></th></tr></thead>
+    <tbody>
+      {% for list in guestLists %}
+        <tr>
+          <td><a href="{{ list.href | escape }}">{{ list.name | escape }}</a></td>
+          <td><strong>{{ list.summary.guest_count }}</strong> groups<br><span class="ev-sub">{{ list.summary.guest_total }} people</span></td>
+          <td>On hold {{ list.summary.onhold_count }} · To invite {{ list.summary.to_be_invited_count }} · Invited {{ list.summary.invited_count }}</td>
+          <td>Confirmed {{ list.summary.confirmed_count }} · Declined {{ list.summary.declined_count }}{% if list.summary.unconfirmed_count > 0 %} · Unconfirmed {{ list.summary.unconfirmed_count }}{% endif %}</td>
+          <td>{{ list.summary.checked_in_count }} groups<br><span class="ev-sub">{{ list.summary.checked_in_total }} people</span></td>
+          <td style="text-align:right"><a href="{{ list.href | escape }}">Manage →</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="ev-empty">No guest lists yet. Create one to begin inviting guests.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -8,6 +8,7 @@
     <a class="ev-btn ev-btn-primary" href="{{ newGuestHref | escape }}">New guest</a>
     <a class="ev-btn ev-btn-secondary" href="{{ importHref | escape }}">Import CSV</a>
     <a class="ev-btn ev-btn-secondary" href="{{ exportHref | escape }}">Export CSV</a>
+    <form method="post" action="{{ deleteAction | escape }}" onsubmit="return confirm('Delete this guest list and its guests?')"><button class="ev-btn ev-btn-danger" type="submit">Delete list</button></form>
   </div>
 </div>
 <div class="ev-card ev-card-pad" style="margin-bottom:1rem">
