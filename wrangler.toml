@@ -21,11 +21,16 @@ run_worker_first = true
 # Base URL of the CMS Worker — where this plugin reaches the F1 page read/write
 # API ({CMS_URL}/__cms/*) to read events and create/update guest pages.
 CMS_URL = "https://cms.eventuai.com"
+# Public origin of this Worker, used to generate signed RSVP links in queued EDMs.
+# PUBLIC_BASE_URL = "https://events.eventuai.com"
 
-# ── EDM email backbone (uncomment + provision when wiring send) ────────────────
-# Outbound email — Cloudflare Email Service binding (or use Resend over fetch):
+# ── EDM email backbone (uncomment + provision before enabling delivery) ────────
+# Cloudflare Email Service binding. EMAIL_FROM must be a verified sender address.
 # [[send_email]]
-# name = "SEND_EMAIL"
+# name = "EMAIL"
+
+# [vars]
+# EMAIL_FROM = "events@example.com"
 
 # Per-recipient send queue (decouples a blast from the request):
 # [[queues.producers]]

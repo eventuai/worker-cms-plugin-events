@@ -1,0 +1,20 @@
+<div class="ev-head">
+  <div><a class="ev-back" href="{{ backHref | escape }}">← Guest lists</a><h1 class="ev-h1">New guest list</h1></div>
+</div>
+<div class="ev-card ev-card-pad" style="max-width:36rem">
+  <form method="post" action="{{ action | escape }}">
+    <label class="ev-field"><span>Event</span>
+      <select class="ev-input" name="event_id" required>
+        <option value="">Select an event</option>
+        {% for event in events %}
+          <option value="{{ event.id }}"{% if event.id == selectedEventId %} selected{% endif %}>{{ event.name | escape }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="ev-field"><span>List name</span><input class="ev-input" name="name" required placeholder="VIP guests"></label>
+    <label class="ev-field"><span>Check-in</span>
+      <select class="ev-input" name="allow_checkin"><option value="yes">Enabled</option><option value="no">Disabled</option></select>
+    </label>
+    <button class="ev-btn ev-btn-primary" type="submit">Create guest list</button>
+  </form>
+</div>

@@ -1,0 +1,16 @@
+<div class="ev-head">
+  <div><h1 class="ev-h1">EDMs</h1><p class="ev-sub">Create invitations, preview them, and queue delivery to a guest list.</p></div>
+  <a class="ev-btn ev-btn-primary" href="{{ newHref | escape }}">New EDM</a>
+</div>
+<div class="ev-card">
+  <table class="ev-table">
+    <thead><tr><th>Name</th><th>Subject</th><th>Event</th><th></th></tr></thead>
+    <tbody>
+      {% for edm in edms %}
+        <tr><td><a href="{{ edm.href | escape }}">{{ edm.name | escape }}</a></td><td>{{ edm.subject | escape }}</td><td>{{ edm.eventName | escape }}</td><td style="text-align:right"><a href="{{ edm.previewHref | escape }}" target="_blank">Preview ↗</a></td></tr>
+      {% else %}
+        <tr><td colspan="4" class="ev-empty">No EDMs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

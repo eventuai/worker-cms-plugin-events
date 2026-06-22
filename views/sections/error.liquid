@@ -1,4 +1,4 @@
-<div class="ev-head"><h1 class="ev-h1">Cannot reach the CMS</h1></div>
+<div class="ev-head"><h1 class="ev-h1">{{ heading | default: 'Cannot reach the CMS' | escape }}</h1></div>
 <div class="ev-card ev-card-pad ev-prose">
   <p class="ev-sub">{{ message | escape }}</p>
   <p class="ev-sub" style="margin-top:.75rem">Set <code>CMS_URL</code> and <code>PLUGIN_SECRET</code> on this plugin Worker

@@ -17,13 +17,17 @@ import {
   PLUGIN_ID,
   attr,
   items,
-  localized,
   type CmsPage,
 } from './cms';
+import { signPayload, verifyPayload } from './crypto';
+import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, type EdmEnv, type EmailDelivery } from './edm';
+import { handleLabelsAdmin } from './labels';
+import { handlePublicRsvp } from './public-rsvp';
+import { ensureAdhocGuestList, eventGuestLists, handleRsvpAdmin } from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
 
-interface PluginEnv {
+interface PluginEnv extends EdmEnv {
   PLUGIN_SECRET?: string;
   /** Base URL of the CMS Worker (for the F1 write-back API), e.g. https://cms.eventuai.com */
   CMS_URL?: string;
@@ -189,13 +193,16 @@ export default {
     }
 
     // ── Public guest-facing routes (own domain) ────────────────────────────
+    const rsvpResponse = await handlePublicRsvp(request, env, url);
+    if (rsvpResponse) return rsvpResponse;
+
     // QR codes — signed with PLUGIN_SECRET so they can't be forged.
     if (path === '/qr') {
       const data = url.searchParams.get('data') ?? '';
       const sig = url.searchParams.get('sig') ?? '';
       if (!data || !sig) return new Response('missing data/sig', { status: 400 });
       if (!env.PLUGIN_SECRET) return new Response('server misconfigured', { status: 500 });
-      if (!(await verify(env.PLUGIN_SECRET, data, sig))) return new Response('bad signature', { status: 403 });
+      if (!(await verifyPayload(env.PLUGIN_SECRET, data, sig))) return new Response('bad signature', { status: 403 });
       return new Response(await placeholderQrSvg(env.VIEWS, data), {
         headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' },
       });
@@ -206,32 +213,25 @@ export default {
       }
       const data = url.searchParams.get('data') ?? '';
       if (!data) return new Response('missing data', { status: 400 });
-      const sig = await sign(env.PLUGIN_SECRET ?? '', data);
+      const sig = await signPayload(env.PLUGIN_SECRET ?? '', data);
       return Response.json({ data, sig, url: `/qr?data=${encodeURIComponent(data)}&sig=${sig}` });
     }
 
-    // TODO public: RSVP form (/:lang?/rsvp/:event/:edm/:view/:sign + submit + thank-you),
-    //              event check-in (/checkin/...), EDM unsubscribe (/unsubscribe/:token).
+    // TODO public: event check-in (/checkin/...) and EDM unsubscribe (/unsubscribe/:token).
 
     return new Response('not found', { status: 404 });
   },
 
-  // TODO scheduled(): drain due mail_list blasts (wire a Cron Trigger + Queue).
+  async queue(batch: MessageBatch<EmailDelivery>, env: PluginEnv): Promise<void> {
+    for (const message of batch.messages) await deliverQueuedEmail(env, message.body);
+  },
+
+  async scheduled(_controller: ScheduledController, env: PluginEnv, ctx: ExecutionContext): Promise<void> {
+    if (!env.CMS_URL || !env.PLUGIN_SECRET || !env.MAIL_QUEUE) return;
+    ctx.waitUntil(dispatchDueMailLists(new CmsClient(env), env.VIEWS, env));
+  },
 };
 
-// ── QR signing (Web Crypto) ─────────────────────────────────────────────────
-async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
-}
-async function sign(secret: string, data: string): Promise<string> {
-  const mac = await crypto.subtle.sign('HMAC', await hmacKey(secret), new TextEncoder().encode(data));
-  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-async function verify(secret: string, data: string, hexSig: string): Promise<boolean> {
-  const bytes = hexSig.match(/.{1,2}/g)?.map((h) => parseInt(h, 16));
-  if (!bytes || bytes.length !== 32) return false;
-  return crypto.subtle.verify('HMAC', await hmacKey(secret), new Uint8Array(bytes), new TextEncoder().encode(data));
-}
 function placeholderQrSvg(views: Fetcher, data: string): Promise<string> {
   return renderLiquid(views, '/templates/qr.liquid', { label: data.slice(0, 40) });
 }
@@ -254,11 +254,6 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   const segments = rest.split('/').filter(Boolean);
   const section = segments[0] || 'events';
 
-  if (section === 'rsvp' || section === 'edm') {
-    return sectionPlaceholder(env.VIEWS, section);
-  }
-
-  // section === 'events'
   let cms: CmsClient;
   try {
     cms = new CmsClient(env);
@@ -268,6 +263,10 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   }
 
   try {
+    if (section === 'rsvp') return handleRsvpAdmin(request, cms, env.VIEWS, segments.slice(1), url);
+    if (section === 'edm') return handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url);
+
+    // section === 'events'
     // /events/:id/...
     const eventId = segments[1] ? Number(segments[1]) : null;
     const sub = segments[2] ?? '';
@@ -276,20 +275,14 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
       if (request.method === 'POST') return adhocCheckinSubmit(cms, eventId, request);
       return adhocCheckinForm(cms, env.VIEWS, eventId);
     }
-    if (eventId && sub === 'all-guests') return allGuests(cms, env.VIEWS, eventId);
+    if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url);
+    if (eventId && sub === 'all-guests') return eventGuestLists(cms, env.VIEWS, eventId);
     if (eventId) return eventDashboard(cms, env.VIEWS, eventId);
     return eventsList(cms, env.VIEWS);
   } catch (error) {
     if (error instanceof CmsApiError) return errorPanel(env.VIEWS, `CMS responded ${error.status} (${error.code}).`);
     throw error;
   }
-}
-
-function sectionPlaceholder(views: Fetcher, section: string): Promise<Response> {
-  const note = section === 'rsvp'
-    ? 'Guest management, bulk add/remove, and the public multilingual RSVP form (write-back via F1) live here.'
-    : 'Compose/render/preview EDMs, mail lists, scheduled blasts (Cron + Queue), unsubscribe, and attachments live here.';
-  return adminView(views, section.toUpperCase(), 'placeholder', { title: section.toUpperCase(), note });
 }
 
 // ── Guest rollups (mirrors the legacy event dashboard tallies) ────────────────
@@ -358,28 +351,10 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     eventName: event.name,
     eventsHref: `${ADMIN_BASE}/events`,
     adhocCheckinHref: `${ADMIN_BASE}/events/${eventId}/adhoc-checkin`,
-    guestsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    guestListsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
     editHref: `/admin/pages/${eventId}/edit`,
     stats: statTiles(r),
-  });
-}
-
-async function allGuests(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
-  const [event, guestList] = await Promise.all([
-    cms.get(eventId),
-    cms.list('guest', { parentId: eventId, limit: 500 }),
-  ]);
-  return adminView(views, `Guests — ${event.name}`, 'guests', {
-    eventName: event.name,
-    eventHref: `${ADMIN_BASE}/events/${eventId}`,
-    total: guestList.total,
-    guests: guestList.pages.map((guest) => ({
-      name: guest.name || localized(guest.lect, 'name'),
-      email: attr(guest.lect, 'email'),
-      status: attr(guest.lect, 'status') || 'to be invited',
-      checkedIn: items(guest.lect, 'checkin').length > 0,
-      editHref: `/admin/pages/${guest.id}/edit`,
-    })),
   });
 }
 
@@ -406,13 +381,14 @@ async function adhocCheckinSubmit(cms: CmsClient, eventId: number, request: Requ
   if (!name) return redirect(`${ADMIN_BASE}/events/${eventId}/adhoc-checkin`);
 
   const now = new Date().toISOString();
+  const guestList = await ensureAdhocGuestList(cms, eventId);
   // Adhoc guests are confirmed and checked-in immediately, mirroring the legacy
   // Event.action_adhoc_checkin_post flow. Stored in the canonical lect shape so
   // the guest is fully editable in the CMS editor.
   await cms.create({
     page_type: 'guest',
     name,
-    page_id: eventId,
+    page_id: guestList.id,
     lect: {
       _type: 'guest',
       name: { en: name },
@@ -424,11 +400,11 @@ async function adhocCheckinSubmit(cms: CmsClient, eventId: number, request: Requ
       plus_guests: String(form.get('plus_guests') ?? '0'),
       status: 'confirmed',
       type: 'adhoc',
-      _pointers: { event: String(eventId) },
+      _pointers: { event: String(eventId), mail_list: String(guestList.id) },
       response: [{ status: 'confirmed', date: now, message: 'adhoc guest added via admin panel' }],
       checkin: [{ status: 'checked-in', date: now, message: 'main attendee checked-in via admin panel' }],
     },
   });
 
-  return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
+  return redirect(`${ADMIN_BASE}/rsvp/${guestList.id}`);
 }

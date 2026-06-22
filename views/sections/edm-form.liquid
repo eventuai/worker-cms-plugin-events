@@ -1,0 +1,36 @@
+<div class="ev-head"><div><a class="ev-back" href="{{ backHref | escape }}">← EDMs</a><h1 class="ev-h1">{{ title | escape }}</h1></div>{% if previewHref %}<a class="ev-btn ev-btn-secondary" href="{{ previewHref | escape }}" target="_blank">Preview ↗</a>{% endif %}</div>
+<div class="ev-card ev-card-pad" style="max-width:54rem">
+  <form method="post" action="{{ action | escape }}">
+    <div class="ev-form-grid">
+      <label class="ev-field"><span>Event</span><select class="ev-input" name="event_id" required>{% for event in events %}<option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name | escape }}</option>{% endfor %}</select></label>
+      <label class="ev-field"><span>EDM name</span><input class="ev-input" name="name" value="{{ edm.name | escape }}" placeholder="Invitation email"></label>
+      <label class="ev-field"><span>Sender address</span><input class="ev-input" name="sender" type="email" value="{{ edm.sender | escape }}" placeholder="events@example.com"></label>
+      <label class="ev-field"><span>Subject</span><input class="ev-input" name="subject" required value="{{ edm.subject | escape }}"></label>
+    </div>
+    <label class="ev-field"><span>Heading</span><input class="ev-input" name="heading" value="{{ edm.heading | escape }}"></label>
+    <label class="ev-field"><span>Body HTML</span><textarea class="ev-input" name="body" rows="14" placeholder="&lt;p&gt;You're invited...&lt;/p&gt;">{{ edm.body | escape }}</textarea></label>
+    <label class="ev-field"><span>RSVP button label</span><input class="ev-input" name="rsvp_button" value="{{ edm.rsvp_button | escape }}"></label>
+    <button class="ev-btn ev-btn-primary" type="submit">Save EDM</button>
+  </form>
+</div>
+{% unless isNew %}
+  <div class="ev-card ev-card-pad" style="margin-top:1rem;max-width:54rem">
+    <h2 class="ev-h2">Guest-list delivery</h2>
+    <p class="ev-sub">Assign this EDM to a guest list, then queue delivery. Queueing is required for bulk sends.</p>
+    <form method="post" action="{{ listAction | escape }}" class="ev-actions" style="margin-top:1rem">
+      <select class="ev-input" style="max-width:24rem" name="list_id"><option value="">Select a guest list</option>{% for list in guestLists %}<option value="{{ list.id }}"{% if list.selected %} selected{% endif %}>{{ list.name | escape }}</option>{% endfor %}</select>
+      <button class="ev-btn ev-btn-secondary" type="submit">Assign list</button>
+    </form>
+    <form method="post" action="{{ sendListAction | escape }}" class="ev-actions" style="margin-top:.75rem">
+      <select class="ev-input" style="max-width:24rem" name="list_id" required><option value="">Select an assigned guest list</option>{% for list in guestLists %}{% if list.selected %}<option value="{{ list.id }}">{{ list.name | escape }}</option>{% endif %}{% endfor %}</select>
+      <button class="ev-btn ev-btn-primary" type="submit">Queue guest-list delivery</button>
+    </form>
+  </div>
+  <div class="ev-card ev-card-pad" style="margin-top:1rem;max-width:54rem">
+    <h2 class="ev-h2">Send a test</h2>
+    <form method="post" action="{{ testAction | escape }}" class="ev-actions" style="margin-top:1rem">
+      <input class="ev-input" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">
+      <button class="ev-btn ev-btn-secondary" type="submit">Send test email</button>
+    </form>
+  </div>
+{% endunless %}

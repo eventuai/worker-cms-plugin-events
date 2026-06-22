@@ -1,0 +1,15 @@
+<div class="ev-head"><div><a class="ev-back" href="{{ backHref | escape }}">← Label templates</a><h1 class="ev-h1">{{ title | escape }}</h1><p class="ev-sub">{{ eventName | escape }}</p></div>{% if previewHref %}<a class="ev-btn ev-btn-secondary" href="{{ previewHref | escape }}" target="_blank">Preview / print ↗</a>{% endif %}</div>
+<div class="ev-card ev-card-pad" style="max-width:56rem">
+  <form method="post" action="{{ action | escape }}">
+    <div class="ev-form-grid">
+      <label class="ev-field"><span>Template name</span><input class="ev-input" name="name" required value="{{ label.name | escape }}"></label>
+      <label class="ev-field"><span>Width</span><input class="ev-input" name="width" value="{{ label.width | escape }}"></label>
+      <label class="ev-field"><span>Height</span><input class="ev-input" name="height" value="{{ label.height | escape }}"></label>
+      <label class="ev-field"><span>Direction</span><select class="ev-input" name="direction"><option value="landscape"{% if label.direction == 'landscape' %} selected{% endif %}>Landscape</option><option value="portrait"{% if label.direction == 'portrait' %} selected{% endif %}>Portrait</option></select></label>
+    </div>
+    <label class="ev-field"><span>SVG template</span><textarea class="ev-input ev-code" name="svg" rows="16" required>{{ label.svg | escape }}</textarea></label>
+    <p class="ev-sub" style="margin-bottom:1rem">Available guest placeholders: <code>{{name}}</code>, <code>{{organization}}</code>, <code>{{email}}</code>, <code>{{qr_code}}</code>.</p>
+    <button class="ev-btn ev-btn-primary" type="submit">Save label template</button>
+  </form>
+</div>
+{% if previewHref %}<div class="ev-card ev-card-pad" style="margin-top:1rem;max-width:56rem"><h2 class="ev-h2">Guest preview</h2><p class="ev-sub">Choose a guest, then open a printable SVG preview.</p><form method="get" action="{{ previewHref | escape }}" target="_blank" class="ev-actions" style="margin-top:1rem"><select class="ev-input" style="max-width:28rem" name="guest_id"><option value="">Example values</option>{% for guest in guests %}<option value="{{ guest.id }}">{{ guest.name | escape }}</option>{% endfor %}</select><button class="ev-btn ev-btn-secondary" type="submit">Preview / print</button></form></div>{% endif %}

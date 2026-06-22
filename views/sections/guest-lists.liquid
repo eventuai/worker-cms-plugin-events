@@ -1,0 +1,25 @@
+<div class="ev-head">
+  <div>
+    {% if backHref %}<a class="ev-back" href="{{ backHref | escape }}">← Event</a>{% endif %}
+    <h1 class="ev-h1">{{ title | escape }}</h1>
+    <p class="ev-sub">{{ subtitle | escape }}</p>
+  </div>
+  <a class="ev-btn ev-btn-primary" href="{{ newHref | escape }}">New guest list</a>
+</div>
+<div class="ev-card">
+  <table class="ev-table">
+    <thead><tr><th>Guest list</th><th>Event</th><th>Check-in</th><th></th></tr></thead>
+    <tbody>
+      {% for list in lists %}
+        <tr>
+          <td><a href="{{ list.href | escape }}">{{ list.name | escape }}</a></td>
+          <td>{% if list.eventHref %}<a href="{{ list.eventHref | escape }}">{{ list.eventName | escape }}</a>{% else %}{{ list.eventName | escape }}{% endif %}</td>
+          <td>{% if list.allowCheckin %}<span class="ev-badge">Enabled</span>{% else %}<span class="ev-badge">Disabled</span>{% endif %}</td>
+          <td style="text-align:right"><a href="{{ list.href | escape }}">Manage →</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="ev-empty">No guest lists yet. Create one to begin inviting guests.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

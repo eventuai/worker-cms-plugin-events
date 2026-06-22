@@ -1,0 +1,8 @@
+<div class="ev-head"><div><a class="ev-back" href="{{ listHref | escape }}">← {{ listName | escape }}</a><h1 class="ev-h1">Import guests</h1><p class="ev-sub">{{ eventName | escape }}</p></div></div>
+<div class="ev-card ev-card-pad" style="max-width:40rem">
+  <form method="post" action="{{ action | escape }}" enctype="multipart/form-data">
+    <label class="ev-field"><span>CSV file</span><input class="ev-input" name="file" type="file" accept=".csv,text/csv" required></label>
+    <p class="ev-sub" style="margin-bottom:1rem">Supported columns: name, last_name, email, phone, organization, job_title, plus_guests, status, prefer_language, cc, remarks.</p>
+    <button class="ev-btn ev-btn-primary" type="submit">Import guests</button>
+  </form>
+</div>

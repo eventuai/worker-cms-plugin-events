@@ -1,0 +1,4 @@
+{
+  "sections": { "main": { "type": "label-form" } },
+  "order": ["main"]
+}

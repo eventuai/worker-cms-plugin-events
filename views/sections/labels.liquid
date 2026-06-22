@@ -1,0 +1,5 @@
+<div class="ev-head"><div><a class="ev-back" href="{{ eventHref | escape }}">← {{ eventName | escape }}</a><h1 class="ev-h1">Label templates</h1><p class="ev-sub">Create SVG name badges and print their preview from the browser.</p></div><a class="ev-btn ev-btn-primary" href="{{ newHref | escape }}">New label</a></div>
+<div class="ev-card"><table class="ev-table"><thead><tr><th>Name</th><th>Size</th><th></th></tr></thead><tbody>
+  {% for label in labels %}<tr><td><a href="{{ label.href | escape }}">{{ label.name | escape }}</a></td><td>{{ label.width | escape }} × {{ label.height | escape }}</td><td style="text-align:right"><a href="{{ label.previewHref | escape }}" target="_blank">Preview / print ↗</a></td></tr>
+  {% else %}<tr><td colspan="3" class="ev-empty">No label templates yet.</td></tr>{% endfor %}
+</tbody></table></div>

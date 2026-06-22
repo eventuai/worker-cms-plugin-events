@@ -1,0 +1,22 @@
+<div class="ev-head">
+  <div><a class="ev-back" href="{{ listHref | escape }}">← {{ listName | escape }}</a><h1 class="ev-h1">{{ title | escape }}</h1><p class="ev-sub">{{ eventName | escape }}</p></div>
+</div>
+<div class="ev-card ev-card-pad" style="max-width:48rem">
+  <form method="post" action="{{ action | escape }}">
+    <div class="ev-form-grid">
+      <label class="ev-field"><span>First name / display name</span><input class="ev-input" name="name" required value="{{ guest.name | escape }}"></label>
+      <label class="ev-field"><span>Last name</span><input class="ev-input" name="last_name" value="{{ guest.last_name | escape }}"></label>
+      <label class="ev-field"><span>Email</span><input class="ev-input" name="email" type="email" value="{{ guest.email | escape }}"></label>
+      <label class="ev-field"><span>Phone</span><input class="ev-input" name="phone" value="{{ guest.phone | escape }}"></label>
+      <label class="ev-field"><span>Organisation</span><input class="ev-input" name="organization" value="{{ guest.organization | escape }}"></label>
+      <label class="ev-field"><span>Job title</span><input class="ev-input" name="job_title" value="{{ guest.job_title | escape }}"></label>
+      <label class="ev-field"><span>Plus guests</span><input class="ev-input" name="plus_guests" type="number" min="0" value="{{ guest.plus_guests | escape }}"></label>
+      <label class="ev-field"><span>Status</span><select class="ev-input" name="status">{% for status in statuses %}<option value="{{ status.value | escape }}"{% if status.selected %} selected{% endif %}>{{ status.value | escape }}</option>{% endfor %}</select></label>
+      <label class="ev-field"><span>Preferred language</span><select class="ev-input" name="prefer_language"><option value="">Not set</option><option value="en"{% if guest.prefer_language == 'en' %} selected{% endif %}>English</option><option value="zh-hant"{% if guest.prefer_language == 'zh-hant' %} selected{% endif %}>繁體中文</option><option value="zh-hans"{% if guest.prefer_language == 'zh-hans' %} selected{% endif %}>简体中文</option></select></label>
+      <label class="ev-field"><span>CC email</span><input class="ev-input" name="cc" value="{{ guest.cc | escape }}"></label>
+    </div>
+    <label class="ev-field"><span>Remarks</span><textarea class="ev-input" name="remarks" rows="4">{{ guest.remarks | escape }}</textarea></label>
+    <div class="ev-actions"><button class="ev-btn ev-btn-primary" type="submit">Save guest</button></div>
+  </form>
+  {% if deleteAction %}<form method="post" action="{{ deleteAction | escape }}" style="margin-top:1rem" onsubmit="return confirm('Delete this guest?')"><button class="ev-btn ev-btn-danger" type="submit">Delete guest</button></form>{% endif %}
+</div>
