@@ -1,0 +1,8 @@
+name = "cms-plugin-events"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# The CMS forwards this secret on every hook / admin / publish call.
+# Set it to the same value as the CMS's PLUGIN_SECRET:
+#   wrangler secret put PLUGIN_SECRET
