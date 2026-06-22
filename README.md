@@ -1,17 +1,24 @@
-# worker-cms-plugin-events
+# worker-cms-plugin-events (Events Suite)
 
-A [Worker CMS](https://github.com/zeroxcms) plugin for **events** — event pages,
-guest lists, label printing and (planned) public check-in.
+A [Worker CMS](https://github.com/zeroxcms) plugin covering the whole **event
+side** of the system in one Worker — **events + RSVP + EDM (email) + QR codes** —
+to stay within the Cloudflare **Free plan** (50 subrequests/request, 100k
+requests/day): one plugin = one cross-Worker hop instead of four.
 
-Part of the RSVP/contact port — see `cms/../cms-to-rsvp.md`.
+Part of the RSVP/contact port — see `cms/../cms-to-rsvp.md`. Pairs with
+`cms-plugin-contacts` (the other suite). Replaces the former standalone
+`cms-plugin-rsvp`, `cms-plugin-edm`, and `cms-plugin-qrcodes` repos.
 
-## Registers
+## Registers (manifest id `events`)
 
-- **Blueprints:** `event` (sessions, capacity, RFID, kiosk, custom inputs),
-  `guest`, `label`.
-- **Blocks + block list:** generic content blocks and the `events` block list.
+- **Blueprints:** `event` (sessions, capacity, RFID, kiosk), `guest`, `label`,
+  `edm`, `mail_list`, `mail_preview_list`.
+- **Blocks + block lists:** content blocks, EDM blocks, all `rsvp-*` blocks;
+  `events` / `edm` / `rsvp` block lists.
+- **Nav (3 items):** Events, RSVP, EDM — each a section of the same plugin admin.
 - **Hooks:** `publish`, `unpublish`, `delete`.
-- **Nav + admin page** proxied at `/admin/plugins/events/*`.
+- **Public routes (own domain):** `/qr` + `/sign` (signed QR, live); RSVP forms,
+  check-in, and EDM unsubscribe are TODO.
 
 ## Develop
 
@@ -19,25 +26,24 @@ Part of the RSVP/contact port — see `cms/../cms-to-rsvp.md`.
 npm install && npm run dev
 ```
 
-## Bind into the CMS
+## Register into the CMS (D1 URL transport — no service binding)
 
-```toml
-[[services]]
-binding = "PLUGIN_EVENTS"
-service = "cms-plugin-events"
+1. `wrangler deploy` this Worker, then `wrangler secret put PLUGIN_SECRET`.
+2. In the CMS: **Admin → Plugins → Register plugin**, paste this Worker's base URL.
+   (Requires the `plugin:manage` permission and the same `PLUGIN_SECRET` on the CMS.)
 
-[vars]
-PLUGINS = "PLUGIN_EVENTS"
-```
+No `wrangler.toml` change or CMS redeploy needed.
 
 ## Status
 
-- [x] `event` / `guest` / `label` blueprints + blocks + `events` block list
-- [x] Admin dashboard, lifecycle hooks
-- [ ] Guest lists, reorder, export/import, "all guests", archive
-- [ ] Label designer (SVG templates, save/load)
-- [ ] Public check-in (adhoc / RFID / kiosk) on own domain + write-back (F1)
+- [x] All event/RSVP/EDM blueprints + blocks + block lists; 3-section admin
+- [x] Signed QR `/qr` + `/sign` (HMAC via Web Crypto; image is a placeholder)
+- [ ] Guest lists, label designer, public check-in (events)
+- [ ] Guest management, public RSVP form + submit → write-back F1 (rsvp)
+- [ ] Render/send email, scheduled blasts (edm — bindings stubbed in `wrangler.toml`)
+- [ ] Real QR matrix render
 
 ## Source mapping
 
-`controller/admin/Event.mjs`, `controller/admin/Lead.mjs`, `controller/QRCode.mjs`.
+`controller/admin/{Event,Lead,RSVP,Edm}.mjs`, `controller/{RSVP,QRCode,Cron}.mjs`,
+`config/cms.mjs`, `config/mail.mjs`.

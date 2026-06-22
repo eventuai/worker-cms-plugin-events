@@ -6,3 +6,29 @@ compatibility_flags = ["nodejs_compat"]
 # The CMS forwards this secret on every hook / admin / publish call.
 # Set it to the same value as the CMS's PLUGIN_SECRET:
 #   wrangler secret put PLUGIN_SECRET
+
+# ── EDM email backbone (uncomment + provision when wiring send) ────────────────
+# Outbound email — Cloudflare Email Service binding (or use Resend over fetch):
+# [[send_email]]
+# name = "SEND_EMAIL"
+
+# Per-recipient send queue (decouples a blast from the request):
+# [[queues.producers]]
+# binding = "MAIL_QUEUE"
+# queue = "cms-edm-mail"
+# [[queues.consumers]]
+# queue = "cms-edm-mail"
+
+# Scheduled blasts — drain due mail_list rows on a cron tick:
+# [triggers]
+# crons = ["* * * * *"]
+
+# Delivery tracking + render cache:
+# [[kv_namespaces]]
+# binding = "MAIL_TRACKING"
+# id = "<kv-id>"
+
+# Attachments staging:
+# [[r2_buckets]]
+# binding = "ATTACHMENTS"
+# bucket_name = "cms-edm-attachments"
