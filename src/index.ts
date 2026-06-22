@@ -20,6 +20,7 @@ import {
   localized,
   type CmsPage,
 } from './cms';
+import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
 
 interface PluginEnv {
@@ -195,7 +196,7 @@ export default {
       if (!data || !sig) return new Response('missing data/sig', { status: 400 });
       if (!env.PLUGIN_SECRET) return new Response('server misconfigured', { status: 500 });
       if (!(await verify(env.PLUGIN_SECRET, data, sig))) return new Response('bad signature', { status: 403 });
-      return new Response(placeholderQrSvg(data), {
+      return new Response(await placeholderQrSvg(env.VIEWS, data), {
         headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' },
       });
     }
@@ -231,14 +232,8 @@ async function verify(secret: string, data: string, hexSig: string): Promise<boo
   if (!bytes || bytes.length !== 32) return false;
   return crypto.subtle.verify('HMAC', await hmacKey(secret), new Uint8Array(bytes), new TextEncoder().encode(data));
 }
-function placeholderQrSvg(data: string): string {
-  const label = data.replace(/[<&]/g, '').slice(0, 40);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="220" viewBox="0 0 200 220">
-  <rect width="200" height="220" fill="#fff"/>
-  <rect x="20" y="20" width="160" height="160" fill="none" stroke="#111" stroke-width="2"/>
-  <text x="100" y="105" text-anchor="middle" font-family="monospace" font-size="12" fill="#111">QR (placeholder)</text>
-  <text x="100" y="205" text-anchor="middle" font-family="monospace" font-size="9" fill="#555">${label}</text>
-</svg>`;
+function placeholderQrSvg(views: Fetcher, data: string): Promise<string> {
+  return renderLiquid(views, '/templates/qr.liquid', { label: data.slice(0, 40) });
 }
 
 const ADMIN_BASE = `/admin/plugins/${PLUGIN_ID}`;
