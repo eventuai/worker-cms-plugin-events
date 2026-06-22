@@ -4,8 +4,9 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 # The CMS forwards this secret on every hook / admin / publish call, and this
-# plugin sends it back on every F1 write-back call. Set it to the same value as
-# the CMS's PLUGIN_SECRET:
+# plugin sends it back on every F1 write-back call. Set it to THIS plugin's
+# dedicated secret — shown in the CMS admin under Plugins → (this plugin) → Edit
+# → Shared secret (each plugin has its own, so one can be rotated/revoked alone):
 #   wrangler secret put PLUGIN_SECRET
 
 [vars]
