@@ -1,48 +1,48 @@
-<div class="ev-head">
+<div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="ev-back" href="{{ listsHref | escape }}">← {{ eventName | escape }}</a>
-    <h1 class="ev-h1">{{ listName | escape }}</h1>
-    <p class="ev-sub">{{ total }} guest{% if total != 1 %}s{% endif %}</p>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listsHref | escape }}">← {{ eventName | escape }}</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ listName | escape }}</h1>
+    <p class="mt-1 text-sm text-gray-500">{{ total }} guest{% if total != 1 %}s{% endif %}</p>
   </div>
-  <div class="ev-actions">
-    <a class="ev-btn ev-btn-primary" href="{{ newGuestHref | escape }}">New guest</a>
-    <a class="ev-btn ev-btn-secondary" href="{{ importHref | escape }}">Import CSV</a>
-    <a class="ev-btn ev-btn-secondary" href="{{ exportHref | escape }}">Export CSV</a>
-    <form method="post" action="{{ updateFromContactsAction | escape }}" onsubmit="return confirm('Refresh every linked guest from its contact record?')"><button class="ev-btn ev-btn-secondary" type="submit">Update from contacts</button></form>
-    <form method="post" action="{{ deleteAction | escape }}" onsubmit="return confirm('Delete this guest list and its guests?')"><button class="ev-btn ev-btn-danger" type="submit">Delete list</button></form>
+  <div class="flex flex-wrap gap-2">
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700" href="{{ newGuestHref | escape }}">New guest</a>
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ importHref | escape }}">Import CSV</a>
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ exportHref | escape }}">Export CSV</a>
+    <form method="post" action="{{ updateFromContactsAction | escape }}" onsubmit="return confirm('Refresh every linked guest from its contact record?')"><button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Update from contacts</button></form>
+    <form method="post" action="{{ deleteAction | escape }}" onsubmit="return confirm('Delete this guest list and its guests?')"><button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer" type="submit">Delete list</button></form>
   </div>
 </div>
-<div class="ev-card ev-card-pad" style="margin-bottom:1rem">
-  <form class="ev-search" method="get" action="{{ listHref | escape }}">
-    <input class="ev-input" style="max-width:22rem" name="q" value="{{ q | escape }}" placeholder="Search name or slug">
-    <select class="ev-input" style="width:auto" name="status">
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+  <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref | escape }}">
+    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q | escape }}" placeholder="Search name or slug">
+    <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
       <option value="">All statuses</option>
       {% for status in statuses %}<option value="{{ status | escape }}"{% if status == selectedStatus %} selected{% endif %}>{{ status | escape }}</option>{% endfor %}
     </select>
-    <button class="ev-btn ev-btn-secondary" type="submit">Filter</button>
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" type="submit">Filter</button>
   </form>
 </div>
-<div class="ev-card">
-  <table class="ev-table">
-    <thead><tr><th>Name</th><th>Email</th><th>Organisation</th><th>Status</th><th>Check-in</th><th></th></tr></thead>
-    <tbody>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+  <table class="w-full text-left text-sm">
+    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Organisation</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
+    <tbody class="divide-y divide-gray-100">
       {% for guest in guests %}
         <tr>
-          <td><a href="{{ guest.editHref | escape }}">{{ guest.name | escape }}</a></td>
-          <td>{{ guest.email | escape }}</td>
-          <td>{{ guest.organization | escape }}</td>
-          <td>
-            <form method="post" action="{{ guest.statusAction | escape }}" class="ev-inline-form">
-              <select class="ev-status" name="status">
+          <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.editHref | escape }}">{{ guest.name | escape }}</a></td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ guest.email | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ guest.organization | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">
+            <form method="post" action="{{ guest.statusAction | escape }}" class="flex flex-wrap items-center gap-1.5">
+              <select class="border border-gray-300 rounded-md p-1 text-xs bg-white max-w-[9rem]" name="status">
                 {% for status in statuses %}<option value="{{ status | escape }}"{% if status == guest.status %} selected{% endif %}>{{ status | escape }}</option>{% endfor %}
-              </select><button class="ev-text-button" type="submit">Save</button>
+              </select><button class="border-0 bg-transparent p-0 text-xs font-semibold text-indigo-600 cursor-pointer" type="submit">Save</button>
             </form>
           </td>
-          <td>{% if guest.checkedIn %}<span class="ev-badge">Checked in</span>{% else %}<form method="post" action="{{ guest.checkinAction | escape }}"><button class="ev-text-button" type="submit">Check in</button></form>{% endif %}</td>
-          <td style="text-align:right"><a href="{{ guest.qrHref | escape }}">QR</a> · <a href="{{ guest.editHref | escape }}">Edit →</a></td>
+          <td class="px-6 py-3 text-sm text-gray-700">{% if guest.checkedIn %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Checked in</span>{% else %}<form method="post" action="{{ guest.checkinAction | escape }}"><button class="border-0 bg-transparent p-0 text-xs font-semibold text-indigo-600 cursor-pointer" type="submit">Check in</button></form>{% endif %}</td>
+          <td class="px-6 py-3 text-right text-sm"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.qrHref | escape }}">QR</a> · <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.editHref | escape }}">Edit →</a></td>
         </tr>
       {% else %}
-        <tr><td colspan="6" class="ev-empty">No guests match this list.</td></tr>
+        <tr><td colspan="6" class="px-6 py-10 text-center text-sm text-gray-400">No guests match this list.</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -1,27 +1,27 @@
-<div class="ev-head">
+<div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="ev-back" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
-    <h1 class="ev-h1">Sessions</h1>
-    <p class="ev-sub">Drag a session to reorder it. Edit session details on the event page.</p>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
+    <h1 class="text-2xl font-bold text-gray-900">Sessions</h1>
+    <p class="mt-1 text-sm text-gray-500">Drag a session to reorder it. Edit session details on the event page.</p>
   </div>
-  <div class="ev-actions">
-    <a class="ev-btn ev-btn-secondary" href="{{ editHref | escape }}">Edit event ↗</a>
+  <div class="flex flex-wrap gap-2">
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ editHref | escape }}">Edit event ↗</a>
   </div>
 </div>
-<div class="ev-card">
-  <table class="ev-table" data-reorder="{{ reorderAction | escape }}" data-reorder-key="order" data-reorder-mode="order">
-    <thead><tr><th style="width:2rem"></th><th>Session</th><th>Starts</th><th>Location</th><th>Capacity</th></tr></thead>
-    <tbody>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+  <table class="w-full text-left text-sm" data-reorder="{{ reorderAction | escape }}" data-reorder-key="order" data-reorder-mode="order">
+    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="w-8 px-6 py-3"></th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Session</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Starts</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Capacity</th></tr></thead>
+    <tbody class="divide-y divide-gray-100">
       {% for session in sessions %}
         <tr draggable="true" data-index="{{ session.index }}">
-          <td class="ev-drag" title="Drag to reorder" style="cursor:grab">⠿</td>
-          <td>{{ session.name | escape }}</td>
-          <td>{{ session.start | escape }}</td>
-          <td>{{ session.location | escape }}</td>
-          <td>{{ session.capacity | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-400" title="Drag to reorder" style="cursor:grab">⠿</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ session.name | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ session.start | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ session.location | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ session.capacity | escape }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="ev-empty">This event has no sessions yet.</td></tr>
+        <tr><td colspan="5" class="px-6 py-10 text-center text-sm text-gray-400">This event has no sessions yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
