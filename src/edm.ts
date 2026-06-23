@@ -59,6 +59,7 @@ export async function handleEdmAdmin(
   const edmId = pageId(segments[0]);
   if (!edmId) return new Response('not found', { status: 404 });
   if (segments[1] === 'preview') return edmPreview(cms, views, env, edmId);
+  if (segments[1] === 'duplicate' && request.method === 'POST') return duplicateEdm(cms, edmId);
   if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId);
   if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, edmId);
   if (segments[1] === 'send-list' && request.method === 'POST') return sendGuestList(request, cms, views, env, edmId);
@@ -151,6 +152,19 @@ async function createEdm(request: Request, cms: CmsClient): Promise<Response> {
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   const edm = await cms.create({ page_type: 'edm', page_id: eventId, name: input.name, lect: input.lect });
   return redirect(`${ADMIN_BASE}/edm/${edm.id}`);
+}
+
+/** Clones an EDM (content + event pointer) under the same event, then opens the copy. */
+async function duplicateEdm(cms: CmsClient, edmId: number): Promise<Response> {
+  const edm = await cms.get(edmId);
+  if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
+  const copy = await cms.create({
+    page_type: 'edm',
+    page_id: edm.page_id,
+    name: `Copy of ${edm.name}`,
+    lect: { ...edm.lect },
+  });
+  return redirect(`${ADMIN_BASE}/edm/${copy.id}`);
 }
 
 async function updateEdm(request: Request, cms: CmsClient, edmId: number): Promise<Response> {

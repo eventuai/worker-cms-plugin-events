@@ -15,8 +15,11 @@ import {
   CmsApiError,
   CmsNotConfiguredError,
   PLUGIN_ID,
+  attr,
   computeGuestListSummary,
   emptyGuestListSummary,
+  items,
+  localized,
   type CmsPage,
 } from './cms';
 import { signPayload, verifyPayload } from './crypto';
@@ -376,18 +379,24 @@ async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
 }
 
 async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
-  const [event, guestLists] = await Promise.all([
+  const [event, guestLists, edms] = await Promise.all([
     cms.get(eventId),
     cms.list('mail_list', { parentId: eventId, limit: 500 }),
+    cms.list('edm', { parentId: eventId, limit: 500 }),
   ]);
   // The CMS page API is generic, so the plugin tallies each list's guests itself
   // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
-  await Promise.all(
+  // The same fetch also yields the guests who have responded, so the dashboard's
+  // response feed costs no extra subrequests.
+  const responsesByList = await Promise.all(
     guestLists.pages.map(async (list) => {
       const { pages: guests } = await cms.list('guest', { parentId: list.id, limit: 500 });
       list.guest_summary = computeGuestListSummary(guests);
+      return guests.filter(hasResponded).map((guest) => responseRow(list, guest));
     }),
   );
+  // Most recent response first, mirroring the legacy event "Guest Responses" feed.
+  const responses = responsesByList.flat().sort((a, b) => b.date.localeCompare(a.date));
   const r = rollupGuestListSummaries(guestLists.pages);
   // Admin-controlled display order (list weight, then name).
   const orderedLists = [...guestLists.pages].sort((a, b) => (a.weight - b.weight) || a.name.localeCompare(b.name));
@@ -412,7 +421,60 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
       summary: list.guest_summary ?? emptyGuestListSummary(),
     })),
     newGuestListHref: `${ADMIN_BASE}/rsvp/new?event_id=${eventId}`,
+    // Email Templates section — EDMs belonging to this event.
+    edms: edms.pages.map((edm) => ({
+      name: edm.name,
+      subject: localized(edm.lect, 'subject') || edm.name,
+      href: `${ADMIN_BASE}/edm/${edm.id}`,
+      previewHref: `${ADMIN_BASE}/edm/${edm.id}/preview`,
+      duplicateAction: `${ADMIN_BASE}/edm/${edm.id}/duplicate`,
+    })),
+    newEdmHref: `${ADMIN_BASE}/edm/new?event_id=${eventId}`,
+    // Guest Responses section.
+    responses,
+    responsesShowCheckin: responses.some((row) => row.checkedIn),
   });
+}
+
+/** A guest counts as a "response" once they've confirmed or declined. */
+function hasResponded(guest: CmsPage): boolean {
+  const status = (attr(guest.lect, 'status') || '').trim().toLowerCase();
+  return status === 'confirmed' || status === 'declined';
+}
+
+interface ResponseRow {
+  date: string;
+  dateLabel: string;
+  timeLabel: string;
+  name: string;
+  contact: string;
+  status: string;
+  checkedIn: boolean;
+  href: string;
+}
+
+function responseRow(list: CmsPage, guest: CmsPage): ResponseRow {
+  const date = latestResponseDate(guest);
+  const clean = date.replace('T', ' ').replace('Z', '');
+  return {
+    date,
+    dateLabel: clean.slice(0, 10),
+    timeLabel: clean.slice(11, 16),
+    name: guest.name || localized(guest.lect, 'name'),
+    contact: attr(guest.lect, 'email') || attr(guest.lect, 'phone'),
+    status: (attr(guest.lect, 'status') || '').trim().toLowerCase(),
+    checkedIn: items(guest.lect, 'checkin').length > 0,
+    href: `${ADMIN_BASE}/rsvp/${list.id}/guests/${guest.id}`,
+  };
+}
+
+/** Most recent `response` item date for a guest, falling back to when the page changed. */
+function latestResponseDate(guest: CmsPage): string {
+  const dates = items(guest.lect, 'response')
+    .map((entry) => String(entry.date ?? ''))
+    .filter(Boolean)
+    .sort();
+  return dates[dates.length - 1] ?? guest.updated_at;
 }
 
 async function adhocCheckinForm(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {

@@ -151,13 +151,20 @@ describe('events admin', () => {
           total: 1,
         });
       }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        expect(url.searchParams.get('page_id')).toBe('12');
+        return Response.json({
+          pages: [{ id: 50, page_type: 'edm', name: 'Save the date', page_id: 12, lect: { subject: { en: 'You are invited' } } }],
+          total: 1,
+        });
+      }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         expect(url.searchParams.get('page_id')).toBe('34');
         // 4 groups → 6 people; one confirmed+checked-in (2 people), one invited,
         // one on hold, one unknown status (counted "to be invited").
         return Response.json({
           pages: [
-            { id: 1, page_type: 'guest', name: 'Ada', lect: { status: 'confirmed', plus_guests: '1', checkin: [{ status: 'checked-in' }] } },
+            { id: 1, page_type: 'guest', name: 'Ada', lect: { status: 'confirmed', plus_guests: '1', checkin: [{ status: 'checked-in' }], response: [{ status: 'confirmed', date: '2026-09-01T10:30:00Z', message: 'guest response' }] } },
             { id: 2, page_type: 'guest', name: 'Grace', lect: { status: 'invited' } },
             { id: 3, page_type: 'guest', name: 'Edith', lect: { status: 'onhold' } },
             { id: 4, page_type: 'guest', name: 'Lin', lect: { status: 'mystery', plus_guests: '1' } },
@@ -180,6 +187,14 @@ describe('events admin', () => {
     expect(html).toContain('6 people');
     expect(html).toContain('Confirmed 1');
     expect(html).toContain('Checked-in');
+    // Email templates section: the event's EDM is listed.
+    expect(html).toContain('Email templates');
+    expect(html).toContain('Save the date');
+    expect(html).toContain('You are invited');
+    // Guest responses section: the confirmed guest appears, with her date.
+    expect(html).toContain('Guest responses');
+    expect(html).toContain('Ada');
+    expect(html).toContain('2026-09-01');
   });
 
   it('creates and checks in an adhoc guest through the CMS write-back API', async () => {
@@ -459,6 +474,38 @@ describe('EDM and labels', () => {
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
       page_type: 'edm', page_id: 7, name: 'Launch invitation',
       lect: { sender: 'events@example.com', subject: { en: 'You are invited' }, _pointers: { event: '7' } },
+    });
+  });
+
+  it('duplicates an EDM under the same event and opens the copy', async () => {
+    let createRequest: RequestInit | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: {
+          id: 12, page_type: 'edm', name: 'Invite', page_id: 7,
+          lect: { subject: { en: 'You are invited' }, _pointers: { event: '7' } },
+        } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        createRequest = init;
+        return Response.json({ page: { id: 88 } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/duplicate', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/edm/88');
+    // The copy keeps the event (page_id + pointer) and clones the content.
+    expect(JSON.parse(String(createRequest?.body))).toMatchObject({
+      page_type: 'edm', page_id: 7, name: 'Copy of Invite',
+      lect: { subject: { en: 'You are invited' }, _pointers: { event: '7' } },
     });
   });
 

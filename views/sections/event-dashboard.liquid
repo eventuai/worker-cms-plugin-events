@@ -41,3 +41,44 @@
     </tbody>
   </table>
 </div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto mt-4">
+  <div class="flex items-center justify-between gap-4" style="padding:1rem 1rem 0;margin-bottom:.75rem">
+    <div><h2 class="text-lg font-bold text-gray-900">Email templates</h2><p class="mt-1 text-sm text-gray-500">EDM templates for this event's invitations and blasts.</p></div>
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ newEdmHref | escape }}">Add template</a>
+  </div>
+  <table class="w-full text-left text-sm">
+    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th><th class="px-6 py-3"></th></tr></thead>
+    <tbody class="divide-y divide-gray-100">
+      {% for edm in edms %}
+        <tr>
+          <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.href | escape }}">{{ edm.name | escape }}</a></td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ edm.subject | escape }}</td>
+          <td class="px-6 py-3 text-right whitespace-nowrap"><div class="inline-flex items-center gap-4"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.previewHref | escape }}" target="_blank" rel="noopener">Preview ↗</a><form method="post" action="{{ edm.duplicateAction | escape }}"><button class="border-0 bg-transparent p-0 text-indigo-600 font-medium hover:text-indigo-800 cursor-pointer" type="submit">Duplicate</button></form><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.href | escape }}">Edit →</a></div></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="px-6 py-10 text-center text-sm text-gray-400">No email templates yet. Add one to invite or blast this event's guests.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto mt-4">
+  <div class="flex items-center justify-between gap-4" style="padding:1rem 1rem 0;margin-bottom:.75rem">
+    <div><h2 class="text-lg font-bold text-gray-900">Guest responses</h2><p class="mt-1 text-sm text-gray-500">Guests who have confirmed or declined, most recent first.</p></div>
+    {% if responses.size > 0 %}<span class="text-sm text-gray-500">{{ responses.size }} responses</span>{% endif %}
+  </div>
+  <table class="w-full text-left text-sm">
+    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name / contact</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Response</th>{% if responsesShowCheckin %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Checked-in</th>{% endif %}</tr></thead>
+    <tbody class="divide-y divide-gray-100">
+      {% for row in responses %}
+        <tr>
+          <td class="px-6 py-3 text-sm text-gray-700 whitespace-nowrap">{{ row.dateLabel }}<br><span class="text-xs text-gray-500">{{ row.timeLabel }}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.href | escape }}">{{ row.name | escape }}</a><br><span class="text-xs text-gray-500">{{ row.contact | escape }}</span></td>
+          <td class="px-6 py-3 text-sm"><span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {% if row.status == 'confirmed' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">{{ row.status | capitalize }}</span></td>
+          {% if responsesShowCheckin %}<td class="px-6 py-3 text-sm text-gray-700">{% if row.checkedIn %}<span class="text-indigo-600 font-medium">Yes</span>{% else %}—{% endif %}</td>{% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{% if responsesShowCheckin %}4{% else %}3{% endif %}" class="px-6 py-10 text-center text-sm text-gray-400">No responses yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
