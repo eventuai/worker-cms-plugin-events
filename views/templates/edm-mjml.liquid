@@ -1,0 +1,13 @@
+{% for block in blocks %}
+{% case block._type %}
+{% when 'paragraph' %}{% render "mjml/paragraph", tokens: block, server: server %}
+{% when 'picture' %}{% render "mjml/picture", tokens: block, server: server %}
+{% when 'button' %}{% render "mjml/button", tokens: block, server: server %}
+{% when 'table' %}{% render "mjml/table", tokens: block, server: server %}
+{% when 'spacer' %}{% render "mjml/spacer", tokens: block, server: server %}
+{% when 'edm-unsubscribe' %}{% render "mjml/edm-unsubscribe", tokens: block, server: server %}
+{% endcase %}
+{% endfor %}
+{% if rsvpUrl != blank %}
+    <mj-button href="{{ rsvpUrl }}">{{ rsvp_button | default: "RSVP" }}</mj-button>
+{% endif %}

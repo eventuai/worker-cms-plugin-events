@@ -6,6 +6,10 @@ import worker from '../src/index';
 interface PluginEnv {
   CMS_URL?: string;
   PLUGIN_SECRET?: string;
+  PUBLIC_BASE_URL?: string;
+  MJML_APP_ID?: string;
+  MJML_SECRET_KEY?: string;
+  MJML_API_URL?: string;
   VIEWS: Fetcher;
 }
 
@@ -455,6 +459,106 @@ describe('EDM and labels', () => {
       page_type: 'edm', page_id: 7, name: 'Launch invitation',
       lect: { sender: 'events@example.com', subject: { en: 'You are invited' }, _pointers: { event: '7' } },
     });
+  });
+
+  it('renders an EDM preview through the Liquid → MJML → HTML pipeline', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: {
+          id: 12, page_type: 'edm', name: 'Invite', page_id: 7,
+          lect: {
+            subject: { en: 'You are invited' },
+            heading: { en: 'Join us in October' },
+            body: { en: '<p>We would love to see you.</p>' },
+            bg_color: '#0f172a', text_color: '#e2e8f0', button_color: '#4f46e5',
+            _blocks: [
+              { _type: 'paragraph', _weight: 0, subject: { en: 'Agenda' }, body: { en: '<p>Talks &amp; dinner.</p>' } },
+              { _type: 'button', _weight: 1, label: { en: 'Directions' }, url: { en: 'https://maps.example/x' } },
+              { _type: 'table', _weight: 2, first_column_width: '120', row: [{ name: { en: 'Date' }, description: { en: '12 Oct' } }] },
+            ],
+          },
+        } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/preview', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    const html = await response.text();
+    // Compiled to real HTML — no MJML tags survive.
+    expect(html).toContain('<!doctype html>');
+    expect(html).not.toContain('<mjml');
+    expect(html).not.toContain('<mj-');
+    // Tokens and blocks rendered.
+    expect(html).toContain('Join us in October');
+    expect(html).toContain('<p>We would love to see you.</p>');
+    expect(html).toContain('Talks &amp; dinner.');
+    expect(html).toContain('href="https://maps.example/x"');
+    expect(html).toContain('Directions');
+    expect(html).toContain('12 Oct');
+    // Styling tokens applied.
+    expect(html).toContain('#0f172a'); // bg color
+    expect(html).toContain('#4f46e5'); // button color
+  });
+
+  it('compiles EDM MJML via the MJML API when credentials are set', async () => {
+    let mjmlAuth: string | null = null;
+    let mjmlBody = '';
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.hostname === 'api.mjml.io') {
+        mjmlAuth = new Headers(init?.headers).get('authorization');
+        mjmlBody = String(init?.body);
+        return Response.json({ html: '<html><body>FROM_MJML_API</body></html>', errors: [] });
+      }
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: { id: 12, page_type: 'edm', name: 'Invite', page_id: 7, lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' } } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/preview', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', MJML_APP_ID: 'app-1', MJML_SECRET_KEY: 'secret-2' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    // The API's HTML is returned verbatim — the built-in compiler was bypassed.
+    expect(html).toBe('<html><body>FROM_MJML_API</body></html>');
+    // Basic auth uses APP_ID:SECRET_KEY and the body carries the rendered MJML.
+    expect(mjmlAuth).toBe(`Basic ${btoa('app-1:secret-2')}`);
+    expect(JSON.parse(mjmlBody).mjml).toContain('<mjml>');
+    expect(JSON.parse(mjmlBody).mjml).toContain('Join us');
+  });
+
+  it('falls back to the built-in compiler when the MJML API errors', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.hostname === 'api.mjml.io') return new Response('rate limited', { status: 429 });
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: { id: 12, page_type: 'edm', name: 'Invite', page_id: 7, lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' } } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/preview', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', MJML_APP_ID: 'app-1', MJML_SECRET_KEY: 'secret-2' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    // Built-in compiler output: real HTML, no MJML tags, with the heading.
+    expect(html).toContain('<!doctype html>');
+    expect(html).not.toContain('<mj-');
+    expect(html).toContain('Join us');
   });
 
   it('renders label guest tokens as escaped SVG text', async () => {

@@ -1,0 +1,42 @@
+{% liquid
+  assign text_color = tokens.text_color | default: "#555555"
+  assign font_size = tokens.font_size | default: "14"
+  assign font_family = tokens.font_family | default: "Helvetica, Arial, 'Microsoft JhengHei', 'PingFang TC', sans-serif"
+  assign bg_color = tokens.bg_color | default: "#FFFFFF"
+  assign image_padding = tokens.image_padding | default: "0 0 14px 0"
+  assign button_color = tokens.button_color | default: "#333333"
+  assign button_text_color = tokens.button_text_color | default: "#FFFFFF"
+  assign headline_font_size = tokens.headline_font_size | default: "24"
+  assign headline_padding = tokens.headline_padding | default: "0 25px 28px 25px"
+  assign table_padding = tokens.table_padding | default: "0 25px 0 25px"
+  assign line_height = tokens.line_height | default: "1.5"
+%}
+<mjml>
+  <mj-head>
+    <mj-attributes>
+      <mj-text padding="0 25px" color="{{ text_color }}" font-size="{{ font_size }}px" line-height="{{ line_height }}" font-family="{{ font_family }}" />
+      <mj-section padding="0" background-color="{{ bg_color }}" />
+      <mj-image padding="{{ image_padding }}" />
+      <mj-button background-color="{{ button_color }}" color="{{ button_text_color }}" />
+      <mj-class name="headline" font-size="{{ headline_font_size }}px" font-family="{{ font_family }}" padding="{{ headline_padding }}" />
+      <mj-table padding="{{ table_padding }}" font-size="{{ font_size }}px" line-height="{{ line_height }}" font-family="{{ font_family }}" color="{{ text_color }}" />
+    </mj-attributes>
+    <mj-preview>{{ tokens.subject }}</mj-preview>
+    <mj-style>p { margin-top:0; }</mj-style>
+  </mj-head>
+  <mj-body background-color="{{ bg_color }}">
+{% if tokens.heading != blank or tokens.body != blank %}
+    <mj-section>
+      <mj-column>
+        {% if tokens.heading != blank %}<mj-text mj-class="headline">{{ tokens.heading }}</mj-text>{% endif %}
+        {% if tokens.body != blank %}<mj-text>{{ tokens.body }}</mj-text>{% endif %}
+      </mj-column>
+    </mj-section>
+{% endif %}
+    <mj-section>
+      <mj-column>
+{{ main }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

@@ -1,0 +1,4 @@
+{% if tokens.title != blank %}<mj-text>{{ tokens.title }}</mj-text>{% endif %}
+<mj-table>
+{% for row in tokens.row %}<tr><td style="vertical-align:top"{% if tokens.first_column_width != blank %} width="{{ tokens.first_column_width }}"{% endif %}>{{ row.name }}</td><td style="vertical-align:top">{{ row.description }}</td></tr>{% endfor %}
+</mj-table>

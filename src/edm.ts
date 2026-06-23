@@ -1,5 +1,6 @@
-import { CmsClient, attr, localized, pointer, type CmsPage } from './cms';
+import { CmsClient, attr, blocks, items, localized, pointer, type CmsPage } from './cms';
 import { signPayload } from './crypto';
+import { mjmlToHtml } from './mjml';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
 
@@ -24,7 +25,16 @@ export interface EdmEnv {
   EMAIL_FROM?: string;
   PLUGIN_SECRET?: string;
   PUBLIC_BASE_URL?: string;
+  /** MJML render API (https://api.mjml.io). When set, used in place of the
+   *  built-in compiler for production-grade, Outlook-safe email HTML. */
+  MJML_APP_ID?: string;
+  MJML_SECRET_KEY?: string;
+  /** Override the MJML API endpoint (defaults to https://api.mjml.io/v1/render). */
+  MJML_API_URL?: string;
 }
+
+/** Placeholder swapped for each guest's signed RSVP URL after a single MJML render. */
+const RSVP_URL_PLACEHOLDER = 'https://__edm_rsvp_url__/';
 
 export async function handleEdmAdmin(
   request: Request,
@@ -42,7 +52,7 @@ export async function handleEdmAdmin(
 
   const edmId = pageId(segments[0]);
   if (!edmId) return new Response('not found', { status: 404 });
-  if (segments[1] === 'preview') return edmPreview(cms, views, edmId);
+  if (segments[1] === 'preview') return edmPreview(cms, views, env, edmId);
   if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId);
   if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, edmId);
   if (segments[1] === 'send-list' && request.method === 'POST') return sendGuestList(request, cms, views, env, edmId);
@@ -148,10 +158,11 @@ async function updateEdm(request: Request, cms: CmsClient, edmId: number): Promi
   return redirect(`${ADMIN_BASE}/edm/${edmId}`);
 }
 
-async function edmPreview(cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
+async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
-  return new Response(await renderEmail(views, edm), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  const html = await renderEmail(views, edm, env, { server: env.PUBLIC_BASE_URL });
+  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 }
 
 async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
@@ -160,7 +171,7 @@ async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: E
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
   try {
-    await deliverQueuedEmail(env, { ...await emailFor(views, edm, recipient), edmId });
+    await deliverQueuedEmail(env, { ...await emailFor(views, edm, recipient, env, { server: env.PUBLIC_BASE_URL }), edmId });
   } catch (error) {
     return mailError(views, error instanceof Error ? error.message : 'Unable to send the test email.');
   }
@@ -195,13 +206,27 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   const [edm, list] = await Promise.all([cms.get(edmId), cms.get(listId)]);
   if (edm.page_type !== 'edm' || list.page_type !== 'mail_list' || pointer(list.lect, 'edm') !== String(edmId)) return -1;
   const { pages: guests } = await cms.list('guest', { parentId: listId, limit: 500 });
+
+  const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
+  const rsvpEnabled = Boolean(eventId && env.PUBLIC_BASE_URL && env.PLUGIN_SECRET);
+  // Render (and MJML-compile) ONCE per blast, leaving a placeholder where each
+  // guest's signed RSVP URL goes — then string-swap it per recipient. This keeps
+  // a 500-guest send to a single MJML API call instead of 500.
+  const htmlTemplate = await renderEmail(views, edm, env, {
+    rsvpUrl: rsvpEnabled ? RSVP_URL_PLACEHOLDER : '',
+    server: env.PUBLIC_BASE_URL,
+  });
+  const values = edmValues(edm);
+  const text = plainText(values.heading, values.body);
+
   const deliveries: EmailDelivery[] = [];
   for (const guest of guests) {
     const recipient = attr(guest.lect, 'email');
     if (!recipient || !isEmail(recipient) || attr(guest.lect, 'not_send') === 'true') continue;
-    const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
-    const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest.id) : '';
-    deliveries.push({ ...await emailFor(views, edm, recipient, { guestName: guest.name, rsvpUrl }), edmId, guestId: guest.id });
+    const html = rsvpEnabled
+      ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, await guestRsvpUrl(env, eventId!, listId, guest.id))
+      : htmlTemplate;
+    deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id });
   }
   for (const chunk of chunks(deliveries, 100)) await env.MAIL_QUEUE.sendBatch(chunk.map((body) => ({ body })));
   return deliveries.length;
@@ -211,21 +236,130 @@ async function emailFor(
   views: Fetcher,
   edm: CmsPage,
   recipient: string,
-  options: { guestName?: string; rsvpUrl?: string } = {},
+  env: EdmEnv,
+  options: { rsvpUrl?: string; server?: string } = {},
 ): Promise<OutboundEmail> {
   const values = edmValues(edm);
   return {
     from: values.sender,
     to: recipient,
     subject: values.subject,
-    html: await renderEmail(views, edm, options),
+    html: await renderEmail(views, edm, env, options),
     text: plainText(values.heading, values.body),
   };
 }
 
-async function renderEmail(views: Fetcher, edm: CmsPage, options: { guestName?: string; rsvpUrl?: string } = {}): Promise<string> {
-  const values = edmValues(edm);
-  return renderLiquid(views, '/templates/email.liquid', { ...values, body: safeHtml(values.body), ...options });
+/**
+ * Renders an EDM page to email HTML through the legacy two-stage pipeline:
+ * Liquid emits MJML (head styling from the EDM's tokens + a body built from its
+ * content blocks), then the MJML is compiled — via the MJML API when configured,
+ * otherwise the built-in compiler — to email-safe HTML.
+ */
+async function renderEmail(
+  views: Fetcher,
+  edm: CmsPage,
+  env: EdmEnv,
+  options: { rsvpUrl?: string; server?: string } = {},
+): Promise<string> {
+  const tokens = edmTokens(edm);
+  const server = options.server ?? '';
+  // Stage 1 — build the MJML body from the EDM's content blocks.
+  const main = await renderLiquid(views, '/templates/edm-mjml.liquid', {
+    blocks: edmRenderBlocks(edm),
+    server,
+    rsvpUrl: options.rsvpUrl ?? '',
+    rsvp_button: tokens.rsvp_button,
+  });
+  // Stage 2 — wrap in the MJML document (head attributes from tokens), then compile.
+  const mjml = await renderLiquid(views, '/layout/mjml.liquid', { tokens, main });
+  return compileMjml(mjml, env);
+}
+
+/**
+ * Compiles MJML to HTML via the MJML render API (https://api.mjml.io) when
+ * credentials are configured — it produces the Outlook/ghost-table markup a
+ * minimal compiler can't. Falls back to the built-in compiler when credentials
+ * are absent (dev/tests) or the API call fails, so a render never hard-fails.
+ */
+async function compileMjml(mjml: string, env: EdmEnv): Promise<string> {
+  if (env.MJML_APP_ID && env.MJML_SECRET_KEY) {
+    try {
+      const res = await fetch(env.MJML_API_URL ?? 'https://api.mjml.io/v1/render', {
+        method: 'POST',
+        headers: {
+          authorization: `Basic ${btoa(`${env.MJML_APP_ID}:${env.MJML_SECRET_KEY}`)}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ mjml }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { html?: string; errors?: unknown[] };
+        if (typeof data.html === 'string' && data.html) return data.html;
+        console.error('MJML API returned no html', data.errors);
+      } else {
+        console.error(`MJML API responded ${res.status}; falling back to built-in compiler`);
+      }
+    } catch (error) {
+      console.error('MJML API request failed; falling back to built-in compiler', error);
+    }
+  }
+  return mjmlToHtml(mjml);
+}
+
+/** Flat token map the MJML layout reads (content + styling), each a string. */
+function edmTokens(edm: CmsPage): Record<string, string> {
+  const lect = edm.lect;
+  return {
+    subject: localized(lect, 'subject') || edm.name,
+    heading: localized(lect, 'heading'),
+    body: safeHtml(localized(lect, 'body')),
+    rsvp_button: localized(lect, 'rsvp_button') || 'RSVP',
+    text_color: attr(lect, 'text_color'),
+    font_size: attr(lect, 'font_size'),
+    font_family: attr(lect, 'font_family'),
+    bg_color: attr(lect, 'bg_color'),
+    image_padding: attr(lect, 'image_padding'),
+    button_color: attr(lect, 'button_color'),
+    button_text_color: attr(lect, 'button_text_color'),
+    headline_font_size: attr(lect, 'headline_font_size'),
+    headline_padding: attr(lect, 'headline_padding'),
+    table_padding: attr(lect, 'table_padding'),
+    line_height: attr(lect, 'line_height'),
+  };
+}
+
+/**
+ * Projects the EDM's content blocks into the flat, sanitised shapes the MJML
+ * block snippets expect (rich-text fields run through safeHtml).
+ */
+function edmRenderBlocks(edm: CmsPage): Array<Record<string, unknown>> {
+  return blocks(edm.lect).map((block) => {
+    const type = attr(block, '_type');
+    switch (type) {
+      case 'paragraph':
+        return { _type: type, subject: localized(block, 'subject'), body: safeHtml(localized(block, 'body')) };
+      case 'picture':
+        return { _type: type, picture: attr(block, 'picture'), width: attr(block, 'width'), align: attr(block, 'align') };
+      case 'button':
+        return { _type: type, label: localized(block, 'label') || attr(block, 'label'), url: localized(block, 'url') || attr(block, 'url') };
+      case 'table':
+        return {
+          _type: type,
+          title: safeHtml(localized(block, 'title')),
+          first_column_width: attr(block, 'first_column_width'),
+          row: items(block, 'row').map((row) => ({
+            name: safeHtml(localized(row, 'name')),
+            description: safeHtml(localized(row, 'description')),
+          })),
+        };
+      case 'spacer':
+        return { _type: type, lines: attr(block, 'lines') };
+      case 'edm-unsubscribe':
+        return { _type: type };
+      default:
+        return { _type: type };
+    }
+  });
 }
 
 async function guestRsvpUrl(env: EdmEnv, eventId: number, listId: number, guestId: number): Promise<string> {

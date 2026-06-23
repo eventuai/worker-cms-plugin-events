@@ -32,6 +32,15 @@ CMS_URL = "https://cms.eventuai.com"
 # [vars]
 # EMAIL_FROM = "events@example.com"
 
+# MJML render API (https://mjml.io/api). When set, EDM email HTML is compiled by
+# MJML's hosted API (production-grade, Outlook-safe markup) instead of the
+# built-in compiler. Get an Application ID + Secret Key from the MJML dashboard:
+#   wrangler secret put MJML_APP_ID         # the Application ID
+#   wrangler secret put MJML_SECRET_KEY     # the Secret Key
+# Basic auth sends MJML_APP_ID:MJML_SECRET_KEY. Optional MJML_API_URL overrides
+# the endpoint (default https://api.mjml.io/v1/render). Without these the plugin
+# falls back to its built-in MJML compiler.
+
 # Per-recipient send queue (decouples a blast from the request):
 # [[queues.producers]]
 # binding = "MAIL_QUEUE"
