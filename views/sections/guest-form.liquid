@@ -18,5 +18,6 @@
     <label class="ev-field"><span>Remarks</span><textarea class="ev-input" name="remarks" rows="4">{{ guest.remarks | escape }}</textarea></label>
     <div class="ev-actions"><button class="ev-btn ev-btn-primary" type="submit">Save guest</button></div>
   </form>
+  {% if moveLists.size > 0 %}<form method="post" action="{{ moveAction | escape }}" class="ev-inline-form" style="margin-top:1rem"><label class="ev-field" style="margin:0"><span>Move to list</span><select class="ev-input" name="target_mail_list">{% for list in moveLists %}<option value="{{ list.id }}">{{ list.name | escape }}</option>{% endfor %}</select></label><button class="ev-btn ev-btn-secondary" type="submit">Move guest</button></form>{% endif %}
   {% if deleteAction %}<form method="post" action="{{ deleteAction | escape }}" style="margin-top:1rem" onsubmit="return confirm('Delete this guest?')"><button class="ev-btn ev-btn-danger" type="submit">Delete guest</button></form>{% endif %}
 </div>

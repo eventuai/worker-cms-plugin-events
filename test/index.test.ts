@@ -138,16 +138,26 @@ describe('events admin', () => {
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         expect(url.searchParams.get('page_id')).toBe('12');
-        expect(url.searchParams.get('include')).toBe('guest_summary');
+        // Summaries are computed by the plugin now — the generic CMS API has no
+        // include=guest_summary mode.
+        expect(url.searchParams.get('include')).toBeNull();
         return Response.json({
-          pages: [{
-            id: 34, page_type: 'mail_list', name: 'VIP', page_id: 12, lect: {},
-            guest_summary: {
-              guest_count: 4, guest_total: 6, onhold_count: 1, to_be_invited_count: 1,
-              invited_count: 1, confirmed_count: 1, declined_count: 0, unconfirmed_count: 0,
-              checked_in_count: 1, checked_in_total: 2,
-            },
-          }], total: 1,
+          pages: [{ id: 34, page_type: 'mail_list', name: 'VIP', page_id: 12, lect: {} }],
+          total: 1,
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        expect(url.searchParams.get('page_id')).toBe('34');
+        // 4 groups → 6 people; one confirmed+checked-in (2 people), one invited,
+        // one on hold, one unknown status (counted "to be invited").
+        return Response.json({
+          pages: [
+            { id: 1, page_type: 'guest', name: 'Ada', lect: { status: 'confirmed', plus_guests: '1', checkin: [{ status: 'checked-in' }] } },
+            { id: 2, page_type: 'guest', name: 'Grace', lect: { status: 'invited' } },
+            { id: 3, page_type: 'guest', name: 'Edith', lect: { status: 'onhold' } },
+            { id: 4, page_type: 'guest', name: 'Lin', lect: { status: 'mystery', plus_guests: '1' } },
+          ],
+          total: 4,
         });
       }
       return new Response('not found', { status: 404 });
@@ -268,6 +278,107 @@ describe('events admin', () => {
       'https://cms.test/__cms/pages/8',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+
+  it('exports every guest across an event as one CSV', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, name: 'VIP' }, { id: 9, name: 'General' }], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        const listId = url.searchParams.get('page_id');
+        if (listId === '8') return Response.json({ pages: [{ id: 1, name: 'Ada', lect: { status: 'confirmed', email: 'ada@x.io' } }], total: 1 });
+        return Response.json({ pages: [{ id: 2, name: 'Grace', lect: { status: 'invited' } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/export', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/csv');
+    expect(response.headers.get('content-disposition')).toContain('launch-all-guests.csv');
+    const csv = await response.text();
+    expect(csv).toContain('"mail_list","name"');
+    expect(csv).toContain('"VIP","Ada"');
+    expect(csv).toContain('"General","Grace"');
+    expect(csv).toContain('"ada@x.io"');
+  });
+
+  it('moves a guest into another list of the same event', async () => {
+    let updateRequest: RequestInit | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/9') {
+        return Response.json({ page: { id: 9, page_type: 'mail_list', page_id: 7, name: 'General', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/55' && init?.method === 'PUT') {
+        updateRequest = init;
+        return Response.json({ page: { id: 55 } });
+      }
+      if (url.pathname === '/__cms/pages/55') {
+        return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { _pointers: { event: '7', mail_list: '8' } } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/move', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ target_mail_list: '9' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/9');
+    expect(JSON.parse(String(updateRequest?.body))).toMatchObject({
+      page_id: 9,
+      lect: { _pointers: { event: '7', mail_list: '9' } },
+    });
+  });
+
+  it('rejects moving a guest into a list of a different event', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/99') {
+        // A list belonging to a different event (page_id 70).
+        return Response.json({ page: { id: 99, page_type: 'mail_list', page_id: 70, name: 'Other', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/55') {
+        return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: {} } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/move', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ target_mail_list: '99' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(404);
+    // No PUT was issued.
+    expect(cmsFetch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'PUT' }));
   });
 
   it('keeps a valid guest list usable when its parent event can no longer be read', async () => {

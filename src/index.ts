@@ -16,14 +16,15 @@ import {
   CmsNotConfiguredError,
   PLUGIN_ID,
   attr,
+  computeGuestListSummary,
+  emptyGuestListSummary,
   type CmsPage,
-  type GuestListSummary,
 } from './cms';
 import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
 import { handlePublicRsvp } from './public-rsvp';
-import { ensureAdhocGuestList, eventGuestLists, handleRsvpAdmin } from './rsvp';
+import { ensureAdhocGuestList, eventGuestLists, exportEventGuests, handleRsvpAdmin } from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
 
@@ -276,6 +277,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
       return adhocCheckinForm(cms, env.VIEWS, eventId);
     }
     if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url);
+    if (eventId && sub === 'export') return exportEventGuests(cms, eventId);
     if (eventId && sub === 'all-guests') return eventGuestLists(cms, env.VIEWS, eventId);
     if (eventId) return eventDashboard(cms, env.VIEWS, eventId);
     return eventsList(cms, env.VIEWS);
@@ -323,14 +325,6 @@ function rollupGuestListSummaries(lists: CmsPage[]): Rollup {
   return r;
 }
 
-function emptyGuestListSummary(): GuestListSummary {
-  return {
-    guest_count: 0, guest_total: 0, onhold_count: 0, to_be_invited_count: 0,
-    invited_count: 0, confirmed_count: 0, declined_count: 0, unconfirmed_count: 0,
-    checked_in_count: 0, checked_in_total: 0,
-  };
-}
-
 // ── Events section views ──────────────────────────────────────────────────────
 
 async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
@@ -348,8 +342,16 @@ async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
 async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
   const [event, guestLists] = await Promise.all([
     cms.get(eventId),
-    cms.list('mail_list', { parentId: eventId, limit: 500, includeGuestSummary: true }),
+    cms.list('mail_list', { parentId: eventId, limit: 500 }),
   ]);
+  // The CMS page API is generic, so the plugin tallies each list's guests itself
+  // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
+  await Promise.all(
+    guestLists.pages.map(async (list) => {
+      const { pages: guests } = await cms.list('guest', { parentId: list.id, limit: 500 });
+      list.guest_summary = computeGuestListSummary(guests);
+    }),
+  );
   const r = rollupGuestListSummaries(guestLists.pages);
 
   return adminView(views, event.name, 'event-dashboard', {
@@ -357,6 +359,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     eventsHref: `${ADMIN_BASE}/events`,
     adhocCheckinHref: `${ADMIN_BASE}/events/${eventId}/adhoc-checkin`,
     guestListsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    exportAllHref: `${ADMIN_BASE}/events/${eventId}/export`,
     labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
     editHref: `/admin/pages/${eventId}/edit`,
     stats: statTiles(r),

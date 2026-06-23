@@ -68,6 +68,7 @@ export async function handleRsvpAdmin(
     if (segments[3] === 'delete' && request.method === 'POST') return deleteGuest(cms, listId, guestId);
     if (segments[3] === 'status' && request.method === 'POST') return updateGuestStatus(request, cms, listId, guestId);
     if (segments[3] === 'checkin' && request.method === 'POST') return checkInGuest(cms, listId, guestId);
+    if (segments[3] === 'move' && request.method === 'POST') return moveGuest(request, cms, listId, guestId);
     if (request.method === 'POST') return updateGuest(request, cms, listId, guestId);
     return guestForm(cms, views, listId, guestId);
   }
@@ -200,6 +201,13 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
     ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}`
     : `${ADMIN_BASE}/rsvp/${listId}/guests/new`;
 
+  // Sibling lists of the same event a guest can be moved into (edit only).
+  let moveLists: Array<{ id: number; name: string }> = [];
+  if (guest && context.eventId) {
+    const { pages } = await cms.list('mail_list', { parentId: context.eventId, limit: 500 });
+    moveLists = pages.filter((list) => list.id !== listId).map((list) => ({ id: list.id, name: list.name }));
+  }
+
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
     title: guest ? 'Edit guest' : 'New guest',
     eventName: context.event?.name ?? 'Event',
@@ -209,6 +217,8 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
     guest: values,
     statuses: GUEST_STATUSES.map((status) => ({ value: status, selected: values.status === status })),
     deleteAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
+    moveAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/move` : '',
+    moveLists,
   });
 }
 
@@ -282,6 +292,33 @@ async function checkInGuest(cms: CmsClient, listId: number, guestId: number): Pr
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
 
+/**
+ * Moves a guest to another list of the same event. In the page model a guest
+ * belongs to its list via `page_id` (+ the `mail_list` pointer), so a move is
+ * just re-parenting — unlike the legacy per-list SQLite copy/delete.
+ */
+async function moveGuest(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  const guest = await cms.get(guestId);
+  if (!context || guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+
+  const form = await request.formData();
+  const targetId = pageId(form.get('target_mail_list'));
+  if (!targetId || targetId === listId) return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`);
+
+  const target = await cms.get(targetId);
+  // Only allow moves within the same event, so a guest never leaves its event.
+  if (target.page_type !== 'mail_list' || (context.eventId && target.page_id !== context.eventId)) {
+    return new Response('not found', { status: 404 });
+  }
+
+  await cms.update(guestId, {
+    page_id: targetId,
+    lect: { _pointers: { ...(guest.lect._pointers as Record<string, unknown> ?? {}), mail_list: String(targetId) } },
+  });
+  return redirect(`${ADMIN_BASE}/rsvp/${targetId}`);
+}
+
 async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
@@ -353,6 +390,42 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
     headers: {
       'content-type': 'text/csv; charset=utf-8',
       'content-disposition': `attachment; filename="${safeFilename(context.list.name)}-guests.csv"`,
+    },
+  });
+}
+
+/**
+ * Exports every guest across all of an event's lists as a single CSV (one row
+ * per guest, with the originating list name). The legacy app produced a
+ * multi-sheet workbook; a flat CSV with a `mail_list` column is the equivalent.
+ */
+export async function exportEventGuests(cms: CmsClient, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+
+  const { pages: lists } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const guestsByList = await Promise.all(
+    lists.map((list) => cms.list('guest', { parentId: list.id, limit: 500 }).then((res) => res.pages)),
+  );
+
+  const headers = ['mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
+  const rows: string[][] = [];
+  lists.forEach((list, index) => {
+    for (const guest of guestsByList[index] ?? []) {
+      const values = guestValues(guest);
+      rows.push([
+        list.name, values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
+        values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks,
+        items(guest.lect, 'checkin').length ? 'yes' : 'no',
+      ]);
+    }
+  });
+
+  const csv = [headers, ...rows].map((row) => row.map(csvValue).join(',')).join('\n');
+  return new Response(csv, {
+    headers: {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="${safeFilename(event.name)}-all-guests.csv"`,
     },
   });
 }

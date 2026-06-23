@@ -39,6 +39,7 @@ export interface CmsPage {
   updated_at: string;
   lect: Record<string, unknown>;
   tags?: number[];
+  /** Attached by the plugin (see computeGuestListSummary) for mail_list pages — not part of the CMS API. */
   guest_summary?: GuestListSummary;
 }
 
@@ -115,14 +116,13 @@ export class CmsClient {
   /** List pages of a type, optionally filtered by parent page id (e.g. guests of an event). */
   async list(
     pageType: string,
-    opts: { parentId?: number; q?: string; limit?: number; offset?: number; includeGuestSummary?: boolean } = {},
+    opts: { parentId?: number; q?: string; limit?: number; offset?: number } = {},
   ): Promise<{ pages: CmsPage[]; total: number }> {
     const params = new URLSearchParams({ page_type: pageType });
     if (opts.parentId != null) params.set('page_id', String(opts.parentId));
     if (opts.q) params.set('q', opts.q);
     if (opts.limit != null) params.set('limit', String(opts.limit));
     if (opts.offset != null) params.set('offset', String(opts.offset));
-    if (opts.includeGuestSummary) params.set('include', 'guest_summary');
     return this.json(await this.call('GET', `/pages?${params.toString()}`));
   }
 
@@ -185,4 +185,47 @@ export function pointer(lect: Record<string, unknown>, key: string): string {
   const p = lect._pointers;
   if (p && typeof p === 'object') return String((p as Record<string, unknown>)[key] ?? '');
   return '';
+}
+
+// ── Guest-list summary (computed by the plugin, not the CMS) ───────────────────
+// The CMS page API is deliberately generic — it knows nothing about RSVP status
+// or headcounts. The events plugin owns those semantics, so it tallies guest
+// pages here rather than asking the CMS to special-case the `guest` type.
+
+export function emptyGuestListSummary(): GuestListSummary {
+  return {
+    guest_count: 0, guest_total: 0, onhold_count: 0, to_be_invited_count: 0,
+    invited_count: 0, confirmed_count: 0, declined_count: 0, unconfirmed_count: 0,
+    checked_in_count: 0, checked_in_total: 0,
+  };
+}
+
+/**
+ * Tallies a list's guest pages into the dashboard summary. A guest's headcount
+ * is themselves plus any `plus_guests`; any status outside the known set counts
+ * as "to be invited" (mirrors the legacy event dashboard tallies).
+ */
+export function computeGuestListSummary(guests: CmsPage[]): GuestListSummary {
+  const summary = emptyGuestListSummary();
+  for (const guest of guests) {
+    const plus = Number.parseInt(attr(guest.lect, 'plus_guests'), 10);
+    const headcount = (Number.isFinite(plus) && plus > 0 ? plus : 0) + 1;
+    const status = (attr(guest.lect, 'status') || 'to be invited').trim().toLowerCase();
+    const checkedIn = items(guest.lect, 'checkin').length > 0;
+
+    summary.guest_count += 1;
+    summary.guest_total += headcount;
+    if (status === 'onhold') summary.onhold_count += 1;
+    else if (status === 'invited') summary.invited_count += 1;
+    else if (status === 'confirmed') summary.confirmed_count += 1;
+    else if (status === 'declined' || status === 'decline') summary.declined_count += 1;
+    else if (status === 'unconfirmed') summary.unconfirmed_count += 1;
+    else summary.to_be_invited_count += 1;
+
+    if (checkedIn) {
+      summary.checked_in_count += 1;
+      summary.checked_in_total += headcount;
+    }
+  }
+  return summary;
 }
