@@ -52,7 +52,9 @@ CMS_URL = "https://cms.eventuai.com"
 # [triggers]
 # crons = ["* * * * *"]
 
-# Delivery tracking + render cache:
+# Delivery tracking + MJML render cache. When bound alongside the MJML API
+# secrets above, compiled email HTML is cached here (keyed by MJML hash) so
+# repeated EDM previews/blasts of unchanged content don't spend MJML API quota:
 # [[kv_namespaces]]
 # binding = "MAIL_TRACKING"
 # id = "<kv-id>"

@@ -31,7 +31,13 @@ export interface EdmEnv {
   MJML_SECRET_KEY?: string;
   /** Override the MJML API endpoint (defaults to https://api.mjml.io/v1/render). */
   MJML_API_URL?: string;
+  /** Optional KV namespace caching MJML-API output (keyed by MJML hash) so
+   *  repeated renders of unchanged EDMs don't spend API quota. */
+  MAIL_TRACKING?: KVNamespace;
 }
+
+/** Days an MJML-API render stays cached (a content edit changes the key anyway). */
+const MJML_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /** Placeholder swapped for each guest's signed RSVP URL after a single MJML render. */
 const RSVP_URL_PLACEHOLDER = 'https://__edm_rsvp_url__/';
@@ -278,11 +284,23 @@ async function renderEmail(
 /**
  * Compiles MJML to HTML via the MJML render API (https://api.mjml.io) when
  * credentials are configured — it produces the Outlook/ghost-table markup a
- * minimal compiler can't. Falls back to the built-in compiler when credentials
- * are absent (dev/tests) or the API call fails, so a render never hard-fails.
+ * minimal compiler can't. Identical MJML yields identical HTML, so API output is
+ * cached in KV (keyed by the MJML hash) to spare quota on repeated renders.
+ * Falls back to the built-in compiler when credentials are absent (dev/tests) or
+ * the API call fails, so a render never hard-fails.
  */
 async function compileMjml(mjml: string, env: EdmEnv): Promise<string> {
   if (env.MJML_APP_ID && env.MJML_SECRET_KEY) {
+    const cache = env.MAIL_TRACKING;
+    const cacheKey = cache ? await mjmlCacheKey(mjml) : '';
+    if (cache && cacheKey) {
+      try {
+        const hit = await cache.get(cacheKey);
+        if (hit) return hit;
+      } catch (error) {
+        console.error('MJML cache read failed', error);
+      }
+    }
     try {
       const res = await fetch(env.MJML_API_URL ?? 'https://api.mjml.io/v1/render', {
         method: 'POST',
@@ -294,7 +312,16 @@ async function compileMjml(mjml: string, env: EdmEnv): Promise<string> {
       });
       if (res.ok) {
         const data = await res.json() as { html?: string; errors?: unknown[] };
-        if (typeof data.html === 'string' && data.html) return data.html;
+        if (typeof data.html === 'string' && data.html) {
+          if (cache && cacheKey) {
+            try {
+              await cache.put(cacheKey, data.html, { expirationTtl: MJML_CACHE_TTL_SECONDS });
+            } catch (error) {
+              console.error('MJML cache write failed', error);
+            }
+          }
+          return data.html;
+        }
         console.error('MJML API returned no html', data.errors);
       } else {
         console.error(`MJML API responded ${res.status}; falling back to built-in compiler`);
@@ -304,6 +331,13 @@ async function compileMjml(mjml: string, env: EdmEnv): Promise<string> {
     }
   }
   return mjmlToHtml(mjml);
+}
+
+/** Cache key for an MJML document: a SHA-256 hex digest under a versioned prefix. */
+async function mjmlCacheKey(mjml: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(mjml));
+  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `mjml:v1:${hex}`;
 }
 
 /** Flat token map the MJML layout reads (content + styling), each a string. */

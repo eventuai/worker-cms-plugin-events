@@ -10,6 +10,7 @@ interface PluginEnv {
   MJML_APP_ID?: string;
   MJML_SECRET_KEY?: string;
   MJML_API_URL?: string;
+  MAIL_TRACKING?: KVNamespace;
   VIEWS: Fetcher;
 }
 
@@ -536,6 +537,40 @@ describe('EDM and labels', () => {
     expect(mjmlAuth).toBe(`Basic ${btoa('app-1:secret-2')}`);
     expect(JSON.parse(mjmlBody).mjml).toContain('<mjml>');
     expect(JSON.parse(mjmlBody).mjml).toContain('Join us');
+  });
+
+  it('caches MJML API output in KV and reuses it on the next render', async () => {
+    const store = new Map<string, string>();
+    const kv = {
+      get: async (key: string) => store.get(key) ?? null,
+      put: async (key: string, value: string) => { store.set(key, value); },
+    } as unknown as KVNamespace;
+    let apiCalls = 0;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.hostname === 'api.mjml.io') {
+        apiCalls++;
+        return Response.json({ html: '<html><body>CACHED_OUTPUT</body></html>', errors: [] });
+      }
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: { id: 12, page_type: 'edm', name: 'Invite', page_id: 7, lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' } } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const e = env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', MJML_APP_ID: 'app-1', MJML_SECRET_KEY: 'secret-2', MAIL_TRACKING: kv });
+    const preview = () => plugin.fetch(request('/__plugin/admin/edm/12/preview', { headers: { 'x-plugin-secret': 'shared-secret' } }), e);
+
+    const first = await preview();
+    expect(await first.text()).toBe('<html><body>CACHED_OUTPUT</body></html>');
+    expect(apiCalls).toBe(1);
+    expect(store.size).toBe(1);
+
+    const second = await preview();
+    expect(await second.text()).toBe('<html><body>CACHED_OUTPUT</body></html>');
+    // Served from KV — the API was not hit again.
+    expect(apiCalls).toBe(1);
   });
 
   it('falls back to the built-in compiler when the MJML API errors', async () => {
