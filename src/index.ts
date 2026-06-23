@@ -53,13 +53,13 @@ type BlueprintEntry = string | Record<string, BlueprintEntry[]>;
 
 // ── Blueprints ────────────────────────────────────────────────────────────────
 const EVENT_BLUEPRINT: BlueprintEntry[] = [
-  '@type', '@label', '@rfid',
-  '@show_guest_info', '@waiting_message', '@kiosk_title', '@checkin_require_login',
+  '@type', '@label', '@rfid:switch',
+  '@show_guest_info:switch', '@waiting_message', '@kiosk_title', '@checkin_require_login:switch',
   '@virtual_event_link', '@featured_image:picture', 'logo:picture', 'name:text/title',
   'location:location', 'description:textarea',
   {
     session: [
-      '@checkin', '@type', '@start', '@duration', '@capacity', 'name:text/title',
+      '@checkin:switch', '@type', '@start', '@duration', '@capacity', 'name:text/title',
       'location', 'description:textarea',
       { inputs: ['@type', '@name', '@values'] },
     ],
