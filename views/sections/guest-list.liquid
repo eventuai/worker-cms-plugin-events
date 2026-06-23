@@ -8,6 +8,7 @@
     <a class="ev-btn ev-btn-primary" href="{{ newGuestHref | escape }}">New guest</a>
     <a class="ev-btn ev-btn-secondary" href="{{ importHref | escape }}">Import CSV</a>
     <a class="ev-btn ev-btn-secondary" href="{{ exportHref | escape }}">Export CSV</a>
+    <form method="post" action="{{ updateFromContactsAction | escape }}" onsubmit="return confirm('Refresh every linked guest from its contact record?')"><button class="ev-btn ev-btn-secondary" type="submit">Update from contacts</button></form>
     <form method="post" action="{{ deleteAction | escape }}" onsubmit="return confirm('Delete this guest list and its guests?')"><button class="ev-btn ev-btn-danger" type="submit">Delete list</button></form>
   </div>
 </div>
@@ -38,7 +39,7 @@
             </form>
           </td>
           <td>{% if guest.checkedIn %}<span class="ev-badge">Checked in</span>{% else %}<form method="post" action="{{ guest.checkinAction | escape }}"><button class="ev-text-button" type="submit">Check in</button></form>{% endif %}</td>
-          <td style="text-align:right"><a href="{{ guest.editHref | escape }}">Edit →</a></td>
+          <td style="text-align:right"><a href="{{ guest.qrHref | escape }}">QR</a> · <a href="{{ guest.editHref | escape }}">Edit →</a></td>
         </tr>
       {% else %}
         <tr><td colspan="6" class="ev-empty">No guests match this list.</td></tr>

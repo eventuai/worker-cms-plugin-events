@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest';
+import { qrMatrix, qrSvg } from '../src/qr';
+
+describe('qr encoder', () => {
+  it('picks the smallest version that fits and is square', () => {
+    const small = qrMatrix('HELLO');
+    expect(small.length).toBe(21); // version 1 → 21×21
+    expect(small.every((row) => row.length === 21)).toBe(true);
+
+    const url = qrMatrix('https://events.example.com/checkin/12345/67890/ab12cd34ef5678');
+    expect((url.length - 17) % 4).toBe(0); // valid QR side = 4*version+17
+    expect(url.length).toBeGreaterThan(21);
+  });
+
+  it('places the three finder patterns and timing rows', () => {
+    const m = qrMatrix('finder-check');
+    const n = m.length;
+    // Finder cores are dark, their inner separators light.
+    for (const [r, c] of [[0, 0], [0, n - 7], [n - 7, 0]] as const) {
+      expect(m[r][c]).toBe(true);
+      expect(m[r + 3][c + 3]).toBe(true); // 3×3 centre
+      expect(m[r + 1][c + 1]).toBe(false); // ring gap
+    }
+    // Timing pattern alternates along row/column 6.
+    for (let i = 8; i < n - 8; i++) {
+      expect(m[6][i]).toBe(i % 2 === 0);
+      expect(m[i][6]).toBe(i % 2 === 0);
+    }
+  });
+
+  it('is deterministic and rejects oversized payloads', () => {
+    expect(JSON.stringify(qrMatrix('same'))).toBe(JSON.stringify(qrMatrix('same')));
+    expect(() => qrMatrix('x'.repeat(500))).toThrow(/too large/);
+  });
+
+  it('renders an SVG with a quiet zone and module rects', () => {
+    const svg = qrSvg('HI', { size: 200, margin: 4 });
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('width="200"');
+    expect(svg).toContain('<rect'); // background + modules
+    // viewBox accounts for the 4-module quiet zone on each side (21 + 8 = 29).
+    expect(svg).toContain('viewBox="0 0 29 29"');
+  });
+});

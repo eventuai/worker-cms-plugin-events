@@ -1,0 +1,14 @@
+<div class="ev-head">
+  <div>
+    <a class="ev-back" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
+    <h1 class="ev-h1">Import guests</h1>
+    <p class="ev-sub">Upload one CSV for the whole event. A <code>list</code> column routes each row to that guest list (created if it doesn't exist).</p>
+  </div>
+</div>
+<div class="ev-card ev-card-pad" style="max-width:40rem">
+  <form method="post" action="{{ action | escape }}" enctype="multipart/form-data">
+    <label class="ev-field"><span>CSV file</span><input class="ev-input" type="file" name="file" accept=".csv,text/csv" required></label>
+    <p class="ev-sub">Recognised columns: <code>list</code>, <code>name</code>, <code>last_name</code>, <code>email</code>, <code>phone</code>, <code>organization</code>, <code>job_title</code>, <code>plus_guests</code>, <code>status</code>, <code>prefer_language</code>, <code>cc</code>, <code>remarks</code>.</p>
+    <div class="ev-actions"><button class="ev-btn ev-btn-primary" type="submit">Import</button></div>
+  </form>
+</div>

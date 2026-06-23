@@ -1,0 +1,39 @@
+<div class="ev-head">
+  <div>
+    <a class="ev-back" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
+    <h1 class="ev-h1">All guests</h1>
+    <p class="ev-sub">{{ filteredCount }} of {{ totalCount }} guest{% if totalCount != 1 %}s{% endif %} across every list</p>
+  </div>
+  <div class="ev-actions">
+    <a class="ev-btn ev-btn-secondary" href="{{ exportHref | escape }}">Export CSV</a>
+  </div>
+</div>
+<div class="ev-card ev-card-pad" style="margin-bottom:1rem">
+  <form class="ev-search" method="get" action="{{ listHref | escape }}">
+    <select class="ev-input" style="width:auto" name="status">
+      <option value="">All statuses</option>
+      {% for status in statuses %}<option value="{{ status | escape }}"{% if status == selectedStatus %} selected{% endif %}>{{ status | escape }}</option>{% endfor %}
+    </select>
+    <button class="ev-btn ev-btn-secondary" type="submit">Filter</button>
+  </form>
+</div>
+<div class="ev-card">
+  <table class="ev-table">
+    <thead><tr><th>Name</th><th>List</th><th>Email</th><th>Organisation</th><th>Status</th><th>Check-in</th><th></th></tr></thead>
+    <tbody>
+      {% for guest in guests %}
+        <tr>
+          <td><a href="{{ guest.editHref | escape }}">{{ guest.name | escape }}</a></td>
+          <td>{{ guest.listName | escape }}</td>
+          <td>{{ guest.email | escape }}</td>
+          <td>{{ guest.organization | escape }}</td>
+          <td>{{ guest.status | escape }}</td>
+          <td>{% if guest.checkedIn %}<span class="ev-badge">Checked in</span>{% endif %}</td>
+          <td style="text-align:right"><a href="{{ guest.editHref | escape }}">Edit →</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="ev-empty">No guests match this filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

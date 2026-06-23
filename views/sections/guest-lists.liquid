@@ -7,11 +7,11 @@
   <a class="ev-btn ev-btn-primary" href="{{ newHref | escape }}">New guest list</a>
 </div>
 <div class="ev-card">
-  <table class="ev-table">
+  <table class="ev-table"{% if reorderAction %} data-reorder="{{ reorderAction | escape }}" data-reorder-key="reorder" data-reorder-mode="weight"{% endif %}>
     <thead><tr><th>Guest list</th><th>Event</th><th>Check-in</th><th></th></tr></thead>
     <tbody>
       {% for list in lists %}
-        <tr>
+        <tr{% if reorderAction %} draggable="true" data-id="{{ list.id }}"{% endif %}>
           <td><a href="{{ list.href | escape }}">{{ list.name | escape }}</a></td>
           <td>{% if list.eventHref %}<a href="{{ list.eventHref | escape }}">{{ list.eventName | escape }}</a>{% else %}{{ list.eventName | escape }}{% endif %}</td>
           <td>{% if list.allowCheckin %}<span class="ev-badge">Enabled</span>{% else %}<span class="ev-badge">Disabled</span>{% endif %}</td>

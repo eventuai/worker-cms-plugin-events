@@ -516,3 +516,284 @@ describe('public RSVP', () => {
     });
   });
 });
+
+describe('event tooling (reorder, import, all-guests, QR)', () => {
+  it('persists guest-list order by writing each list weight', async () => {
+    const updates: Array<{ id: string; body: unknown }> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (init?.method === 'PUT') {
+        updates.push({ id: url.pathname.split('/').pop()!, body: JSON.parse(String(init.body)) });
+        return Response.json({ page: {} });
+      }
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      if (url.pathname === '/__cms/pages/9') return Response.json({ page: { id: 9, page_type: 'mail_list', page_id: 7, name: 'General', lect: {} } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/reorder-guest-lists', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-plugin-secret': 'shared-secret' },
+      body: JSON.stringify({ reorder: [{ id: 9, weight: 0 }, { id: 8, weight: 1 }] }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ success: true });
+    expect(updates).toEqual([
+      { id: '9', body: { weight: 0 } },
+      { id: '8', body: { weight: 1 } },
+    ]);
+  });
+
+  it('reorders sessions by writing an in-place weight (never moving array rows)', async () => {
+    let updateBody: { lect?: { session?: Array<{ _weight?: number }> } } | undefined;
+    const sessions = [{ name: { en: 'Keynote' } }, { name: { en: 'Lunch' } }, { name: { en: 'Workshop' } }];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7' && init?.method === 'PUT') {
+        updateBody = JSON.parse(String(init.body));
+        return Response.json({ page: { id: 7 } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { session: sessions } } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    // New display order = [original idx 2, 0, 1] → weights idx0=1, idx1=2, idx2=0.
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/reorder-sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-plugin-secret': 'shared-secret' },
+      body: JSON.stringify({ order: [2, 0, 1] }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    // Only `_weight` is patched, in the original array order — no row data moves.
+    expect(updateBody?.lect?.session).toEqual([{ _weight: 1 }, { _weight: 2 }, { _weight: 0 }]);
+  });
+
+  it('rejects a session reorder whose indices do not cover every row', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { session: [{}, {}] } } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/reorder-sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-plugin-secret': 'shared-secret' },
+      body: JSON.stringify({ order: [0, 0] }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(400);
+    expect(cmsFetch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'PUT' }));
+  });
+
+  it('imports guests into per-list groups, creating missing lists', async () => {
+    const creates: Array<Record<string, unknown>> = [];
+    const batches: unknown[] = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        creates.push(body);
+        return Response.json({ page: { id: 99, name: body.name } });
+      }
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
+        batches.push(JSON.parse(String(init.body)));
+        return Response.json({ created: [], errors: [] });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const csv = 'list,name,email\nVIP,Ada,ada@x.io\nGeneral,Grace,grace@x.io\n';
+    const file = new File([csv], 'guests.csv', { type: 'text/csv' });
+    const form = new FormData();
+    form.set('file', file);
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/import', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+      body: form,
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/all-guests');
+    // "General" did not exist, so it was created; "VIP" already existed.
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toMatchObject({ page_type: 'mail_list', name: 'General', page_id: 7 });
+    // Two batch calls, one per destination list.
+    expect(batches).toHaveLength(2);
+  });
+
+  it('renders a flat all-guests view filtered by status', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, name: 'VIP', weight: 0 }, { id: 9, name: 'General', weight: 1 }], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        const listId = url.searchParams.get('page_id');
+        if (listId === '8') return Response.json({ pages: [{ id: 1, name: 'Ada', lect: { status: 'confirmed' } }], total: 1 });
+        return Response.json({ pages: [{ id: 2, name: 'Grace', lect: { status: 'invited' } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/all-guests?status=confirmed', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('All guests');
+    expect(html).toContain('Ada');
+    expect(html).not.toContain('Grace'); // filtered out
+    expect(html).toContain('1 of 2 guests');
+  });
+
+  it('renders the sessions view in event order', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { session: [{ name: { en: 'Keynote' }, start: '09:00' }, { name: { en: 'Lunch' } }] } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/sessions', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Sessions');
+    expect(html).toContain('Keynote');
+    expect(html).toContain('data-reorder-mode="order"');
+    expect(html).toContain('data-index="0"');
+  });
+
+  it('renders the event-wide import form', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/import', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Import guests');
+    expect(html).toContain('type="file"');
+  });
+
+  it('refreshes a guest from its linked contact and logs the change', async () => {
+    let updateBody: { name?: string; lect?: Record<string, unknown> } | undefined;
+    const contact = {
+      id: 200, page_type: 'contact', name: 'Ada Lovelace',
+      lect: {
+        first_name: { en: 'Ada' }, last_name: { en: 'Lovelace' }, prefix: 'Ms', nationality: 'GB', prefer_language: 'en',
+        position: [{ organization_name: { en: 'Analytical Engines' }, title: { en: 'Engineer' }, email: 'ada@work.io', direct_phone: '+44 20 7946 0000' }],
+        email: [{ email: 'ada@primary.io' }],
+        assistant: [{ email: 'pa@ada.io' }],
+      },
+    };
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/55' && init?.method === 'PUT') {
+        updateBody = JSON.parse(String(init.body));
+        return Response.json({ page: { id: 55 } });
+      }
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Stale', lect: { contact_id: '200', status: 'invited', response: [{ status: 'invited' }] } } });
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      if (url.pathname === '/__cms/pages/200') return Response.json({ page: contact });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/update-from-contact', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8/guests/55');
+    expect(updateBody?.name).toBe('Ada Lovelace');
+    expect(updateBody?.lect).toMatchObject({
+      name: { en: 'Ada Lovelace' },
+      email: 'ada@primary.io', // email[] wins over position email
+      phone: '+44 20 7946 0000',
+      cc: 'pa@ada.io',
+      organization: 'Analytical Engines',
+      job_title: 'Engineer',
+      prefix: 'Ms',
+    });
+    // Existing history is preserved and a refresh entry appended.
+    const response_log = (updateBody?.lect as { response: Array<{ message?: string }> }).response;
+    expect(response_log).toHaveLength(2);
+    expect(response_log[1].message).toContain('Contact ID: 200');
+  });
+
+  it('skips guests without a contact link when updating a whole list', async () => {
+    const puts: string[] = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (init?.method === 'PUT') { puts.push(url.pathname); return Response.json({ page: {} }); }
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/200') return Response.json({ page: { id: 200, page_type: 'contact', name: 'Ada', lect: { first_name: { en: 'Ada' } } } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [
+          { id: 1, page_type: 'guest', page_id: 8, name: 'Linked', lect: { contact_id: '200' } },
+          { id: 2, page_type: 'guest', page_id: 8, name: 'Unlinked', lect: {} },
+        ], total: 2 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/update-from-contacts', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+    // Only the linked guest (id 1) was written.
+    expect(puts).toEqual(['/__cms/pages/1']);
+  });
+
+  it('renders a scannable per-guest QR with a signed check-in payload', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: {} } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('<svg');
+    expect(html).toContain('<rect'); // QR modules rendered
+    const sig = await signPayload('shared-secret', '8.55');
+    expect(html).toContain(`8.55.${sig}`);
+  });
+});

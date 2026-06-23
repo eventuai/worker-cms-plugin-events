@@ -8,9 +8,16 @@ import {
   type CmsPage,
   type CmsPageInput,
 } from './cms';
+import { signPayload } from './crypto';
+import { qrSvg } from './qr';
 import { adminView } from './templates/views';
 
 const ADMIN_BASE = '/admin/plugins/events';
+
+/** Guest lists display in admin-controlled order (page weight, then name). */
+function sortByWeight(pages: CmsPage[]): CmsPage[] {
+  return [...pages].sort((a, b) => (a.weight - b.weight) || a.name.localeCompare(b.name));
+}
 const GUEST_STATUSES = ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'] as const;
 
 type GuestStatus = typeof GUEST_STATUSES[number];
@@ -21,12 +28,19 @@ interface GuestListContext {
   eventId: number | null;
 }
 
+/** Signing context for per-guest check-in QR codes. */
+export interface QrOptions {
+  secret?: string;
+  publicBase?: string;
+}
+
 export async function handleRsvpAdmin(
   request: Request,
   cms: CmsClient,
   views: Fetcher,
   segments: string[],
   url: URL,
+  qr: QrOptions = {},
 ): Promise<Response> {
   if (!segments.length) return rsvpIndex(cms, views, url);
 
@@ -51,6 +65,7 @@ export async function handleRsvpAdmin(
   }
 
   if (segments[1] === 'delete' && request.method === 'POST') return deleteGuestList(cms, listId);
+  if (segments[1] === 'update-from-contacts' && request.method === 'POST') return updateAllGuestsFromContacts(cms, listId);
   if (segments[1] === 'export') return exportGuests(cms, listId);
   if (segments[1] === 'import') {
     if (request.method === 'POST') return importGuests(request, cms, listId);
@@ -69,6 +84,8 @@ export async function handleRsvpAdmin(
     if (segments[3] === 'status' && request.method === 'POST') return updateGuestStatus(request, cms, listId, guestId);
     if (segments[3] === 'checkin' && request.method === 'POST') return checkInGuest(cms, listId, guestId);
     if (segments[3] === 'move' && request.method === 'POST') return moveGuest(request, cms, listId, guestId);
+    if (segments[3] === 'update-from-contact' && request.method === 'POST') return updateGuestFromContact(cms, listId, guestId);
+    if (segments[3] === 'qrcode') return guestQr(cms, views, listId, guestId, qr);
     if (request.method === 'POST') return updateGuest(request, cms, listId, guestId);
     return guestForm(cms, views, listId, guestId);
   }
@@ -83,10 +100,11 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
   const { pages } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
   return adminView(views, `Guest lists — ${event.name}`, 'guest-lists', {
     title: `Guest lists — ${event.name}`,
-    subtitle: 'Manage invitation lists and the guests in each list.',
+    subtitle: 'Drag a list to reorder it; the order is shared across the event.',
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     newHref: `${ADMIN_BASE}/rsvp/new?event_id=${eventId}`,
-    lists: pages.map((list) => guestListRow(list, event)),
+    reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-guest-lists`,
+    lists: sortByWeight(pages).map((list) => ({ ...guestListRow(list, event), id: list.id })),
   });
 }
 
@@ -181,6 +199,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     newGuestHref: `${ADMIN_BASE}/rsvp/${listId}/guests/new`,
     importHref: `${ADMIN_BASE}/rsvp/${listId}/import`,
     exportHref: `${ADMIN_BASE}/rsvp/${listId}/export`,
+    updateFromContactsAction: `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts`,
     deleteAction: `${ADMIN_BASE}/rsvp/${listId}/delete`,
     q,
     selectedStatus: selectedStatus ?? '',
@@ -217,6 +236,10 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
     guest: values,
     statuses: GUEST_STATUSES.map((status) => ({ value: status, selected: values.status === status })),
     deleteAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
+    qrHref: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode` : '',
+    updateFromContactAction: guest && attr(guest.lect, 'contact_id')
+      ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/update-from-contact`
+      : '',
     moveAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/move` : '',
     moveLists,
   });
@@ -317,6 +340,363 @@ async function moveGuest(request: Request, cms: CmsClient, listId: number, guest
     lect: { _pointers: { ...(guest.lect._pointers as Record<string, unknown> ?? {}), mail_list: String(targetId) } },
   });
   return redirect(`${ADMIN_BASE}/rsvp/${targetId}`);
+}
+
+// ── Refresh a guest from its linked contact ───────────────────────────────────
+
+interface ContactFields {
+  name: string;
+  email: string;
+  phone: string;
+  cc: string;
+  organization: string;
+  job_title: string;
+  prefix: string;
+  nationality: string;
+  prefer_language: string;
+}
+
+/** First non-empty `key` across an item list (e.g. the primary email of `position[]`). */
+function firstItemValue(list: Array<Record<string, unknown>>, key: string): string {
+  for (const item of list) {
+    const v = attr(item, key);
+    if (v) return v;
+  }
+  return '';
+}
+
+/**
+ * Maps a contact page's lect onto the guest fields the events suite stores,
+ * mirroring the legacy HelperContact precedence (other → work → general).
+ */
+function contactToGuestFields(contact: CmsPage): ContactFields {
+  const lect = contact.lect;
+  const position = items(lect, 'position');
+  const work = position[0] ?? {};
+
+  const name = [localized(lect, 'first_name'), localized(lect, 'middle_name'), localized(lect, 'last_name')]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' ');
+
+  const email = firstItemValue(items(lect, 'email'), 'email') || attr(work, 'email') || attr(work, 'general_email');
+  const phone = firstItemValue(items(lect, 'phone'), 'phone') || attr(work, 'direct_phone') || attr(work, 'general_phone');
+  // CC = spouse + assistant emails.
+  const cc = [...items(lect, 'spouse'), ...items(lect, 'assistant')]
+    .map((item) => attr(item, 'email'))
+    .filter(Boolean)
+    .join(',');
+
+  return {
+    name,
+    email,
+    phone,
+    cc,
+    organization: localized(work, 'organization_name'),
+    job_title: localized(work, 'title'),
+    prefix: attr(lect, 'prefix'),
+    nationality: attr(lect, 'nationality'),
+    prefer_language: attr(lect, 'prefer_language'),
+  };
+}
+
+/**
+ * Re-pulls a single guest's details from its linked `@contact_id` page and logs
+ * the refresh to the RSVP response history. No-op (returns false) when the guest
+ * has no contact link or the contact can't be read.
+ */
+async function applyContactToGuest(cms: CmsClient, guest: CmsPage): Promise<boolean> {
+  const contactId = pageId(attr(guest.lect, 'contact_id'));
+  if (!contactId) return false;
+
+  let contact: CmsPage;
+  try {
+    contact = await cms.get(contactId);
+  } catch (error) {
+    if (error instanceof CmsApiError && (error.status === 404 || error.status === 403)) return false;
+    throw error;
+  }
+  if (contact.page_type !== 'contact') return false;
+
+  const fields = contactToGuestFields(contact);
+  const name = fields.name || guest.name;
+  const log = {
+    status: attr(guest.lect, 'status') || 'to be invited',
+    date: new Date().toISOString(),
+    message: `Updated from contact database (Contact ID: ${contactId})`,
+  };
+
+  await cms.update(guest.id, {
+    name,
+    lect: {
+      name: { en: name },
+      email: fields.email,
+      phone: fields.phone,
+      cc: fields.cc,
+      organization: fields.organization,
+      job_title: fields.job_title,
+      prefix: fields.prefix,
+      nationality: fields.nationality,
+      prefer_language: fields.prefer_language,
+      response: [...items(guest.lect, 'response'), log],
+    },
+  });
+  return true;
+}
+
+/** POST handler: refresh one guest from its linked contact. */
+async function updateGuestFromContact(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
+  const guest = await cms.get(guestId);
+  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  await applyContactToGuest(cms, guest);
+  return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`);
+}
+
+/** POST handler: refresh every linked guest in a list from its contact. */
+async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const { pages } = await cms.list('guest', { parentId: listId, limit: 500 });
+  for (const guest of pages) await applyContactToGuest(cms, guest);
+  return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+}
+
+/**
+ * Renders a guest's check-in QR. The code carries a PLUGIN_SECRET-signed
+ * `listId.guestId.sig` token (as a check-in URL when a public base is set), so a
+ * door scanner can identify the guest without trusting the unsigned payload.
+ */
+async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, qr: QrOptions): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  const guest = await cms.get(guestId);
+  if (!context || guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+
+  const token = `${listId}.${guestId}`;
+  const sig = qr.secret ? await signPayload(qr.secret, token) : '';
+  const payload = qr.publicBase && sig
+    ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${sig}`
+    : `${token}.${sig}`;
+  const values = guestValues(guest);
+
+  return adminView(views, `QR — ${values.name}`, 'guest-qr', {
+    guestName: values.name,
+    organization: values.organization,
+    listName: context.list.name,
+    listHref: `${ADMIN_BASE}/rsvp/${listId}`,
+    editHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`,
+    checkedIn: items(guest.lect, 'checkin').length > 0,
+    payload,
+    qrSvg: qrSvg(payload, { size: 240 }),
+  });
+}
+
+/**
+ * Reorders an event's guest lists by writing each list's `weight`. Accepts the
+ * legacy JSON shape `{ reorder: [{ id, weight }] }` so the drag-and-drop UI can
+ * persist a new order in one call.
+ */
+export async function reorderGuestLists(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+  const body = await request.json().catch(() => null) as { reorder?: Array<{ id?: unknown; weight?: unknown }> } | null;
+  if (!body || !Array.isArray(body.reorder)) return Response.json({ success: false, error: 'invalid_request' }, { status: 400 });
+
+  for (const item of body.reorder) {
+    const id = pageId(item.id);
+    const weight = Number(item.weight);
+    if (!id || !Number.isFinite(weight)) continue;
+    const list = await cms.get(id);
+    if (list.page_type === 'mail_list' && list.page_id === eventId) await cms.update(id, { weight });
+  }
+  return Response.json({ success: true });
+}
+
+/**
+ * Reorders an event's sessions. The body `{ order: [oldIndex, …] }` lists the
+ * existing rows in their new sequence. Rather than physically reordering the
+ * array — which the CMS would merge index-by-index and cross-contaminate the
+ * sessions' nested fields — we write a scalar `_weight` onto each row in place
+ * (mirroring the legacy approach) and sort by it when rendering.
+ */
+export async function reorderSessions(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return Response.json({ success: false, error: 'not_found' }, { status: 404 });
+
+  const body = await request.json().catch(() => null) as { order?: unknown } | null;
+  const sessions = items(event.lect, 'session');
+  if (!body || !Array.isArray(body.order) || body.order.length !== sessions.length) {
+    return Response.json({ success: false, error: 'invalid_request' }, { status: 400 });
+  }
+
+  // Map each original index → its new position; reject anything but a full permutation.
+  const weightByIndex = new Array<number>(sessions.length).fill(-1);
+  body.order.forEach((raw, position) => {
+    const index = Number(raw);
+    if (Number.isInteger(index) && index >= 0 && index < sessions.length) weightByIndex[index] = position;
+  });
+  if (weightByIndex.some((w) => w < 0)) {
+    return Response.json({ success: false, error: 'invalid_request' }, { status: 400 });
+  }
+
+  // Patch only `_weight` per existing row, so index-wise merge leaves the rest intact.
+  const patch = weightByIndex.map((weight) => ({ _weight: weight }));
+  await cms.update(eventId, { lect: { session: patch } });
+  return Response.json({ success: true });
+}
+
+function sessionWeight(session: Record<string, unknown>, index: number): number {
+  const w = Number(session._weight);
+  return Number.isFinite(w) ? w : index;
+}
+
+/** Lists an event's sessions in admin-defined order, with drag-to-reorder. */
+export async function eventSessions(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  const sessions = items(event.lect, 'session')
+    .map((session, index) => ({ session, index }))
+    .sort((a, b) => sessionWeight(a.session, a.index) - sessionWeight(b.session, b.index));
+  return adminView(views, `Sessions — ${event.name}`, 'sessions', {
+    eventName: event.name,
+    backHref: `${ADMIN_BASE}/events/${eventId}`,
+    editHref: `/admin/pages/${eventId}/edit`,
+    reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-sessions`,
+    // `index` stays the original array index so the reorder POST maps back correctly.
+    sessions: sessions.map(({ session, index }, position) => ({
+      index,
+      name: localized(session, 'name') || `Session ${position + 1}`,
+      start: attr(session, 'start'),
+      location: localized(session, 'location'),
+      capacity: attr(session, 'capacity'),
+    })),
+  });
+}
+
+/**
+ * Flat view of every guest across all of an event's lists, with a status
+ * filter — the cross-list roll-call the legacy `all_guests` screen provided.
+ */
+export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: number, url: URL): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+
+  const { pages: lists } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const ordered = sortByWeight(lists);
+  const guestsByList = await Promise.all(
+    ordered.map((list) => cms.list('guest', { parentId: list.id, limit: 500 }).then((res) => res.pages)),
+  );
+
+  const selectedStatus = normalizeStatus(url.searchParams.get('status'));
+  const rows: Array<Record<string, unknown>> = [];
+  ordered.forEach((list, index) => {
+    for (const guest of guestsByList[index] ?? []) {
+      if (selectedStatus && guestStatus(guest) !== selectedStatus) continue;
+      const values = guestValues(guest);
+      rows.push({
+        ...values,
+        listName: list.name,
+        editHref: `${ADMIN_BASE}/rsvp/${list.id}/guests/${guest.id}`,
+        checkedIn: items(guest.lect, 'checkin').length > 0,
+      });
+    }
+  });
+  const totalCount = guestsByList.reduce((sum, guests) => sum + guests.length, 0);
+
+  return adminView(views, `All guests — ${event.name}`, 'all-guests', {
+    eventName: event.name,
+    backHref: `${ADMIN_BASE}/events/${eventId}`,
+    exportHref: `${ADMIN_BASE}/events/${eventId}/export`,
+    listHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    statuses: GUEST_STATUSES,
+    selectedStatus: selectedStatus ?? '',
+    totalCount,
+    filteredCount: rows.length,
+    guests: rows,
+  });
+}
+
+/** Import form for adding guests across multiple lists in one upload. */
+export async function eventGuestImport(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  return adminView(views, `Import guests — ${event.name}`, 'event-import', {
+    eventName: event.name,
+    backHref: `${ADMIN_BASE}/events/${eventId}`,
+    action: `${ADMIN_BASE}/events/${eventId}/import`,
+  });
+}
+
+/**
+ * Imports guests from a CSV whose `list` (or `mail_list`) column routes each row
+ * to a named list — the flat equivalent of the legacy multi-sheet workbook.
+ * Missing lists are created under the event before their guests are added.
+ */
+export async function importEventGuests(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+
+  const form = await request.formData();
+  const file = form.get('file') as unknown;
+  if (!file || typeof (file as { text?: unknown }).text !== 'function') {
+    return redirect(`${ADMIN_BASE}/events/${eventId}/import`);
+  }
+
+  const [headers = [], ...dataRows] = parseCsv(await (file as { text(): Promise<string> }).text());
+  const columns = new Map(headers.map((header, index) => [header.trim().toLowerCase().replaceAll(' ', '_'), index]));
+  const value = (row: string[], ...names: string[]): string => {
+    for (const name of names) {
+      const index = columns.get(name);
+      if (index !== undefined) return row[index]?.trim() ?? '';
+    }
+    return '';
+  };
+
+  // Existing lists, keyed by lower-cased name, so repeated rows reuse one list.
+  const { pages: existing } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const listByName = new Map(existing.map((list) => [list.name.trim().toLowerCase(), list]));
+
+  // Group inbound rows by destination list name.
+  const grouped = new Map<string, string[][]>();
+  for (const row of dataRows) {
+    const listName = value(row, 'list', 'mail_list', 'guest_list') || 'Imported';
+    const key = listName.trim().toLowerCase();
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(row);
+  }
+
+  for (const [key, group] of grouped) {
+    let list = listByName.get(key);
+    if (!list) {
+      const listName = value(group[0], 'list', 'mail_list', 'guest_list') || 'Imported';
+      list = await cms.create({
+        page_type: 'mail_list',
+        name: listName,
+        page_id: eventId,
+        lect: { _type: 'mail_list', name: { en: listName }, _pointers: { event: String(eventId) } },
+      });
+      listByName.set(key, list);
+    }
+
+    const inputs: CmsPageInput[] = [];
+    for (const row of group) {
+      const name = value(row, 'name', 'first_name') || [value(row, 'first_name'), value(row, 'last_name')].filter(Boolean).join(' ');
+      if (!name) continue;
+      const fields = new Map<string, string>([
+        ['last_name', value(row, 'last_name')],
+        ['email', value(row, 'email')],
+        ['phone', value(row, 'phone', 'mobile')],
+        ['organization', value(row, 'organization', 'company')],
+        ['job_title', value(row, 'job_title', 'title')],
+        ['plus_guests', value(row, 'plus_guests') || '0'],
+        ['status', normalizeStatus(value(row, 'status')) ?? 'to be invited'],
+        ['prefer_language', value(row, 'prefer_language', 'language')],
+        ['cc', value(row, 'cc')],
+        ['remarks', value(row, 'remarks', 'notes')],
+      ]);
+      inputs.push(guestPageInput(name, fields, eventId, list.id));
+    }
+    for (const chunk of chunks(inputs, 200)) if (chunk.length) await cms.batchCreate(chunk);
+  }
+
+  return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
 }
 
 async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Promise<Response> {
@@ -461,6 +841,7 @@ function guestRow(guest: CmsPage, listId: number): Record<string, unknown> {
     ...values,
     id: guest.id,
     editHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}`,
+    qrHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode`,
     statusAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/status`,
     checkinAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin`,
     checkedIn: items(guest.lect, 'checkin').length > 0,

@@ -41,3 +41,43 @@
   .ev-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;min-height:18rem}
 </style>
 <div class="ev-wrap">{{ content }}</div>
+<script>
+// Generic drag-to-reorder for any <table data-reorder="URL"> with draggable rows.
+// mode "weight" posts {key:[{id,weight}]}; mode "order" posts {key:[index,...]}.
+(function () {
+  document.querySelectorAll('table[data-reorder]').forEach(function (table) {
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var dragging = null;
+    tbody.addEventListener('dragstart', function (e) {
+      dragging = e.target.closest('tr[draggable]');
+      if (dragging) dragging.style.opacity = '0.4';
+    });
+    tbody.addEventListener('dragend', function () {
+      if (dragging) { dragging.style.opacity = ''; dragging = null; }
+    });
+    tbody.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      var tr = e.target.closest('tr[draggable]');
+      if (!tr || tr === dragging) return;
+      var rect = tr.getBoundingClientRect();
+      tbody.insertBefore(dragging, (e.clientY - rect.top) > rect.height / 2 ? tr.nextSibling : tr);
+    });
+    tbody.addEventListener('drop', function (e) {
+      e.preventDefault();
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[draggable]'));
+      var key = table.getAttribute('data-reorder-key') || 'reorder';
+      var mode = table.getAttribute('data-reorder-mode') || 'weight';
+      var payload = {};
+      payload[key] = mode === 'order'
+        ? rows.map(function (tr) { return parseInt(tr.dataset.index, 10); })
+        : rows.map(function (tr, i) { return { id: parseInt(tr.dataset.id, 10), weight: i }; });
+      fetch(table.getAttribute('data-reorder'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    });
+  });
+})();
+</script>

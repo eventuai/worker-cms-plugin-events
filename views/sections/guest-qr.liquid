@@ -1,0 +1,16 @@
+<div class="ev-head">
+  <div>
+    <a class="ev-back" href="{{ listHref | escape }}">← {{ listName | escape }}</a>
+    <h1 class="ev-h1">{{ guestName | escape }}</h1>
+    {% if organization %}<p class="ev-sub">{{ organization | escape }}</p>{% endif %}
+  </div>
+  <div class="ev-actions">
+    {% if checkedIn %}<span class="ev-badge">Checked in</span>{% endif %}
+    <a class="ev-btn ev-btn-secondary" href="{{ editHref | escape }}">Edit guest</a>
+    <button class="ev-btn ev-btn-secondary" type="button" onclick="window.print()">Print</button>
+  </div>
+</div>
+<div class="ev-card ev-card-pad" style="max-width:22rem;text-align:center">
+  <div style="width:240px;height:240px;margin:0 auto">{{ qrSvg }}</div>
+  <p class="ev-sub" style="margin-top:1rem;word-break:break-all">{{ payload | escape }}</p>
+</div>

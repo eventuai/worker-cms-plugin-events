@@ -3,6 +3,9 @@
   <div class="ev-actions">
     <a class="ev-btn ev-btn-primary" href="{{ adhocCheckinHref | escape }}">Adhoc check-in</a>
     <a class="ev-btn ev-btn-secondary" href="{{ guestListsHref | escape }}">Guest lists</a>
+    <a class="ev-btn ev-btn-secondary" href="{{ allGuestsHref | escape }}">All guests</a>
+    <a class="ev-btn ev-btn-secondary" href="{{ sessionsHref | escape }}">Sessions</a>
+    <a class="ev-btn ev-btn-secondary" href="{{ importHref | escape }}">Import</a>
     <a class="ev-btn ev-btn-secondary" href="{{ exportAllHref | escape }}">Export all guests</a>
     <a class="ev-btn ev-btn-secondary" href="{{ labelsHref | escape }}">Labels</a>
     <a class="ev-btn ev-btn-secondary" href="{{ editHref | escape }}">Edit event ↗</a>
@@ -20,11 +23,11 @@
     <div><h2 class="ev-h2">Guest lists</h2><p class="ev-sub">Invitation, RSVP and check-in summary by list.</p></div>
     <a class="ev-btn ev-btn-secondary" href="{{ newGuestListHref | escape }}">New guest list</a>
   </div>
-  <table class="ev-table">
+  <table class="ev-table" data-reorder="{{ reorderAction | escape }}" data-reorder-key="reorder" data-reorder-mode="weight">
     <thead><tr><th>Guest list</th><th>Guests</th><th>Invitation</th><th>RSVP</th><th>Check-in</th><th></th></tr></thead>
     <tbody>
       {% for list in guestLists %}
-        <tr>
+        <tr draggable="true" data-id="{{ list.id }}">
           <td><a href="{{ list.href | escape }}">{{ list.name | escape }}</a></td>
           <td><strong>{{ list.summary.guest_count }}</strong> groups<br><span class="ev-sub">{{ list.summary.guest_total }} people</span></td>
           <td>On hold {{ list.summary.onhold_count }} · To invite {{ list.summary.to_be_invited_count }} · Invited {{ list.summary.invited_count }}</td>

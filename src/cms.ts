@@ -180,6 +180,15 @@ export function items(lect: Record<string, unknown>, key: string): Array<Record<
   return Array.isArray(v) ? (v as Array<Record<string, unknown>>) : [];
 }
 
+/** Reads a page's content blocks (`_blocks`) sorted by their `_weight`. */
+export function blocks(lect: Record<string, unknown>): Array<Record<string, unknown>> {
+  const v = lect._blocks;
+  if (!Array.isArray(v)) return [];
+  return [...(v as Array<Record<string, unknown>>)].sort(
+    (a, b) => (Number(a._weight) || 0) - (Number(b._weight) || 0),
+  );
+}
+
 /** Reads a pointer (e.g. the event a guest/mail_list belongs to). */
 export function pointer(lect: Record<string, unknown>, key: string): string {
   const p = lect._pointers;

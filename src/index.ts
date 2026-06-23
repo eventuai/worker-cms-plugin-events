@@ -24,7 +24,18 @@ import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
 import { handlePublicRsvp } from './public-rsvp';
-import { ensureAdhocGuestList, eventGuestLists, exportEventGuests, handleRsvpAdmin } from './rsvp';
+import {
+  ensureAdhocGuestList,
+  eventGuestImport,
+  eventGuestLists,
+  eventSessions,
+  exportEventGuests,
+  flatAllGuests,
+  handleRsvpAdmin,
+  importEventGuests,
+  reorderGuestLists,
+  reorderSessions,
+} from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
 
@@ -157,6 +168,9 @@ const MANIFEST = {
       mail_list: MAIL_LIST_BLUEPRINT,
       mail_preview_list: MAIL_PREVIEW_LIST_BLUEPRINT,
     },
+    // Read-only access to contact pages (owned by the contacts plugin) so a
+    // guest can be refreshed from its linked contact.
+    readTypes: ['contact'],
     blocks: { ...CONTENT_BLOCKS, ...EDM_BLOCKS, ...RSVP_BLOCKS },
     blockLists: {
       events: ['picture', 'paragraph', 'table', 'button', ...Object.keys(RSVP_BLOCKS)],
@@ -264,7 +278,10 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   }
 
   try {
-    if (section === 'rsvp') return handleRsvpAdmin(request, cms, env.VIEWS, segments.slice(1), url);
+    if (section === 'rsvp') {
+      const qr = { secret: env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL };
+      return handleRsvpAdmin(request, cms, env.VIEWS, segments.slice(1), url, qr);
+    }
     if (section === 'edm') return handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url);
 
     // section === 'events'
@@ -278,7 +295,15 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     }
     if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url);
     if (eventId && sub === 'export') return exportEventGuests(cms, eventId);
-    if (eventId && sub === 'all-guests') return eventGuestLists(cms, env.VIEWS, eventId);
+    if (eventId && sub === 'import') {
+      if (request.method === 'POST') return importEventGuests(request, cms, eventId);
+      return eventGuestImport(cms, env.VIEWS, eventId);
+    }
+    if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') return reorderGuestLists(request, cms, eventId);
+    if (eventId && sub === 'reorder-sessions' && request.method === 'POST') return reorderSessions(request, cms, eventId);
+    if (eventId && sub === 'sessions') return eventSessions(cms, env.VIEWS, eventId);
+    if (eventId && sub === 'lists') return eventGuestLists(cms, env.VIEWS, eventId);
+    if (eventId && sub === 'all-guests') return flatAllGuests(cms, env.VIEWS, eventId, url);
     if (eventId) return eventDashboard(cms, env.VIEWS, eventId);
     return eventsList(cms, env.VIEWS);
   } catch (error) {
@@ -353,17 +378,24 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     }),
   );
   const r = rollupGuestListSummaries(guestLists.pages);
+  // Admin-controlled display order (list weight, then name).
+  const orderedLists = [...guestLists.pages].sort((a, b) => (a.weight - b.weight) || a.name.localeCompare(b.name));
 
   return adminView(views, event.name, 'event-dashboard', {
     eventName: event.name,
     eventsHref: `${ADMIN_BASE}/events`,
     adhocCheckinHref: `${ADMIN_BASE}/events/${eventId}/adhoc-checkin`,
-    guestListsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    guestListsHref: `${ADMIN_BASE}/events/${eventId}/lists`,
+    allGuestsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    sessionsHref: `${ADMIN_BASE}/events/${eventId}/sessions`,
+    importHref: `${ADMIN_BASE}/events/${eventId}/import`,
     exportAllHref: `${ADMIN_BASE}/events/${eventId}/export`,
     labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
     editHref: `/admin/pages/${eventId}/edit`,
+    reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-guest-lists`,
     stats: statTiles(r),
-    guestLists: guestLists.pages.map((list) => ({
+    guestLists: orderedLists.map((list) => ({
+      id: list.id,
       name: list.name,
       href: `${ADMIN_BASE}/rsvp/${list.id}`,
       summary: list.guest_summary ?? emptyGuestListSummary(),
