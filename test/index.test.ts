@@ -117,7 +117,7 @@ describe('events admin', () => {
       expect(url.pathname).toBe('/__cms/pages');
       expect(url.searchParams.get('page_type')).toBe('event');
       return Response.json({
-        pages: [{ id: 12, name: 'Town & Country', lect: { start: '2026-10-12' } }],
+        pages: [{ id: 12, name: 'Town & Country', start: '2026-10-12T09:00', timezone: '+0800', lect: {} }],
         total: 1,
       });
     });
@@ -131,7 +131,7 @@ describe('events admin', () => {
     const html = await response.text();
     expect(html).toContain('Town &amp; Country');
     expect(html).toContain('/admin/plugins/events/events/12');
-    expect(html).toContain('2026-10-12');
+    expect(html).toContain('2026-10-12 09:00 +0800');
     expect(cmsFetch).toHaveBeenCalledTimes(1);
   });
 

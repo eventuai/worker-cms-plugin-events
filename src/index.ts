@@ -15,7 +15,6 @@ import {
   CmsApiError,
   CmsNotConfiguredError,
   PLUGIN_ID,
-  attr,
   computeGuestListSummary,
   emptyGuestListSummary,
   type CmsPage,
@@ -51,7 +50,7 @@ type BlueprintEntry = string | Record<string, BlueprintEntry[]>;
 
 // ── Blueprints ────────────────────────────────────────────────────────────────
 const EVENT_BLUEPRINT: BlueprintEntry[] = [
-  '@creator', '@users', '@type', '@start', '@end', '@timezone', '@label', '@rfid',
+  '@type', '@label', '@rfid',
   '@show_guest_info', '@waiting_message', '@kiosk_title', '@checkin_require_login',
   '@virtual_event_link', '@featured_image:picture', 'logo:picture', 'name:text/title',
   'location:location', 'description:textarea',
@@ -253,6 +252,15 @@ function placeholderQrSvg(views: Fetcher, data: string): Promise<string> {
 
 const ADMIN_BASE = `/admin/plugins/${PLUGIN_ID}`;
 
+/**
+ * Edit link into the CMS page editor that carries a `return_to` so the editor's
+ * back arrow / Cancel button return to this plugin dashboard instead of the CMS
+ * home (the CMS validates the path and only honours `/admin*` targets).
+ */
+function editHrefReturningTo(pageId: number | string, returnTo: string): string {
+  return `/admin/pages/${pageId}/edit?return_to=${encodeURIComponent(returnTo)}`;
+}
+
 function redirect(to: string): Response {
   return new Response(null, { status: 302, headers: { Location: to } });
 }
@@ -355,18 +363,15 @@ function rollupGuestListSummaries(lists: CmsPage[]): Rollup {
 async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
   const { pages } = await cms.list('event', { limit: 200 });
   return adminView(views, 'Events', 'events', {
-    events: pages.map((event) => {
-      const timezone = attr(event.lect, 'timezone');
-      const startDisplay = event.start
-        ? [new Date(event.start).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', ...(timezone ? { timeZone: timezone } : {}) }), timezone].filter(Boolean).join(' ')
-        : '';
-      return {
-        name: event.name,
-        start: startDisplay,
-        dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
-        editHref: `/admin/pages/${event.id}/edit`,
-      };
-    }),
+    events: pages.map((event) => ({
+      name: event.name,
+      // `start` and `timezone` are native CMS page columns (the F1 API returns
+      // them top-level, not in lect). Timezone is an offset like "+0800", so we
+      // show the raw values rather than reformatting against an IANA zone.
+      start: [(event.start ?? '').replace('T', ' '), event.timezone ?? ''].filter(Boolean).join(' '),
+      dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
+      editHref: editHrefReturningTo(event.id, `${ADMIN_BASE}/events`),
+    })),
   });
 }
 
@@ -397,7 +402,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     importHref: `${ADMIN_BASE}/events/${eventId}/import`,
     exportAllHref: `${ADMIN_BASE}/events/${eventId}/export`,
     labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
-    editHref: `/admin/pages/${eventId}/edit`,
+    editHref: editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`),
     reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-guest-lists`,
     stats: statTiles(r),
     guestLists: orderedLists.map((list) => ({

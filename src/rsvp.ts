@@ -557,7 +557,7 @@ export async function eventSessions(cms: CmsClient, views: Fetcher, eventId: num
   return adminView(views, `Sessions — ${event.name}`, 'sessions', {
     eventName: event.name,
     backHref: `${ADMIN_BASE}/events/${eventId}`,
-    editHref: `/admin/pages/${eventId}/edit`,
+    editHref: `/admin/pages/${eventId}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/events/${eventId}/sessions`)}`,
     reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-sessions`,
     // `index` stays the original array index so the reorder POST maps back correctly.
     sessions: sessions.map(({ session, index }, position) => ({

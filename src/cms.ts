@@ -34,6 +34,8 @@ export interface CmsPage {
   weight: number;
   start: string | null;
   end: string | null;
+  /** Native CMS page column (offset like "+0800" or an IANA zone), not part of lect. */
+  timezone: string | null;
   page_id: number | null;
   created_at: string;
   updated_at: string;
