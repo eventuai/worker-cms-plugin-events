@@ -355,12 +355,18 @@ function rollupGuestListSummaries(lists: CmsPage[]): Rollup {
 async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
   const { pages } = await cms.list('event', { limit: 200 });
   return adminView(views, 'Events', 'events', {
-    events: pages.map((event) => ({
-      name: event.name,
-      start: attr(event.lect, 'start'),
-      dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
-      editHref: `/admin/pages/${event.id}/edit`,
-    })),
+    events: pages.map((event) => {
+      const timezone = attr(event.lect, 'timezone');
+      const startDisplay = event.start
+        ? [new Date(event.start).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', ...(timezone ? { timeZone: timezone } : {}) }), timezone].filter(Boolean).join(' ')
+        : '';
+      return {
+        name: event.name,
+        start: startDisplay,
+        dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
+        editHref: `/admin/pages/${event.id}/edit`,
+      };
+    }),
   });
 }
 
