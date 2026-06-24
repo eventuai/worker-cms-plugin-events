@@ -1,0 +1,25 @@
+<div class="flex items-center justify-between gap-4 mb-4">
+  <div>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← EDMs</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ name | escape }}</h1>
+    {% if eventName %}<p class="mt-1 text-sm text-gray-500">{{ eventName | escape }}</p>{% endif %}
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ previewHref | escape }}" target="_blank" rel="noopener">Preview ↗</a>
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700" href="{{ editHref | escape }}">Edit content ↗</a>
+  </div>
+</div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:54rem">
+  <h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>Email content</h2>
+  <p class="mt-1 text-sm text-gray-500">Subject, sender, styling and per-language content are edited in the page editor.</p>
+  <dl class="mt-4 grid grid-cols-1 sm:grid-cols-[8rem_1fr] gap-y-2 gap-x-4 text-sm">
+    <dt class="text-gray-500">Subject</dt><dd class="text-gray-900">{% if subject %}{{ subject | escape }}{% else %}<span class="text-gray-400">— not set —</span>{% endif %}</dd>
+  </dl>
+</div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-top:1rem;max-width:54rem">
+  <h2 class="text-lg font-bold text-gray-900">Send a test</h2>
+  <form method="post" action="{{ testAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
+    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Send test email</button>
+  </form>
+</div>

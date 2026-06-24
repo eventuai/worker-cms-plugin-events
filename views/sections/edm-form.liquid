@@ -1,68 +1,9 @@
-<div class="flex items-center justify-between gap-4 mb-4"><div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← EDMs</a><h1 class="text-2xl font-bold text-gray-900">{{ title | escape }}</h1></div>{% if previewHref %}<a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ previewHref | escape }}" target="_blank">Preview ↗</a>{% endif %}</div>
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:54rem">
+<div class="flex items-center justify-between gap-4 mb-4"><div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← EDMs</a><h1 class="text-2xl font-bold text-gray-900">New EDM</h1></div></div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:40rem">
+  <p class="text-sm text-gray-500 mb-4">Pick the event and a name. You'll then edit the email's settings and content in the page editor.</p>
   <form method="post" action="{{ action | escape }}">
-    <div class="flex flex-wrap gap-3">
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Event</span><select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="event_id" required>{% for event in events %}<option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name | escape }}</option>{% endfor %}</select></label>
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">EDM name</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" value="{{ edm.name | escape }}" placeholder="Invitation email"></label>
-    </div>
-
-    <h3 class="text-sm font-semibold text-gray-900 mb-2 mt-2">Delivery</h3>
-    <div class="flex flex-wrap gap-3">
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Sender address</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="sender" type="email" value="{{ edm.sender | escape }}" placeholder="events@example.com" required></label>
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Reply-to</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="reply_to" type="email" value="{{ edm.reply_to | escape }}" placeholder="rsvp@example.com"></label>
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">BCC</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="bcc" value="{{ edm.bcc | escape }}" placeholder="archive@example.com"></label>
-    </div>
-
-    <h3 class="text-sm font-semibold text-gray-900 mb-2 mt-2">Content</h3>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Subject</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="subject" required value="{{ edm.subject | escape }}"></label>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Heading</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="heading" value="{{ edm.heading | escape }}"></label>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Body HTML</span><textarea class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="body" rows="14" placeholder="&lt;p&gt;You're invited...&lt;/p&gt;">{{ edm.body | escape }}</textarea></label>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">RSVP button label</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="rsvp_button" value="{{ edm.rsvp_button | escape }}"></label>
-    <div class="flex flex-wrap gap-3">
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">RSVP form button text</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="rsvp_form_button" value="{{ edm.rsvp_form_button | escape }}" placeholder="Confirm attendance"></label>
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">RSVP form decline button text</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="rsvp_form_decline_button" value="{{ edm.rsvp_form_decline_button | escape }}" placeholder="Unable to attend"></label>
-    </div>
-
-    <h3 class="text-sm font-semibold text-gray-900 mb-2 mt-2">Styling</h3>
-    <div class="flex flex-wrap gap-3 mb-3">
-      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Text colour</span><input class="block w-full h-9 p-1 border border-gray-300 rounded-lg cursor-pointer" name="text_color" type="color" value="{{ edm.text_color | escape }}"></label>
-      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Button colour</span><input class="block w-full h-9 p-1 border border-gray-300 rounded-lg cursor-pointer" name="button_color" type="color" value="{{ edm.button_color | escape }}"></label>
-      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Button text colour</span><input class="block w-full h-9 p-1 border border-gray-300 rounded-lg cursor-pointer" name="button_text_color" type="color" value="{{ edm.button_text_color | escape }}"></label>
-      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Line height</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="line_height" value="{{ edm.line_height | escape }}" placeholder="1.5"></label>
-    </div>
-
-    <h3 class="text-sm font-semibold text-gray-900 mb-2 mt-2">RSVP response</h3>
-    <div class="mb-3">
-      <span class="block text-sm text-gray-700 mb-1">CC emails to guest's assistants and spouse</span>
-      <div class="flex items-center gap-4">
-        <label class="flex items-center gap-2 cursor-pointer"><input class="h-4 w-4" type="radio" name="cc_enable" value="yes"{% if edm.cc_enable == 'yes' %} checked{% endif %}><span class="text-sm text-gray-700">Yes</span></label>
-        <label class="flex items-center gap-2 cursor-pointer"><input class="h-4 w-4" type="radio" name="cc_enable" value="no"{% unless edm.cc_enable == 'yes' %} checked{% endunless %}><span class="text-sm text-gray-700">No</span></label>
-      </div>
-    </div>
-    <div class="mb-3">
-      <span class="block text-sm text-gray-700 mb-1">Enable quick confirm RSVP</span>
-      <div class="flex items-center gap-4">
-        <label class="flex items-center gap-2 cursor-pointer"><input class="h-4 w-4" type="radio" name="quick_confirm" value="yes"{% if edm.quick_confirm == 'yes' %} checked{% endif %}><span class="text-sm text-gray-700">Yes</span></label>
-        <label class="flex items-center gap-2 cursor-pointer"><input class="h-4 w-4" type="radio" name="quick_confirm" value="no"{% unless edm.quick_confirm == 'yes' %} checked{% endunless %}><span class="text-sm text-gray-700">No</span></label>
-      </div>
-    </div>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Thank you picture (URL)</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="thankyou_picture" type="url" value="{{ edm.thankyou_picture | escape }}" placeholder="https://example.com/thankyou.jpg"></label>
-    <div class="flex flex-wrap gap-3">
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Thank you heading</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="thankyou_heading" value="{{ edm.thankyou_heading | escape }}"></label>
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Decline heading</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="decline_heading" value="{{ edm.decline_heading | escape }}"></label>
-    </div>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Thank you body HTML</span><textarea class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="thankyou_body" rows="6" placeholder="&lt;p&gt;Thank you for confirming...&lt;/p&gt;">{{ edm.thankyou_body | escape }}</textarea></label>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Decline body HTML</span><textarea class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="decline_body" rows="6" placeholder="&lt;p&gt;We're sorry you're unable to attend...&lt;/p&gt;">{{ edm.decline_body | escape }}</textarea></label>
-
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Save EDM</button>
+    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Event</span><select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="event_id" required>{% for event in events %}<option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name | escape }}</option>{% endfor %}</select></label>
+    <label class="block mb-4"><span class="block text-sm text-gray-700 mb-1">EDM name</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" required placeholder="Invitation email"></label>
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Create &amp; edit →</button>
   </form>
 </div>
-{% unless isNew %}
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-top:1rem;max-width:54rem">
-    <h2 class="text-lg font-bold text-gray-900">Send a test</h2>
-    <form method="post" action="{{ testAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
-      <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">
-      <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Send test email</button>
-    </form>
-  </div>
-{% endunless %}

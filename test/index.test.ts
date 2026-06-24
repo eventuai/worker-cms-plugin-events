@@ -447,7 +447,7 @@ describe('events admin', () => {
 });
 
 describe('EDM and labels', () => {
-  it('creates an EDM under its event with localized email content', async () => {
+  it('creates a minimal EDM under its event, then hands off to the page editor', async () => {
     let createRequest: RequestInit | undefined;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -465,17 +465,16 @@ describe('EDM and labels', () => {
     const response = await plugin.fetch(request('/__plugin/admin/edm/new', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
-      body: new URLSearchParams({
-        event_id: '7', name: 'Launch invitation', sender: 'events@example.com', subject: 'You are invited',
-        heading: 'Join us', body: '<p>Welcome</p>', rsvp_button: 'RSVP now',
-      }),
+      body: new URLSearchParams({ event_id: '7', name: 'Launch invitation' }),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/edm/12');
+    // Hands off to the native CMS page editor, returning to the EDM landing.
+    expect(response.headers.get('location'))
+      .toBe('/admin/pages/12/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm%2F12');
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
       page_type: 'edm', page_id: 7, name: 'Launch invitation',
-      lect: { sender: 'events@example.com', subject: { en: 'You are invited' }, _pointers: { event: '7' } },
+      lect: { _type: 'edm', name: { en: 'Launch invitation' }, subject: { en: 'Launch invitation' }, _pointers: { event: '7' } },
     });
   });
 

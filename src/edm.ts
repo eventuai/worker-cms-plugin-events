@@ -1,4 +1,4 @@
-import { CmsClient, attr, blocks, items, localized, pointer, type CmsPage } from './cms';
+import { CmsApiError, CmsClient, attr, blocks, items, localized, pointer, type CmsPage } from './cms';
 import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { renderLiquid } from './templates/liquid';
@@ -57,7 +57,7 @@ export async function handleEdmAdmin(
   if (!segments.length) return edmIndex(cms, views);
   if (segments[0] === 'new') {
     if (request.method === 'POST') return createEdm(request, cms, views);
-    return edmForm(cms, views, url);
+    return edmNewForm(cms, views, url);
   }
 
   const edmId = pageId(segments[0]);
@@ -67,8 +67,7 @@ export async function handleEdmAdmin(
   if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId);
   if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, views, edmId);
   if (segments[1] === 'send-list' && request.method === 'POST') return sendGuestList(request, cms, views, env, edmId);
-  if (request.method === 'POST') return updateEdm(request, cms, views, edmId);
-  return edmForm(cms, views, url, edmId);
+  return edmDashboard(cms, views, edmId);
 }
 
 export async function deliverQueuedEmail(env: EdmEnv, delivery: EmailDelivery): Promise<void> {
@@ -120,36 +119,69 @@ async function edmIndex(cms: CmsClient, views: Fetcher): Promise<Response> {
   });
 }
 
-async function edmForm(cms: CmsClient, views: Fetcher, url: URL, edmId?: number): Promise<Response> {
-  const { pages: events } = await cms.list('event', { limit: 500 });
-  const edm = edmId ? await cms.get(edmId) : undefined;
-  if (edm && edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
-  const selectedEventId = edm
-    ? edm.page_id ?? pageId(pointer(edm.lect, 'event'))
-    : pageId(url.searchParams.get('event_id'));
-  const values = edm ? edmValues(edm) : emptyEdmValues();
+/**
+ * EDM landing page. Content + settings are edited in the native CMS page editor
+ * (which renders the `edm` blueprint with Settings grouping and per-language
+ * fields); this page only carries the EDM-specific actions — edit handoff,
+ * preview and test send — that the generic page editor doesn't provide.
+ */
+async function edmDashboard(cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
+  const edm = await cms.get(edmId);
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
 
-  return adminView(views, edm ? `Edit ${edm.name}` : 'New EDM', 'edm-form', {
-    title: edm ? 'Edit EDM' : 'New EDM',
-    action: edm ? `${ADMIN_BASE}/edm/${edm.id}` : `${ADMIN_BASE}/edm/new`,
+  const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
+  let eventName = '';
+  if (eventId) {
+    try {
+      const event = await cms.get(eventId);
+      if (event.page_type === 'event') eventName = event.name;
+    } catch (error) {
+      if (!(error instanceof CmsApiError && error.status === 404)) throw error;
+    }
+  }
+
+  const selfHref = `${ADMIN_BASE}/edm/${edm.id}`;
+  return adminView(views, `Edit ${edm.name}`, 'edm-dashboard', {
+    name: edm.name,
+    subject: localized(edm.lect, 'subject'),
+    eventName,
     backHref: `${ADMIN_BASE}/edm`,
-    isNew: !edm,
-    edm: values,
-    events: events.map((event) => ({ id: event.id, name: event.name, selected: event.id === selectedEventId })),
-    previewHref: edm ? `${ADMIN_BASE}/edm/${edm.id}/preview` : '',
-    testAction: edm ? `${ADMIN_BASE}/edm/${edm.id}/send-test` : '',
+    editHref: `/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(selfHref)}`,
+    previewHref: `${selfHref}/preview`,
+    testAction: `${selfHref}/send-test`,
   });
 }
 
+/** Minimal "New EDM" step: pick the event + name, then hand off to the editor. */
+async function edmNewForm(cms: CmsClient, views: Fetcher, url: URL): Promise<Response> {
+  const { pages: events } = await cms.list('event', { limit: 500 });
+  const selectedEventId = pageId(url.searchParams.get('event_id'));
+  return adminView(views, 'New EDM', 'edm-form', {
+    action: `${ADMIN_BASE}/edm/new`,
+    backHref: `${ADMIN_BASE}/edm`,
+    events: events.map((event) => ({ id: event.id, name: event.name, selected: event.id === selectedEventId })),
+  });
+}
+
+/**
+ * Creates a minimal EDM page under its event (the parent the native new-page
+ * editor can't set), then redirects into that editor so the rest of the
+ * blueprint — settings and per-language content — is filled there.
+ */
 async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Promise<Response> {
   const form = await request.formData();
   const eventId = pageId(form.get('event_id'));
-  const input = edmInput(form, eventId);
-  if (!eventId || !input.name) return redirect(`${ADMIN_BASE}/edm/new`);
+  const name = formText(form, 'name');
+  if (!eventId || !name) return redirect(`${ADMIN_BASE}/edm/new`);
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return notFoundView(views, 'Event not found.');
-  const edm = await cms.create({ page_type: 'edm', page_id: eventId, name: input.name, lect: input.lect });
-  return redirect(`${ADMIN_BASE}/edm/${edm.id}`);
+  const edm = await cms.create({
+    page_type: 'edm',
+    page_id: eventId,
+    name,
+    lect: { _type: 'edm', name: { en: name }, subject: { en: name }, _pointers: { event: String(eventId) } },
+  });
+  return redirect(`/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/edm/${edm.id}`)}`);
 }
 
 /** Clones an EDM (content + event pointer) under the same event, then opens the copy. */
@@ -163,17 +195,6 @@ async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number): Prom
     lect: { ...edm.lect },
   });
   return redirect(`${ADMIN_BASE}/edm/${copy.id}`);
-}
-
-async function updateEdm(request: Request, cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
-  const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
-  const form = await request.formData();
-  const eventId = pageId(form.get('event_id')) ?? edm.page_id ?? pageId(pointer(edm.lect, 'event'));
-  const input = edmInput(form, eventId, edm);
-  if (!eventId || !input.name) return redirect(`${ADMIN_BASE}/edm/${edmId}`);
-  await cms.update(edmId, { name: input.name, page_id: eventId, lect: input.lect });
-  return redirect(`${ADMIN_BASE}/edm/${edmId}`);
 }
 
 async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
@@ -449,51 +470,6 @@ function edmValues(edm: CmsPage): Record<string, string> {
     button_color: attr(edm.lect, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
     button_text_color: attr(edm.lect, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
     line_height: attr(edm.lect, 'line_height') || EDM_STYLE_DEFAULTS.line_height,
-  };
-}
-
-function emptyEdmValues(): Record<string, string> {
-  return {
-    name: '', sender: '', reply_to: '', bcc: '',
-    subject: '', heading: '', body: '', rsvp_button: 'RSVP',
-    rsvp_form_button: '', rsvp_form_decline_button: '',
-    cc_enable: 'no', quick_confirm: 'no',
-    thankyou_picture: '', thankyou_heading: '', thankyou_body: '',
-    decline_heading: '', decline_body: '',
-    ...EDM_STYLE_DEFAULTS,
-  };
-}
-
-function edmInput(form: FormData, eventId: number | null, existing?: CmsPage): { name: string; lect: Record<string, unknown> } {
-  const subject = formText(form, 'subject');
-  const name = formText(form, 'name') || subject;
-  return {
-    name,
-    lect: {
-      ...(existing?.lect ?? {}),
-      _type: 'edm',
-      _pointers: { ...pointers(existing), ...(eventId ? { event: String(eventId) } : {}) },
-      sender: formText(form, 'sender'),
-      reply_to: formText(form, 'reply_to'),
-      bcc: formText(form, 'bcc'),
-      subject: { en: subject },
-      heading: { en: formText(form, 'heading') },
-      body: { en: formText(form, 'body') },
-      rsvp_button: { en: formText(form, 'rsvp_button') || 'RSVP' },
-      rsvp_form_button: { en: formText(form, 'rsvp_form_button') },
-      rsvp_form_decline_button: { en: formText(form, 'rsvp_form_decline_button') },
-      cc_enable: formText(form, 'cc_enable') || 'no',
-      quick_confirm: formText(form, 'quick_confirm') || 'no',
-      thankyou_picture: formText(form, 'thankyou_picture'),
-      thankyou_heading: { en: formText(form, 'thankyou_heading') },
-      thankyou_body: { en: formText(form, 'thankyou_body') },
-      decline_heading: { en: formText(form, 'decline_heading') },
-      decline_body: { en: formText(form, 'decline_body') },
-      text_color: formText(form, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
-      button_color: formText(form, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
-      button_text_color: formText(form, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
-      line_height: formText(form, 'line_height') || EDM_STYLE_DEFAULTS.line_height,
-    },
   };
 }
 

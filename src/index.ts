@@ -199,6 +199,14 @@ export default {
       return Response.json(MANIFEST);
     }
 
+    // Plugin-owned view templates, served to the CMS's composite view resolver
+    // (cms/src/plugins/views.ts) so plugin field/block renderers — e.g. the
+    // `richtext/md` pagefield — resolve inside the native CMS page editor.
+    if (path.startsWith('/__plugin/views/')) {
+      const assetPath = path.slice('/__plugin/views'.length) || '/';
+      return env.VIEWS.fetch(new URL(assetPath, 'https://views.local'));
+    }
+
     if (path.startsWith('/__plugin/hooks/')) {
       const event = path.split('/').pop();
       const payload = await request.json().catch(() => ({}));
