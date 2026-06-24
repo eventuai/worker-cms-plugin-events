@@ -4,12 +4,29 @@
     <div class="flex flex-wrap gap-3">
       <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Event</span><select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="event_id" required>{% for event in events %}<option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name | escape }}</option>{% endfor %}</select></label>
       <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">EDM name</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" value="{{ edm.name | escape }}" placeholder="Invitation email"></label>
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Sender address</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="sender" type="email" value="{{ edm.sender | escape }}" placeholder="events@example.com"></label>
-      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Subject</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="subject" required value="{{ edm.subject | escape }}"></label>
     </div>
+
+    <h3 class="text-sm font-semibold text-gray-900 mb-2 mt-2">Delivery</h3>
+    <div class="flex flex-wrap gap-3">
+      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Sender address</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="sender" type="email" value="{{ edm.sender | escape }}" placeholder="events@example.com" required></label>
+      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Reply-to</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="reply_to" type="email" value="{{ edm.reply_to | escape }}" placeholder="rsvp@example.com"></label>
+      <label class="block mb-3 flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">BCC</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="bcc" value="{{ edm.bcc | escape }}" placeholder="archive@example.com"></label>
+    </div>
+
+    <h3 class="text-sm font-semibold text-gray-900 mb-2 mt-2">Content</h3>
+    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Subject</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="subject" required value="{{ edm.subject | escape }}"></label>
     <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Heading</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="heading" value="{{ edm.heading | escape }}"></label>
     <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Body HTML</span><textarea class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="body" rows="14" placeholder="&lt;p&gt;You're invited...&lt;/p&gt;">{{ edm.body | escape }}</textarea></label>
     <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">RSVP button label</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="rsvp_button" value="{{ edm.rsvp_button | escape }}"></label>
+
+    <h3 class="text-sm font-semibold text-gray-900 mb-2 mt-2">Styling</h3>
+    <div class="flex flex-wrap gap-3 mb-3">
+      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Text colour</span><input class="block w-full h-9 p-1 border border-gray-300 rounded-lg cursor-pointer" name="text_color" type="color" value="{{ edm.text_color | escape }}"></label>
+      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Button colour</span><input class="block w-full h-9 p-1 border border-gray-300 rounded-lg cursor-pointer" name="button_color" type="color" value="{{ edm.button_color | escape }}"></label>
+      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Button text colour</span><input class="block w-full h-9 p-1 border border-gray-300 rounded-lg cursor-pointer" name="button_text_color" type="color" value="{{ edm.button_text_color | escape }}"></label>
+      <label class="block flex-1 min-w-[10rem]"><span class="block text-sm text-gray-700 mb-1">Line height</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="line_height" value="{{ edm.line_height | escape }}" placeholder="1.5"></label>
+    </div>
+
     <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Save EDM</button>
   </form>
 </div>

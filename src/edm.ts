@@ -417,19 +417,37 @@ async function guestRsvpUrl(env: EdmEnv, eventId: number, listId: number, guestI
   return `${env.PUBLIC_BASE_URL.replace(/\/+$/, '')}/rsvp/${eventId}/${listId}/${guestId}/${signature}`;
 }
 
+/** EDM styling/line-height defaults — kept in sync with the MJML layout's own
+ *  `| default:` fallbacks so the editor shows the colour that will actually render. */
+const EDM_STYLE_DEFAULTS = {
+  text_color: '#555555',
+  button_color: '#333333',
+  button_text_color: '#FFFFFF',
+  line_height: '1.5',
+} as const;
+
 function edmValues(edm: CmsPage): Record<string, string> {
   return {
     name: edm.name,
     sender: attr(edm.lect, 'sender'),
+    reply_to: attr(edm.lect, 'reply_to'),
+    bcc: attr(edm.lect, 'bcc'),
     subject: localized(edm.lect, 'subject') || edm.name,
     heading: localized(edm.lect, 'heading'),
     body: localized(edm.lect, 'body'),
     rsvp_button: localized(edm.lect, 'rsvp_button') || 'RSVP',
+    text_color: attr(edm.lect, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
+    button_color: attr(edm.lect, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
+    button_text_color: attr(edm.lect, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
+    line_height: attr(edm.lect, 'line_height') || EDM_STYLE_DEFAULTS.line_height,
   };
 }
 
 function emptyEdmValues(): Record<string, string> {
-  return { name: '', sender: '', subject: '', heading: '', body: '', rsvp_button: 'RSVP' };
+  return {
+    name: '', sender: '', reply_to: '', bcc: '', subject: '', heading: '', body: '', rsvp_button: 'RSVP',
+    ...EDM_STYLE_DEFAULTS,
+  };
 }
 
 function edmInput(form: FormData, eventId: number | null, existing?: CmsPage): { name: string; lect: Record<string, unknown> } {
@@ -442,10 +460,16 @@ function edmInput(form: FormData, eventId: number | null, existing?: CmsPage): {
       _type: 'edm',
       _pointers: { ...pointers(existing), ...(eventId ? { event: String(eventId) } : {}) },
       sender: formText(form, 'sender'),
+      reply_to: formText(form, 'reply_to'),
+      bcc: formText(form, 'bcc'),
       subject: { en: subject },
       heading: { en: formText(form, 'heading') },
       body: { en: formText(form, 'body') },
       rsvp_button: { en: formText(form, 'rsvp_button') || 'RSVP' },
+      text_color: formText(form, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
+      button_color: formText(form, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
+      button_text_color: formText(form, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
+      line_height: formText(form, 'line_height') || EDM_STYLE_DEFAULTS.line_height,
     },
   };
 }
