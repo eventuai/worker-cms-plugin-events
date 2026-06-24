@@ -90,12 +90,12 @@ const EDM_BLUEPRINT: BlueprintEntry[] = [
   'subject', 'heading', 'body:richtext/md', 'landing_subject', 'date_text', 'time',
   'address_1', 'address_2', 'address_3',
   'thankyou_heading:text', 'thankyou_body:richtext/md', '@thankyou_picture:picture',
-  '@quick_confirm', '@cc_enable', 'rsvp_button',
+  '@quick_confirm:switch', '@cc_enable:switch', 'rsvp_button',
 ];
 
 const MAIL_LIST_BLUEPRINT: BlueprintEntry[] = [
   '*event', '*edm', '*mail_preview_list', '@blast_datetime', '@allow_checkin',
-  '@show_in_checkin_lite', '@checkin_lite_passcode',
+  '@show_in_checkin_lite:switch', '@checkin_lite_passcode',
 ];
 
 const MAIL_PREVIEW_LIST_BLUEPRINT: BlueprintEntry[] = [

@@ -12,6 +12,10 @@ export interface OutboundEmail {
   subject: string;
   html: string;
   text: string;
+  /** Optional Reply-To address (the EDM's `reply_to`). Omitted when unset. */
+  replyTo?: string;
+  /** Optional Bcc recipients (the EDM's `bcc`, parsed into a list). Omitted when empty. */
+  bcc?: string[];
 }
 
 export interface EmailDelivery extends OutboundEmail {
@@ -238,6 +242,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   });
   const values = edmValues(edm);
   const text = plainText(values.heading, values.body);
+  const headers = deliveryHeaders(values);
 
   const deliveries: EmailDelivery[] = [];
   for (const guest of guests) {
@@ -246,7 +251,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
     const html = rsvpEnabled
       ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, await guestRsvpUrl(env, eventId!, listId, guest.id))
       : htmlTemplate;
-    deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id });
+    deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id, ...headers });
   }
   for (const chunk of chunks(deliveries, 100)) await env.MAIL_QUEUE.sendBatch(chunk.map((body) => ({ body })));
   return deliveries.length;
@@ -266,6 +271,7 @@ async function emailFor(
     subject: values.subject,
     html: await renderEmail(views, edm, env, options),
     text: plainText(values.heading, values.body),
+    ...deliveryHeaders(values),
   };
 }
 
@@ -436,6 +442,15 @@ function edmValues(edm: CmsPage): Record<string, string> {
     heading: localized(edm.lect, 'heading'),
     body: localized(edm.lect, 'body'),
     rsvp_button: localized(edm.lect, 'rsvp_button') || 'RSVP',
+    rsvp_form_button: localized(edm.lect, 'rsvp_form_button'),
+    rsvp_form_decline_button: localized(edm.lect, 'rsvp_form_decline_button'),
+    cc_enable: attr(edm.lect, 'cc_enable'),
+    quick_confirm: attr(edm.lect, 'quick_confirm'),
+    thankyou_picture: attr(edm.lect, 'thankyou_picture'),
+    thankyou_heading: localized(edm.lect, 'thankyou_heading'),
+    thankyou_body: localized(edm.lect, 'thankyou_body'),
+    decline_heading: localized(edm.lect, 'decline_heading'),
+    decline_body: localized(edm.lect, 'decline_body'),
     text_color: attr(edm.lect, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
     button_color: attr(edm.lect, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
     button_text_color: attr(edm.lect, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
@@ -445,7 +460,12 @@ function edmValues(edm: CmsPage): Record<string, string> {
 
 function emptyEdmValues(): Record<string, string> {
   return {
-    name: '', sender: '', reply_to: '', bcc: '', subject: '', heading: '', body: '', rsvp_button: 'RSVP',
+    name: '', sender: '', reply_to: '', bcc: '',
+    subject: '', heading: '', body: '', rsvp_button: 'RSVP',
+    rsvp_form_button: '', rsvp_form_decline_button: '',
+    cc_enable: 'no', quick_confirm: 'no',
+    thankyou_picture: '', thankyou_heading: '', thankyou_body: '',
+    decline_heading: '', decline_body: '',
     ...EDM_STYLE_DEFAULTS,
   };
 }
@@ -466,6 +486,15 @@ function edmInput(form: FormData, eventId: number | null, existing?: CmsPage): {
       heading: { en: formText(form, 'heading') },
       body: { en: formText(form, 'body') },
       rsvp_button: { en: formText(form, 'rsvp_button') || 'RSVP' },
+      rsvp_form_button: { en: formText(form, 'rsvp_form_button') },
+      rsvp_form_decline_button: { en: formText(form, 'rsvp_form_decline_button') },
+      cc_enable: formText(form, 'cc_enable') || 'no',
+      quick_confirm: formText(form, 'quick_confirm') || 'no',
+      thankyou_picture: formText(form, 'thankyou_picture'),
+      thankyou_heading: { en: formText(form, 'thankyou_heading') },
+      thankyou_body: { en: formText(form, 'thankyou_body') },
+      decline_heading: { en: formText(form, 'decline_heading') },
+      decline_body: { en: formText(form, 'decline_body') },
       text_color: formText(form, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
       button_color: formText(form, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
       button_text_color: formText(form, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
@@ -491,6 +520,24 @@ function formText(form: FormData, key: string): string {
 
 function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+/** Splits the EDM's free-text `bcc` field (comma/semicolon separated) into valid addresses. */
+function bccList(value: string): string[] {
+  return value.split(/[,;]/).map((address) => address.trim()).filter(isEmail);
+}
+
+/**
+ * Builds the optional Reply-To / Bcc fields the Cloudflare Email binding accepts,
+ * omitting each when unset so a blank EDM field doesn't send an empty header.
+ */
+function deliveryHeaders(values: Record<string, string>): { replyTo?: string; bcc?: string[] } {
+  const headers: { replyTo?: string; bcc?: string[] } = {};
+  const replyTo = (values.reply_to ?? '').trim();
+  if (isEmail(replyTo)) headers.replyTo = replyTo;
+  const bcc = bccList(values.bcc ?? '');
+  if (bcc.length) headers.bcc = bcc;
+  return headers;
 }
 
 function plainText(heading: string, body: string): string {

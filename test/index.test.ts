@@ -11,6 +11,8 @@ interface PluginEnv {
   MJML_SECRET_KEY?: string;
   MJML_API_URL?: string;
   MAIL_TRACKING?: KVNamespace;
+  EMAIL?: { send(message: Record<string, unknown>): Promise<unknown> };
+  EMAIL_FROM?: string;
   VIEWS: Fetcher;
 }
 
@@ -584,6 +586,37 @@ describe('EDM and labels', () => {
     expect(mjmlAuth).toBe(`Basic ${btoa('app-1:secret-2')}`);
     expect(JSON.parse(mjmlBody).mjml).toContain('<mjml>');
     expect(JSON.parse(mjmlBody).mjml).toContain('Join us');
+  });
+
+  it('sends a test email with the EDM reply-to and bcc applied', async () => {
+    let sent: Record<string, unknown> | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: {
+          id: 12, page_type: 'edm', name: 'Invite', page_id: 7,
+          lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' }, sender: 'events@example.com', reply_to: 'rsvp@example.com', bcc: 'archive@example.com, log@example.com' },
+        } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const EMAIL = { send: vi.fn(async (message: Record<string, unknown>) => { sent = message; }) };
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/send-test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ recipient: 'guest@example.com' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
+
+    expect(response.status).toBe(302);
+    expect(EMAIL.send).toHaveBeenCalledTimes(1);
+    expect(sent).toMatchObject({
+      from: 'events@example.com',
+      to: 'guest@example.com',
+      replyTo: 'rsvp@example.com',
+      bcc: ['archive@example.com', 'log@example.com'],
+    });
   });
 
   it('caches MJML API output in KV and reuses it on the next render', async () => {
