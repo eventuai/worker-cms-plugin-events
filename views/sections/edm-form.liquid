@@ -59,18 +59,6 @@
 </div>
 {% unless isNew %}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-top:1rem;max-width:54rem">
-    <h2 class="text-lg font-bold text-gray-900">Guest-list delivery</h2>
-    <p class="mt-1 text-sm text-gray-500">Assign this EDM to a guest list, then queue delivery. Queueing is required for bulk sends.</p>
-    <form method="post" action="{{ listAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
-      <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="list_id"><option value="">Select a guest list</option>{% for list in guestLists %}<option value="{{ list.id }}"{% if list.selected %} selected{% endif %}>{{ list.name | escape }}</option>{% endfor %}</select>
-      <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Assign list</button>
-    </form>
-    <form method="post" action="{{ sendListAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:.75rem">
-      <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="list_id" required><option value="">Select an assigned guest list</option>{% for list in guestLists %}{% if list.selected %}<option value="{{ list.id }}">{{ list.name | escape }}</option>{% endif %}{% endfor %}</select>
-      <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Queue guest-list delivery</button>
-    </form>
-  </div>
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-top:1rem;max-width:54rem">
     <h2 class="text-lg font-bold text-gray-900">Send a test</h2>
     <form method="post" action="{{ testAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
       <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">

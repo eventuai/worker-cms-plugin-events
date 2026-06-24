@@ -2,7 +2,7 @@ import { CmsClient, attr, blocks, items, localized, pointer, type CmsPage } from
 import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { renderLiquid } from './templates/liquid';
-import { adminView } from './templates/views';
+import { adminView, notFoundView } from './templates/views';
 
 const ADMIN_BASE = '/admin/plugins/events';
 
@@ -56,18 +56,18 @@ export async function handleEdmAdmin(
 ): Promise<Response> {
   if (!segments.length) return edmIndex(cms, views);
   if (segments[0] === 'new') {
-    if (request.method === 'POST') return createEdm(request, cms);
+    if (request.method === 'POST') return createEdm(request, cms, views);
     return edmForm(cms, views, url);
   }
 
   const edmId = pageId(segments[0]);
-  if (!edmId) return new Response('not found', { status: 404 });
+  if (!edmId) return notFoundView(views, 'EDM not found.');
   if (segments[1] === 'preview') return edmPreview(cms, views, env, edmId);
-  if (segments[1] === 'duplicate' && request.method === 'POST') return duplicateEdm(cms, edmId);
+  if (segments[1] === 'duplicate' && request.method === 'POST') return duplicateEdm(cms, views, edmId);
   if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId);
-  if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, edmId);
+  if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, views, edmId);
   if (segments[1] === 'send-list' && request.method === 'POST') return sendGuestList(request, cms, views, env, edmId);
-  if (request.method === 'POST') return updateEdm(request, cms, edmId);
+  if (request.method === 'POST') return updateEdm(request, cms, views, edmId);
   return edmForm(cms, views, url, edmId);
 }
 
@@ -123,13 +123,10 @@ async function edmIndex(cms: CmsClient, views: Fetcher): Promise<Response> {
 async function edmForm(cms: CmsClient, views: Fetcher, url: URL, edmId?: number): Promise<Response> {
   const { pages: events } = await cms.list('event', { limit: 500 });
   const edm = edmId ? await cms.get(edmId) : undefined;
-  if (edm && edm.page_type !== 'edm') return new Response('not found', { status: 404 });
+  if (edm && edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   const selectedEventId = edm
     ? edm.page_id ?? pageId(pointer(edm.lect, 'event'))
     : pageId(url.searchParams.get('event_id'));
-  const guestLists = selectedEventId
-    ? (await cms.list('mail_list', { parentId: selectedEventId, limit: 500 })).pages
-    : [];
   const values = edm ? edmValues(edm) : emptyEdmValues();
 
   return adminView(views, edm ? `Edit ${edm.name}` : 'New EDM', 'edm-form', {
@@ -141,27 +138,24 @@ async function edmForm(cms: CmsClient, views: Fetcher, url: URL, edmId?: number)
     events: events.map((event) => ({ id: event.id, name: event.name, selected: event.id === selectedEventId })),
     previewHref: edm ? `${ADMIN_BASE}/edm/${edm.id}/preview` : '',
     testAction: edm ? `${ADMIN_BASE}/edm/${edm.id}/send-test` : '',
-    listAction: edm ? `${ADMIN_BASE}/edm/${edm.id}/assign-list` : '',
-    sendListAction: edm ? `${ADMIN_BASE}/edm/${edm.id}/send-list` : '',
-    guestLists: guestLists.map((list) => ({ id: list.id, name: list.name, selected: pointer(list.lect, 'edm') === String(edm?.id ?? '') })),
   });
 }
 
-async function createEdm(request: Request, cms: CmsClient): Promise<Response> {
+async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Promise<Response> {
   const form = await request.formData();
   const eventId = pageId(form.get('event_id'));
   const input = edmInput(form, eventId);
   if (!eventId || !input.name) return redirect(`${ADMIN_BASE}/edm/new`);
   const event = await cms.get(eventId);
-  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  if (event.page_type !== 'event') return notFoundView(views, 'Event not found.');
   const edm = await cms.create({ page_type: 'edm', page_id: eventId, name: input.name, lect: input.lect });
   return redirect(`${ADMIN_BASE}/edm/${edm.id}`);
 }
 
 /** Clones an EDM (content + event pointer) under the same event, then opens the copy. */
-async function duplicateEdm(cms: CmsClient, edmId: number): Promise<Response> {
+async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   const copy = await cms.create({
     page_type: 'edm',
     page_id: edm.page_id,
@@ -171,9 +165,9 @@ async function duplicateEdm(cms: CmsClient, edmId: number): Promise<Response> {
   return redirect(`${ADMIN_BASE}/edm/${copy.id}`);
 }
 
-async function updateEdm(request: Request, cms: CmsClient, edmId: number): Promise<Response> {
+async function updateEdm(request: Request, cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   const form = await request.formData();
   const eventId = pageId(form.get('event_id')) ?? edm.page_id ?? pageId(pointer(edm.lect, 'event'));
   const input = edmInput(form, eventId, edm);
@@ -184,7 +178,7 @@ async function updateEdm(request: Request, cms: CmsClient, edmId: number): Promi
 
 async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   const html = await renderEmail(views, edm, env, { server: env.PUBLIC_BASE_URL });
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 }
@@ -193,7 +187,7 @@ async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: E
   const recipient = formText(await request.formData(), 'recipient');
   if (!recipient || !isEmail(recipient)) return mailError(views, 'Enter a valid test-recipient email address.');
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   try {
     await deliverQueuedEmail(env, { ...await emailFor(views, edm, recipient, env, { server: env.PUBLIC_BASE_URL }), edmId });
   } catch (error) {
@@ -202,14 +196,14 @@ async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: E
   return redirect(`${ADMIN_BASE}/edm/${edmId}?test=sent`);
 }
 
-async function assignGuestList(request: Request, cms: CmsClient, edmId: number): Promise<Response> {
+async function assignGuestList(request: Request, cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return new Response('not found', { status: 404 });
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   const listId = pageId(formText(await request.formData(), 'list_id'));
   if (!listId) return redirect(`${ADMIN_BASE}/edm/${edmId}`);
   const list = await cms.get(listId);
   const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
-  if (list.page_type !== 'mail_list' || list.page_id !== eventId) return new Response('not found', { status: 404 });
+  if (list.page_type !== 'mail_list' || list.page_id !== eventId) return notFoundView(views, 'Guest list not found.');
   await cms.update(list.id, {
     lect: { ...list.lect, _pointers: { ...pointers(list), edm: String(edmId) } },
   });
@@ -221,7 +215,7 @@ async function sendGuestList(request: Request, cms: CmsClient, views: Fetcher, e
   const listId = pageId(formText(await request.formData(), 'list_id'));
   if (!listId) return redirect(`${ADMIN_BASE}/edm/${edmId}`);
   const queued = await queueGuestList(cms, views, env, edmId, listId);
-  if (queued < 0) return new Response('not found', { status: 404 });
+  if (queued < 0) return notFoundView(views, 'EDM or guest list not found.');
   return redirect(`${ADMIN_BASE}/edm/${edmId}?queued=${queued}`);
 }
 

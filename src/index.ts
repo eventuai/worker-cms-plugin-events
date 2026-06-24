@@ -90,7 +90,8 @@ const EDM_BLUEPRINT: BlueprintEntry[] = [
   'subject', 'heading', 'body:richtext/md', 'landing_subject', 'date_text', 'time',
   'address_1', 'address_2', 'address_3',
   'thankyou_heading:text', 'thankyou_body:richtext/md', '@thankyou_picture:picture',
-  '@quick_confirm:switch', '@cc_enable:switch', 'rsvp_button',
+  'decline_heading:text', 'decline_body:richtext/md',
+  '@quick_confirm:switch', '@cc_enable:switch', 'rsvp_button', 'rsvp_form_button', 'rsvp_form_decline_button',
 ];
 
 const MAIL_LIST_BLUEPRINT: BlueprintEntry[] = [
@@ -269,8 +270,8 @@ function redirect(to: string): Response {
 }
 
 /** Renders an error panel when the CMS link is unconfigured or returns an error. */
-function errorPanel(views: Fetcher, message: string): Promise<Response> {
-  return adminView(views, 'Error', 'error', { message });
+function errorPanel(views: Fetcher, message: string, showConfig = false): Promise<Response> {
+  return adminView(views, 'Error', 'error', { message, showConfig });
 }
 
 // ── Admin router ──────────────────────────────────────────────────────────────
@@ -284,7 +285,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   try {
     cms = new CmsClient(env);
   } catch (error) {
-    if (error instanceof CmsNotConfiguredError) return errorPanel(env.VIEWS, error.message);
+    if (error instanceof CmsNotConfiguredError) return errorPanel(env.VIEWS, error.message, true);
     throw error;
   }
 
