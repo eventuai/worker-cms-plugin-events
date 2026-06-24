@@ -144,19 +144,16 @@ describe('events admin', () => {
         return Response.json({ page: { id: 12, page_type: 'event', name: 'Town & Country', lect: {} } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        expect(url.searchParams.get('page_id')).toBe('12');
-        // Summaries are computed by the plugin now — the generic CMS API has no
-        // include=guest_summary mode.
-        expect(url.searchParams.get('include')).toBeNull();
+        // mail_list / edm group under their event by the `event` pointer, so the
+        // plugin lists the type and filters client-side (no page_id filter).
         return Response.json({
-          pages: [{ id: 34, page_type: 'mail_list', name: 'VIP', page_id: 12, lect: {} }],
+          pages: [{ id: 34, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '12' } } }],
           total: 1,
         });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
-        expect(url.searchParams.get('page_id')).toBe('12');
         return Response.json({
-          pages: [{ id: 50, page_type: 'edm', name: 'Save the date', page_id: 12, lect: { subject: { en: 'You are invited' } } }],
+          pages: [{ id: 50, page_type: 'edm', name: 'Save the date', lect: { subject: { en: 'You are invited' }, _pointers: { event: '12' } } }],
           total: 1,
         });
       }
@@ -269,10 +266,42 @@ describe('events admin', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+    // Grouped to the event by the pointer, not a parent page.
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
-      page_type: 'mail_list', name: 'VIP guests', page_id: 7,
+      page_type: 'mail_list', name: 'VIP guests',
       lect: { _pointers: { event: '7' }, allow_checkin: 'yes' },
     });
+  });
+
+  it('groups a guest list under its event by the `event` pointer, not its parent page', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        // The list's parent page (page_id 555) is a *different* page type; its
+        // event is carried only by `_pointers.event`. It must still be listed.
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', page_id: 555, name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/lists', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('VIP'); // grouped by pointer despite the foreign parent page
+    // The plugin never filters the list call by parent page id.
+    const listCall = cmsFetch.mock.calls.find(([input]) => {
+      const u = new URL(typeof input === 'string' ? input : input instanceof URL ? input : (input as Request).url);
+      return u.pathname === '/__cms/pages' && u.searchParams.get('page_type') === 'mail_list';
+    });
+    expect(new URL(String(listCall?.[0])).searchParams.get('page_id')).toBeNull();
   });
 
   it('deletes a guest list and returns to its event lists', async () => {
@@ -280,7 +309,7 @@ describe('events admin', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8' && init?.method === 'DELETE') return Response.json({ ok: true, id: 8 });
       if (url.pathname === '/__cms/pages/8') {
-        return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
       }
       if (url.pathname === '/__cms/pages/7') {
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
@@ -309,7 +338,10 @@ describe('events admin', () => {
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [{ id: 8, name: 'VIP' }, { id: 9, name: 'General' }], total: 2 });
+        return Response.json({ pages: [
+          { id: 8, name: 'VIP', lect: { _pointers: { event: '7' } } },
+          { id: 9, name: 'General', lect: { _pointers: { event: '7' } } },
+        ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         const listId = url.searchParams.get('page_id');
@@ -376,14 +408,14 @@ describe('events admin', () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') {
-        return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
       }
       if (url.pathname === '/__cms/pages/7') {
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       }
       if (url.pathname === '/__cms/pages/99') {
-        // A list belonging to a different event (page_id 70).
-        return Response.json({ page: { id: 99, page_type: 'mail_list', page_id: 70, name: 'Other', lect: {} } });
+        // A list belonging to a different event (event pointer 70).
+        return Response.json({ page: { id: 99, page_type: 'mail_list', name: 'Other', lect: { _pointers: { event: '70' } } } });
       }
       if (url.pathname === '/__cms/pages/55') {
         return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: {} } });
@@ -431,7 +463,7 @@ describe('events admin', () => {
         return Response.json({ page: { id: eventId, page_type: 'event', name: 'Launch', lect: {} } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [{ id: 222, page_type: 'mail_list', page_id: eventId, name: 'Adhoc', lect: {} }], total: 1 });
+        return Response.json({ pages: [{ id: 222, page_type: 'mail_list', name: 'Adhoc', lect: { _pointers: { event: String(eventId) } } }], total: 1 });
       }
       return new Response('not found', { status: 404 });
     });
@@ -472,8 +504,9 @@ describe('EDM and labels', () => {
     // Hands off to the page editor (plugin-rendered EDM edit view), returning to the EDM list.
     expect(response.headers.get('location'))
       .toBe('/admin/pages/12/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm');
+    // Grouped to the event by the pointer, not a parent page.
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
-      page_type: 'edm', page_id: 7, name: 'Launch invitation',
+      page_type: 'edm', name: 'Launch invitation',
       lect: { _type: 'edm', name: { en: 'Launch invitation' }, subject: { en: 'Launch invitation' }, _pointers: { event: '7' } },
     });
   });
@@ -504,9 +537,9 @@ describe('EDM and labels', () => {
     expect(response.status).toBe(302);
     // Duplicating opens the copy directly in the page editor (no intermediate page).
     expect(response.headers.get('location')).toBe('/admin/pages/88/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm');
-    // The copy keeps the event (page_id + pointer) and clones the content.
+    // The copy keeps the event via the cloned `event` pointer.
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
-      page_type: 'edm', page_id: 7, name: 'Copy of Invite',
+      page_type: 'edm', name: 'Copy of Invite',
       lect: { subject: { en: 'You are invited' }, _pointers: { event: '7' } },
     });
   });
@@ -875,7 +908,7 @@ describe('public RSVP', () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
       if (url.pathname === '/__cms/pages/9' && init?.method === 'PUT') {
         updateRequest = init;
         return Response.json({ page: { id: 9 } });
@@ -909,8 +942,8 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         updates.push({ id: url.pathname.split('/').pop()!, body: JSON.parse(String(init.body)) });
         return Response.json({ page: {} });
       }
-      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
-      if (url.pathname === '/__cms/pages/9') return Response.json({ page: { id: 9, page_type: 'mail_list', page_id: 7, name: 'General', lect: {} } });
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      if (url.pathname === '/__cms/pages/9') return Response.json({ page: { id: 9, page_type: 'mail_list', name: 'General', lect: { _pointers: { event: '7' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
@@ -980,7 +1013,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} }], total: 1 });
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
       }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
@@ -1009,7 +1042,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/all-guests');
     // "General" did not exist, so it was created; "VIP" already existed.
     expect(creates).toHaveLength(1);
-    expect(creates[0]).toMatchObject({ page_type: 'mail_list', name: 'General', page_id: 7 });
+    expect(creates[0]).toMatchObject({ page_type: 'mail_list', name: 'General', lect: { _pointers: { event: '7' } } });
     // Two batch calls, one per destination list.
     expect(batches).toHaveLength(2);
   });
@@ -1019,7 +1052,10 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [{ id: 8, name: 'VIP', weight: 0 }, { id: 9, name: 'General', weight: 1 }], total: 2 });
+        return Response.json({ pages: [
+          { id: 8, name: 'VIP', weight: 0, lect: { _pointers: { event: '7' } } },
+          { id: 9, name: 'General', weight: 1, lect: { _pointers: { event: '7' } } },
+        ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         const listId = url.searchParams.get('page_id');
@@ -1178,5 +1214,78 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<rect'); // QR modules rendered
     const sig = await signPayload('shared-secret', '8.55');
     expect(html).toContain(`8.55.${sig}`);
+  });
+});
+
+describe('RSVP EDM sending (guest-list controls)', () => {
+  // A list (8) under event 7, linked to EDM 50, with one good-quality guest (55).
+  function rsvpEdmFetch(captured?: { put?: RequestInit }) {
+    return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      const p = url.pathname;
+      if (p === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: { _pointers: { event: '7', edm: '50' } } } });
+      }
+      if (p === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (p === '/__cms/pages/50') {
+        return Response.json({ page: { id: 50, page_type: 'edm', name: 'Invite', page_id: 7, lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' }, sender: 'events@example.com' } } });
+      }
+      if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [{ id: 50, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [{ id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com' } }], total: 1 });
+      }
+      if (p === '/__cms/pages/55' && init?.method === 'PUT') { if (captured) captured.put = init; return Response.json({ page: { id: 55 } }); }
+      if (p === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com' } } });
+      return new Response('not found', { status: 404 });
+    });
+  }
+
+  it('renders the EDM dropdown, send and auto-send controls when the list has an EDM', async () => {
+    vi.stubGlobal('fetch', rsvpEdmFetch());
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Auto Send (Good)');
+    expect(html).toContain('Auto Send (Risky)');
+    expect(html).toContain('/admin/plugins/events/rsvp/8/send-edm?quality=good');
+    expect(html).toContain('data-autosubmit');                                   // EDM dropdown
+    expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/55/send"'); // per-guest send
+    expect(html).toContain('>good<');                                            // quality chip
+  });
+
+  it('sends the EDM to one guest and records it as sent', async () => {
+    const captured: { put?: RequestInit } = {};
+    vi.stubGlobal('fetch', rsvpEdmFetch(captured));
+    const sent: Record<string, unknown>[] = [];
+    const EMAIL = { send: vi.fn(async (m: Record<string, unknown>) => { sent.push(m); }) };
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/send', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
+
+    expect(response.status).toBe(302);
+    expect(EMAIL.send).toHaveBeenCalledTimes(1);
+    expect(sent[0]).toMatchObject({ to: 'ada@example.com' });
+    // The guest is marked as sent this EDM so the button flips to "Re-send".
+    expect(JSON.parse(String(captured.put?.body))).toMatchObject({ lect: { sent_edm: ['50'] } });
+  });
+
+  it('auto-sends to good-quality guests and skips others', async () => {
+    const EMAIL = { send: vi.fn(async () => {}) };
+    vi.stubGlobal('fetch', rsvpEdmFetch());
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/send-edm?quality=good', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toContain('/admin/plugins/events/rsvp/8?flash=');
+    expect(EMAIL.send).toHaveBeenCalledTimes(1); // the one good guest
   });
 });

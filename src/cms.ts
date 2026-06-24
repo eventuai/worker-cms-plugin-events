@@ -153,6 +153,23 @@ export class CmsClient {
   }
 }
 
+/**
+ * Lists the pages of a type that belong to an event. `edm` and `mail_list` pages
+ * group under their event by `lect._pointers.event`, not by parent page (their
+ * parent may be a different page type). The CMS list API only filters by parent
+ * id, so we fetch the type and filter on the pointer here.
+ */
+export async function listByEvent(
+  cms: CmsClient,
+  pageType: string,
+  eventId: number,
+  opts: { limit?: number } = {},
+): Promise<CmsPage[]> {
+  const { pages } = await cms.list(pageType, { limit: opts.limit ?? 500 });
+  const target = String(eventId);
+  return pages.filter((page) => pointer(page.lect, 'event') === target);
+}
+
 // ── Lect helpers ──────────────────────────────────────────────────────────────
 // The CMS lect drops the blueprint markers: `@status` is stored as `status`,
 // `name` as a { lang: value } map, and `*event` under `_pointers.event`. These

@@ -1,0 +1,108 @@
+{
+  "id": "events",
+  "name": "Events Suite",
+  "version": "0.1.0",
+  "hooks": ["publish", "unpublish", "delete"],
+  "nav": [
+    { "label": "Events", "href": "events", "roles": ["admin", "editor"] },
+    { "label": "RSVP", "href": "rsvp", "roles": ["admin", "editor"] },
+    { "label": "EDM", "href": "edm", "roles": ["admin", "editor"] }
+  ],
+  "editViews": ["edm"],
+  "contentTypes": {
+    "readTypes": ["contact"],
+    "blueprint": {
+      "event": [
+        "@type", "@label", "@rfid:switch",
+        "@show_guest_info:switch", "@waiting_message", "@kiosk_title", "@checkin_require_login:switch",
+        "@virtual_event_link", "@featured_image:picture", "logo:picture", "name:text/title",
+        "location:location", "description:textarea",
+        {
+          "session": [
+            "@checkin:switch", "@type", "@start:date/datetime", "@duration", "@capacity", "name:text/title",
+            "location", "description:textarea",
+            { "inputs": ["@type", "@name", "@values"] }
+          ]
+        }
+      ],
+      "guest": [
+        "@picture", "@email:email", "@primary_guest", "@max_main_checkin", "@nationality",
+        "@cc", "@organization", "@contact_id", "@plus_guests", "@phone", "@parent",
+        "@rsvp_code", "@status", "@checkin_remark", "@qrcode_remark", "@not_send", "@no",
+        "@prefix", "@prefer_language", "@zh_hant_name", "@zh_hans_name", "name", "last_name",
+        "@job_title", "@wechat", "@remarks", "@total_guests", "@color_tag", "@qrcode",
+        {
+          "response": ["@status", "@date", "@message"],
+          "checkin": ["@status", "@date", "@message"]
+        }
+      ],
+      "label": [
+        { "frame": ["@width", "@height", "@direction", "@svg"] }
+      ],
+      "edm": [
+        "@text_color", "@font_size", "@font_family", "@bg_color", "@image_padding",
+        "@button_color", "@button_text_color", "@headline_font_size", "@headline_padding",
+        "@table_padding", "@paragraph_bottom_margin",
+        "*event", "@sender", "@reply_to", "@bcc",
+        "subject", "heading", "body:richtext/md", "landing_subject", "date_text", "time",
+        "address_1", "address_2", "address_3",
+        "thankyou_heading:text", "thankyou_body:richtext/md", "@thankyou_picture:picture",
+        "decline_heading:text", "decline_body:richtext/md",
+        "@quick_confirm:switch", "@cc_enable:switch", "rsvp_button", "rsvp_form_button", "rsvp_form_decline_button"
+      ],
+      "mail_list": [
+        "*event", "*edm", "*mail_preview_list", "@blast_datetime", "@allow_checkin",
+        "@show_in_checkin_lite:switch", "@checkin_lite_passcode"
+      ],
+      "mail_preview_list": [
+        "@name", { "user": ["@name", "@email"] }
+      ]
+    },
+    "blocks": {
+      "label": ["name"],
+      "logos": ["label", { "pictures": ["url"] }],
+      "paragraph": ["subject", "body:richtext/md"],
+      "picture": ["@picture:picture", "caption", "@width", "@align"],
+      "button": ["label", "url"],
+      "table": ["title:richtext/md", "@first_column_width", { "row": ["name:richtext/md", "description:richtext/md"] }],
+      "spacer": ["@lines"],
+      "edm-attachments": [{ "attachment": ["@file:picture", "@name"] }],
+      "edm-unsubscribe": [],
+      "rsvp-location": ["name", "address_1", "address_2", "address_3", "city", "state", "country"],
+      "rsvp-date-time": ["date_text", "time", "timezone"],
+      "rsvp-plus-one": ["@max_guests", "title"],
+      "rsvp-meal-preferences": [
+        "title", "body:richtext/md", "@allow_message:boolean", "message_placeholder",
+        { "food": ["name", "description"] }
+      ],
+      "rsvp-travel-hotel": [
+        "title", "body:richtext/md",
+        { "flight_custom_input": ["@type", "label"] },
+        { "hotel_custom_input": ["@type", "label"] }
+      ],
+      "rsvp-custom": [
+        "title", "body:richtext/md",
+        { "custom_input": ["@required:boolean", "@type", "label", "default_value"] }
+      ],
+      "rsvp-public-form": [
+        "title", "body:richtext/md", "label_salutation", "label_first_name", "label_last_name",
+        "label_email", "label_organization", "label_job_title",
+        { "custom_input": ["@name", "@required:boolean", "@type", "label", "default_value"] }
+      ],
+      "rsvp-accept": ["label"],
+      "rsvp-sessions": [],
+      "rsvp-qrcode": ["title", "message", "@size"],
+      "rsvp-pickup": [
+        "title", "pickup_date_label", "pickup_time_label", "pickup_location_label",
+        "dropoff_date_label", "dropoff_time_label", "dropoff_location_label",
+        "accommodation_title", "checkin_date_label", "checkout_date_label"
+      ],
+      "rsvp-button": ["label"]
+    },
+    "blockLists": {
+      "events": ["picture", "paragraph", "table", "button", "rsvp-location", "rsvp-date-time", "rsvp-plus-one", "rsvp-meal-preferences", "rsvp-travel-hotel", "rsvp-custom", "rsvp-public-form", "rsvp-accept", "rsvp-sessions", "rsvp-qrcode", "rsvp-pickup", "rsvp-button"],
+      "edm": ["picture", "paragraph", "table", "button", "spacer", "edm-attachments", "edm-unsubscribe", "rsvp-location", "rsvp-date-time", "rsvp-plus-one", "rsvp-meal-preferences", "rsvp-travel-hotel", "rsvp-custom", "rsvp-public-form", "rsvp-accept", "rsvp-sessions", "rsvp-qrcode", "rsvp-pickup", "rsvp-button"],
+      "rsvp": ["rsvp-location", "rsvp-date-time", "rsvp-plus-one", "rsvp-meal-preferences", "rsvp-travel-hotel", "rsvp-custom", "rsvp-public-form", "rsvp-accept", "rsvp-sessions", "rsvp-qrcode", "rsvp-pickup", "rsvp-button"]
+    }
+  }
+}

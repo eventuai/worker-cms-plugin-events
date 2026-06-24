@@ -1,4 +1,4 @@
-import { CmsClient, attr, localized, type CmsPage } from './cms';
+import { CmsClient, attr, listByEvent, localized, type CmsPage } from './cms';
 import { adminView } from './templates/views';
 
 const ADMIN_BASE = '/admin/plugins/events';
@@ -47,7 +47,7 @@ async function labelForm(cms: CmsClient, views: Fetcher, event: CmsPage, labelId
   const label = labelId ? await cms.get(labelId) : undefined;
   if (label && (label.page_type !== 'label' || label.page_id !== event.id)) return new Response('not found', { status: 404 });
   const value = label ? labelValues(label) : emptyLabel();
-  const { pages: guestLists } = await cms.list('mail_list', { parentId: event.id, limit: 500 });
+  const guestLists = await listByEvent(cms, 'mail_list', event.id);
   const guestOptions: Array<{ id: number; name: string }> = [];
   for (const list of guestLists.slice(0, 20)) {
     const { pages: guests } = await cms.list('guest', { parentId: list.id, limit: 50 });

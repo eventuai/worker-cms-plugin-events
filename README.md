@@ -11,8 +11,16 @@ Part of the RSVP/contact port — see `cms/../cms-to-rsvp.md`. Pairs with
 
 ## Registers (manifest id `events`)
 
+The manifest is a static file — [`src/manifest.json`](src/manifest.json) — served
+verbatim at `/__plugin/manifest` (imported into `src/index.ts`), rather than being
+assembled from constants. Edit the JSON to change content types, blocks, nav, etc.
+
 - **Blueprints:** `event` (sessions, capacity, RFID, kiosk), `guest`, `label`,
   `edm`, `mail_list`, `mail_preview_list`.
+- **Event grouping:** `edm` and `mail_list` pages belong to an event via their
+  `lect._pointers.event` (their CMS parent page may be a different page type), so
+  the plugin lists them with `listByEvent()` and filters on that pointer rather
+  than the parent `page_id`. Guests still parent under their `mail_list`.
 - **Blocks + block lists:** content blocks, EDM blocks, all `rsvp-*` blocks;
   `events` / `edm` / `rsvp` block lists.
 - **Nav (3 items):** Events, RSVP, EDM — each a section of the same plugin admin.

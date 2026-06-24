@@ -406,7 +406,7 @@ async function edmIndex(cms: CmsClient, views: Fetcher): Promise<Response> {
   return adminView(views, 'EDMs', 'edm-list', {
     newHref: `${ADMIN_BASE}/edm/new`,
     edms: edms.map((edm) => {
-      const event = eventsById.get(edm.page_id ?? pageId(pointer(edm.lect, 'event')) ?? 0);
+      const event = eventsById.get(pageId(pointer(edm.lect, 'event')) ?? 0);
       return {
         name: edm.name,
         subject: localized(edm.lect, 'subject') || edm.name,
@@ -430,9 +430,9 @@ async function edmNewForm(cms: CmsClient, views: Fetcher, url: URL): Promise<Res
 }
 
 /**
- * Creates a minimal EDM page under its event (the parent the native new-page
- * editor can't set), then redirects into that editor so the rest of the
- * blueprint — settings and per-language content — is filled there.
+ * Creates a minimal EDM grouped to its event by the `event` pointer (not parent
+ * page), then redirects into the editor so the rest of the blueprint — settings
+ * and per-language content — is filled there.
  */
 async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Promise<Response> {
   const form = await request.formData();
@@ -443,7 +443,6 @@ async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Prom
   if (event.page_type !== 'event') return notFoundView(views, 'Event not found.');
   const edm = await cms.create({
     page_type: 'edm',
-    page_id: eventId,
     name,
     lect: { _type: 'edm', name: { en: name }, subject: { en: name }, _pointers: { event: String(eventId) } },
   });
@@ -454,9 +453,9 @@ async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Prom
 async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
+  // The event grouping rides along in the copied lect's `_pointers.event`.
   const copy = await cms.create({
     page_type: 'edm',
-    page_id: edm.page_id,
     name: `Copy of ${edm.name}`,
     lect: { ...edm.lect },
   });
@@ -496,8 +495,9 @@ async function assignGuestList(request: Request, cms: CmsClient, views: Fetcher,
   const listId = pageId(formText(await request.formData(), 'list_id'));
   if (!listId) return redirect(editorHref(edmId));
   const list = await cms.get(listId);
-  const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
-  if (list.page_type !== 'mail_list' || list.page_id !== eventId) return notFoundView(views, 'Guest list not found.');
+  // The list and EDM must belong to the same event (by their `event` pointer).
+  const eventId = pointer(edm.lect, 'event');
+  if (list.page_type !== 'mail_list' || pointer(list.lect, 'event') !== eventId) return notFoundView(views, 'Guest list not found.');
   await cms.update(list.id, {
     lect: { ...list.lect, _pointers: { ...pointers(list), edm: String(edmId) } },
   });
@@ -519,7 +519,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   if (edm.page_type !== 'edm' || list.page_type !== 'mail_list' || pointer(list.lect, 'edm') !== String(edmId)) return -1;
   const { pages: guests } = await cms.list('guest', { parentId: listId, limit: 500 });
 
-  const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
+  const eventId = pageId(pointer(edm.lect, 'event'));
   const rsvpEnabled = Boolean(eventId && env.PUBLIC_BASE_URL && env.PLUGIN_SECRET);
   // Render (and MJML-compile) ONCE per blast, leaving a placeholder where each
   // guest's signed RSVP URL goes — then string-swap it per recipient. This keeps
@@ -550,7 +550,7 @@ async function emailFor(
   edm: CmsPage,
   recipient: string,
   env: EdmEnv,
-  options: { rsvpUrl?: string; server?: string } = {},
+  options: { rsvpUrl?: string; server?: string; language?: string } = {},
 ): Promise<OutboundEmail> {
   const values = edmValues(edm);
   return {
@@ -561,6 +561,78 @@ async function emailFor(
     text: plainText(values.heading, values.body),
     ...deliveryHeaders(values),
   };
+}
+
+// ── Per-guest send / preview (RSVP guest-list buttons) ─────────────────────────
+
+/** Role mailboxes treated as lower-confidence by the deliverability heuristic. */
+const ROLE_MAILBOXES = new Set([
+  'info', 'admin', 'administrator', 'sales', 'contact', 'hello', 'support', 'office',
+  'enquiry', 'enquiries', 'hr', 'marketing', 'noreply', 'no-reply', 'donotreply',
+  'do-not-reply', 'mailer-daemon', 'postmaster', 'webmaster', 'team',
+]);
+
+/**
+ * Lightweight deliverability heuristic for the "Auto Send (Good/Risky)" split.
+ * This is NOT real email verification — it just separates clearly-addressable
+ * mailboxes ("good") from syntactically-valid-but-flagged ones ("risky", e.g.
+ * role addresses, tagged addresses, single-label domains). No email → "invalid".
+ */
+export function emailQuality(email: string): 'good' | 'risky' | 'invalid' {
+  const value = (email || '').trim().toLowerCase();
+  if (!isEmail(value)) return 'invalid';
+  const at = value.lastIndexOf('@');
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  if (!domain.includes('.')) return 'risky';
+  if (local.includes('+')) return 'risky';
+  if (ROLE_MAILBOXES.has(local)) return 'risky';
+  return 'good';
+}
+
+/** Has this guest already been sent the given EDM? (recorded in lect.sent_edm). */
+export function guestWasSentEdm(guest: CmsPage, edmId: number): boolean {
+  const sent = guest.lect.sent_edm;
+  return Array.isArray(sent) && sent.some((id) => String(id) === String(edmId));
+}
+
+/** Sends one EDM to one guest immediately (or via the queue when bound). The
+ *  caller records `sent_edm`. Throws when the guest has no valid email. */
+export async function sendEdmToGuest(
+  views: Fetcher,
+  env: EdmEnv,
+  edm: CmsPage,
+  eventId: number | null,
+  listId: number,
+  guest: CmsPage,
+): Promise<void> {
+  const recipient = attr(guest.lect, 'email');
+  if (!recipient || !isEmail(recipient)) throw new Error('Guest has no valid email address');
+  const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest.id) : '';
+  const language = attr(guest.lect, 'prefer_language') || undefined;
+  const delivery = {
+    ...await emailFor(views, edm, recipient, env, { rsvpUrl, server: env.PUBLIC_BASE_URL, language }),
+    edmId: edm.id,
+    guestId: guest.id,
+  };
+  if (env.MAIL_QUEUE) await env.MAIL_QUEUE.send(delivery);
+  else await deliverQueuedEmail(env, delivery);
+}
+
+/** Renders the EDM email HTML for one guest (preview), with their signed RSVP link. */
+export function previewEdmForGuest(
+  views: Fetcher,
+  env: EdmEnv,
+  edm: CmsPage,
+  eventId: number | null,
+  listId: number,
+  guest: CmsPage,
+): Promise<string> {
+  const language = attr(guest.lect, 'prefer_language') || undefined;
+  return (async () => {
+    const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest.id) : '';
+    return renderEmail(views, edm, env, { rsvpUrl, server: env.PUBLIC_BASE_URL, language });
+  })();
 }
 
 /**

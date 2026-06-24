@@ -3,6 +3,7 @@ import {
   CmsApiError,
   attr,
   items,
+  listByEvent,
   localized,
   pointer,
   type CmsPage,
@@ -10,6 +11,13 @@ import {
 } from './cms';
 import { signPayload } from './crypto';
 import { qrSvg } from './qr';
+import {
+  emailQuality,
+  guestWasSentEdm,
+  previewEdmForGuest,
+  sendEdmToGuest,
+  type EdmEnv,
+} from './edm';
 import { adminView } from './templates/views';
 
 const ADMIN_BASE = '/admin/plugins/events';
@@ -38,6 +46,7 @@ export async function handleRsvpAdmin(
   request: Request,
   cms: CmsClient,
   views: Fetcher,
+  env: EdmEnv,
   segments: string[],
   url: URL,
   qr: QrOptions = {},
@@ -65,6 +74,8 @@ export async function handleRsvpAdmin(
   }
 
   if (segments[1] === 'delete' && request.method === 'POST') return deleteGuestList(cms, listId);
+  if (segments[1] === 'edm' && request.method === 'POST') return setListEdm(request, cms, listId);
+  if (segments[1] === 'send-edm' && request.method === 'POST') return autoSendEdm(request, cms, views, env, listId);
   if (segments[1] === 'update-from-contacts' && request.method === 'POST') return updateAllGuestsFromContacts(cms, listId);
   if (segments[1] === 'export') return exportGuests(cms, listId);
   if (segments[1] === 'import') {
@@ -85,6 +96,8 @@ export async function handleRsvpAdmin(
     if (segments[3] === 'checkin' && request.method === 'POST') return checkInGuest(cms, listId, guestId);
     if (segments[3] === 'move' && request.method === 'POST') return moveGuest(request, cms, listId, guestId);
     if (segments[3] === 'update-from-contact' && request.method === 'POST') return updateGuestFromContact(cms, listId, guestId);
+    if (segments[3] === 'send' && request.method === 'POST') return sendGuestEdm(cms, views, env, listId, guestId);
+    if (segments[3] === 'preview') return previewGuestEdm(cms, views, env, listId, guestId);
     if (segments[3] === 'qrcode') return guestQr(cms, views, listId, guestId, qr);
     if (request.method === 'POST') return updateGuest(request, cms, listId, guestId);
     return guestForm(cms, views, listId, guestId);
@@ -97,7 +110,7 @@ export async function handleRsvpAdmin(
 export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
-  const { pages } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const pages = await listByEvent(cms, 'mail_list', eventId);
   return adminView(views, `Guest lists — ${event.name}`, 'guest-lists', {
     title: `Guest lists — ${event.name}`,
     subtitle: 'Drag a list to reorder it; the order is shared across the event.',
@@ -113,14 +126,14 @@ export async function ensureAdhocGuestList(cms: CmsClient, eventId: number): Pro
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') throw new Error('Event not found');
 
-  const { pages } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const pages = await listByEvent(cms, 'mail_list', eventId);
   const existing = pages.find((list) => list.name.trim().toLowerCase() === 'adhoc');
   if (existing) return existing;
 
+  // Grouped to its event by the `event` pointer (not parent page).
   return cms.create({
     page_type: 'mail_list',
     name: 'Adhoc',
-    page_id: eventId,
     lect: {
       _type: 'mail_list',
       name: { en: 'Adhoc' },
@@ -143,7 +156,7 @@ async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL): Promise<Resp
     title: 'RSVP guest lists',
     subtitle: 'Each list has its own guests, import/export tools and RSVP delivery state.',
     newHref: `${ADMIN_BASE}/rsvp/new`,
-    lists: lists.map((list) => guestListRow(list, eventById.get(list.page_id ?? 0))),
+    lists: lists.map((list) => guestListRow(list, eventById.get(pageId(pointer(list.lect, 'event')) ?? 0))),
   });
 }
 
@@ -167,10 +180,10 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
+  // Grouped to its event by the `event` pointer (not parent page).
   const list = await cms.create({
     page_type: 'mail_list',
     name,
-    page_id: eventId,
     lect: {
       _type: 'mail_list',
       name: { en: name },
@@ -190,6 +203,17 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const { pages, total } = await cms.list('guest', { parentId: listId, q, limit: 500 });
   const guests = selectedStatus ? pages.filter((guest) => guestStatus(guest) === selectedStatus) : pages;
 
+  // EDMs of this list's event populate the "select EDM" dropdown; the list's own
+  // `*edm` pointer is the current selection. When set, the send/preview controls
+  // and the auto-send buttons appear.
+  const selectedEdmId = pageId(pointer(context.list.lect, 'edm'));
+  const eventEdms = context.eventId
+    ? await listByEvent(cms, 'edm', context.eventId)
+    : [];
+  const selectedEdm = eventEdms.find((edm) => edm.id === selectedEdmId)
+    ?? (selectedEdmId ? await cms.get(selectedEdmId).catch(() => null) : null);
+  const hasEdm = !!selectedEdm && selectedEdm.page_type === 'edm';
+
   return adminView(views, `${context.list.name} — RSVP`, 'guest-list', {
     eventName: context.event?.name ?? 'Event',
     eventHref: context.event ? `${ADMIN_BASE}/events/${context.event.id}` : `${ADMIN_BASE}/rsvp`,
@@ -202,11 +226,21 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     exportHref: `${ADMIN_BASE}/rsvp/${listId}/export`,
     updateFromContactsAction: `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts`,
     deleteAction: `${ADMIN_BASE}/rsvp/${listId}/delete`,
+    flash: url.searchParams.get('flash') ?? '',
+    // EDM controls.
+    setEdmAction: `${ADMIN_BASE}/rsvp/${listId}/edm`,
+    edmOptions: eventEdms.map((edm) => ({ id: edm.id, name: edm.name, selected: edm.id === selectedEdmId })),
+    hasEdmOptions: eventEdms.length > 0,
+    hasEdm,
+    edmName: hasEdm ? selectedEdm!.name : '',
+    edmEditHref: hasEdm ? `/admin/pages/${selectedEdm!.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
+    autoSendGoodAction: `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=good`,
+    autoSendRiskyAction: `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=risky`,
     q,
     selectedStatus: selectedStatus ?? '',
     statuses: GUEST_STATUSES,
     total: selectedStatus ? guests.length : total,
-    guests: guests.map((guest) => guestRow(guest, listId)),
+    guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null)),
   });
 }
 
@@ -224,7 +258,7 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
   // Sibling lists of the same event a guest can be moved into (edit only).
   let moveLists: Array<{ id: number; name: string }> = [];
   if (guest && context.eventId) {
-    const { pages } = await cms.list('mail_list', { parentId: context.eventId, limit: 500 });
+    const pages = await listByEvent(cms, 'mail_list', context.eventId);
     moveLists = pages.filter((list) => list.id !== listId).map((list) => ({ id: list.id, name: list.name }));
   }
 
@@ -283,6 +317,118 @@ async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response
   return redirect(context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`);
 }
 
+// ── EDM linking + sending from the guest list ─────────────────────────────────
+
+function lectPointers(page: CmsPage): Record<string, unknown> {
+  const value = page.lect._pointers;
+  return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
+}
+
+/** Resolves the EDM a guest list is linked to (its `*edm` pointer), if reachable. */
+async function resolveListEdm(cms: CmsClient, list: CmsPage): Promise<CmsPage | null> {
+  const edmId = pageId(pointer(list.lect, 'edm'));
+  if (!edmId) return null;
+  try {
+    const edm = await cms.get(edmId);
+    return edm.page_type === 'edm' ? edm : null;
+  } catch (error) {
+    if (error instanceof CmsApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Records that a guest has been sent an EDM (lect.sent_edm), so the button shows "Re-send". */
+async function recordSentEdm(cms: CmsClient, guest: CmsPage, edmId: number): Promise<void> {
+  const sent = Array.isArray(guest.lect.sent_edm) ? guest.lect.sent_edm.map(String) : [];
+  if (sent.includes(String(edmId))) return;
+  sent.push(String(edmId));
+  await cms.update(guest.id, { lect: { ...guest.lect, sent_edm: sent } });
+}
+
+function listFlash(listId: number, message: string): Response {
+  return redirect(`${ADMIN_BASE}/rsvp/${listId}?flash=${encodeURIComponent(message)}`);
+}
+
+/** Links (or clears) the guest list's EDM from the dropdown. */
+async function setListEdm(request: Request, cms: CmsClient, listId: number): Promise<Response> {
+  const list = await cms.get(listId);
+  if (list.page_type !== 'mail_list') return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const edmId = pageId(form.get('edm_id'));
+  const pointers = lectPointers(list);
+  if (edmId) pointers.edm = String(edmId);
+  else delete pointers.edm;
+  await cms.update(listId, { lect: { ...list.lect, _pointers: pointers } });
+  return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+}
+
+/** Sends one guest the list's EDM (per-guest "Send" / "Re-send" button). */
+async function sendGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, listId: number, guestId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const edm = await resolveListEdm(cms, context.list);
+  if (!edm) return listFlash(listId, 'Select an EDM for this list first');
+  const guest = await cms.get(guestId);
+  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  try {
+    await sendEdmToGuest(views, env, edm, context.eventId, listId, guest);
+    await recordSentEdm(cms, guest, edm.id);
+  } catch (error) {
+    return listFlash(listId, error instanceof Error ? error.message : 'Unable to send email');
+  }
+  return listFlash(listId, `Email sent to ${attr(guest.lect, 'email')}`);
+}
+
+/** Batch-sends the list's EDM to every guest of a given email quality that hasn't
+ *  been sent yet and isn't paused. Backs the "Auto Send (Good/Risky)" buttons. */
+async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const edm = await resolveListEdm(cms, context.list);
+  if (!edm) return listFlash(listId, 'Select an EDM for this list first');
+
+  const quality = new URL(request.url).searchParams.get('quality') === 'risky' ? 'risky' : 'good';
+  const { pages: guests } = await cms.list('guest', { parentId: listId, limit: 500 });
+
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const guest of guests) {
+    const paused = attr(guest.lect, 'not_send') === 'true';
+    const matches = emailQuality(attr(guest.lect, 'email')) === quality;
+    // Auto-send never re-sends — the per-guest button does that explicitly.
+    if (paused || !matches || guestWasSentEdm(guest, edm.id)) {
+      skipped++;
+      continue;
+    }
+    try {
+      await sendEdmToGuest(views, env, edm, context.eventId, listId, guest);
+      await recordSentEdm(cms, guest, edm.id);
+      sent++;
+    } catch {
+      failed++;
+    }
+  }
+  const detail = [`${sent} sent`, skipped ? `${skipped} skipped` : '', failed ? `${failed} failed` : '']
+    .filter(Boolean)
+    .join(', ');
+  return listFlash(listId, `Auto-send (${quality}): ${detail}`);
+}
+
+/** Renders the list's EDM as it would reach this guest (preview, new tab). */
+async function previewGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, listId: number, guestId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const edm = await resolveListEdm(cms, context.list);
+  if (!edm) return new Response('No EDM is linked to this guest list.', { status: 404 });
+  const guest = await cms.get(guestId);
+  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  const html = await previewEdmForGuest(views, env, edm, context.eventId, listId, guest);
+  return new Response(html, {
+    headers: { 'content-type': 'text/html; charset=utf-8', 'x-cms-frame': '1' },
+  });
+}
+
 async function updateGuestStatus(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
@@ -332,7 +478,8 @@ async function moveGuest(request: Request, cms: CmsClient, listId: number, guest
 
   const target = await cms.get(targetId);
   // Only allow moves within the same event, so a guest never leaves its event.
-  if (target.page_type !== 'mail_list' || (context.eventId && target.page_id !== context.eventId)) {
+  // The list's event is its `event` pointer (not parent page).
+  if (target.page_type !== 'mail_list' || (context.eventId && pointer(target.lect, 'event') !== String(context.eventId))) {
     return new Response('not found', { status: 404 });
   }
 
@@ -505,7 +652,7 @@ export async function reorderGuestLists(request: Request, cms: CmsClient, eventI
     const weight = Number(item.weight);
     if (!id || !Number.isFinite(weight)) continue;
     const list = await cms.get(id);
-    if (list.page_type === 'mail_list' && list.page_id === eventId) await cms.update(id, { weight });
+    if (list.page_type === 'mail_list' && pointer(list.lect, 'event') === String(eventId)) await cms.update(id, { weight });
   }
   return Response.json({ success: true });
 }
@@ -579,7 +726,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
-  const { pages: lists } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const lists = await listByEvent(cms, 'mail_list', eventId);
   const ordered = sortByWeight(lists);
   const guestsByList = await Promise.all(
     ordered.map((list) => cms.list('guest', { parentId: list.id, limit: 500 }).then((res) => res.pages)),
@@ -651,7 +798,7 @@ export async function importEventGuests(request: Request, cms: CmsClient, eventI
   };
 
   // Existing lists, keyed by lower-cased name, so repeated rows reuse one list.
-  const { pages: existing } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const existing = await listByEvent(cms, 'mail_list', eventId);
   const listByName = new Map(existing.map((list) => [list.name.trim().toLowerCase(), list]));
 
   // Group inbound rows by destination list name.
@@ -670,7 +817,6 @@ export async function importEventGuests(request: Request, cms: CmsClient, eventI
       list = await cms.create({
         page_type: 'mail_list',
         name: listName,
-        page_id: eventId,
         lect: { _type: 'mail_list', name: { en: listName }, _pointers: { event: String(eventId) } },
       });
       listByName.set(key, list);
@@ -784,7 +930,7 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
-  const { pages: lists } = await cms.list('mail_list', { parentId: eventId, limit: 500 });
+  const lists = await listByEvent(cms, 'mail_list', eventId);
   const guestsByList = await Promise.all(
     lists.map((list) => cms.list('guest', { parentId: list.id, limit: 500 }).then((res) => res.pages)),
   );
@@ -814,7 +960,8 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
 async function guestListContext(cms: CmsClient, listId: number): Promise<GuestListContext | null> {
   const list = await cms.get(listId);
   if (list.page_type !== 'mail_list') return null;
-  const eventId = pageId(list.page_id) ?? pageId(pointer(list.lect, 'event'));
+  // A list groups under its event by the `event` pointer, not its parent page.
+  const eventId = pageId(pointer(list.lect, 'event'));
   if (!eventId) return { list, event: null, eventId: null };
   try {
     const event = await cms.get(eventId);
@@ -836,8 +983,9 @@ function guestListRow(list: CmsPage, event?: CmsPage): Record<string, unknown> {
   };
 }
 
-function guestRow(guest: CmsPage, listId: number): Record<string, unknown> {
+function guestRow(guest: CmsPage, listId: number, edmId: number | null): Record<string, unknown> {
   const values = guestValues(guest);
+  const quality = emailQuality(values.email);
   return {
     ...values,
     id: guest.id,
@@ -846,6 +994,15 @@ function guestRow(guest: CmsPage, listId: number): Record<string, unknown> {
     statusAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/status`,
     checkinAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin`,
     checkedIn: items(guest.lect, 'checkin').length > 0,
+    // EDM send/preview controls (only meaningful when the list has an EDM).
+    emailQuality: quality,
+    canEmail: quality !== 'invalid',
+    isGood: quality === 'good',
+    isRisky: quality === 'risky',
+    notSend: attr(guest.lect, 'not_send') === 'true',
+    sent: edmId ? guestWasSentEdm(guest, edmId) : false,
+    sendAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/send`,
+    previewHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/preview`,
   };
 }
 

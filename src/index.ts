@@ -19,6 +19,7 @@ import {
   computeGuestListSummary,
   emptyGuestListSummary,
   items,
+  listByEvent,
   localized,
   type CmsPage,
 } from './cms';
@@ -40,6 +41,10 @@ import {
 } from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
+// The plugin manifest (content types, blocks, nav, hooks, editViews) is plain
+// data, so it lives as a static JSON file served verbatim at /__plugin/manifest
+// rather than being assembled from constants here.
+import MANIFEST from './manifest.json';
 
 interface PluginEnv extends EdmEnv {
   PLUGIN_SECRET?: string;
@@ -48,143 +53,6 @@ interface PluginEnv extends EdmEnv {
   /** Plugin-owned Liquid templates and other view assets. */
   VIEWS: Fetcher;
 }
-
-type BlueprintEntry = string | Record<string, BlueprintEntry[]>;
-
-// ── Blueprints ────────────────────────────────────────────────────────────────
-const EVENT_BLUEPRINT: BlueprintEntry[] = [
-  '@type', '@label', '@rfid:switch',
-  '@show_guest_info:switch', '@waiting_message', '@kiosk_title', '@checkin_require_login:switch',
-  '@virtual_event_link', '@featured_image:picture', 'logo:picture', 'name:text/title',
-  'location:location', 'description:textarea',
-  {
-    session: [
-      '@checkin:switch', '@type', '@start', '@duration', '@capacity', 'name:text/title',
-      'location', 'description:textarea',
-      { inputs: ['@type', '@name', '@values'] },
-    ],
-  },
-];
-
-const GUEST_BLUEPRINT: BlueprintEntry[] = [
-  '@picture', '@email:email', '@primary_guest', '@max_main_checkin', '@nationality',
-  '@cc', '@organization', '@contact_id', '@plus_guests', '@phone', '@parent',
-  '@rsvp_code', '@status', '@checkin_remark', '@qrcode_remark', '@not_send', '@no',
-  '@prefix', '@prefer_language', '@zh_hant_name', '@zh_hans_name', 'name', 'last_name',
-  '@job_title', '@wechat', '@remarks', '@total_guests', '@color_tag', '@qrcode',
-  {
-    response: ['@status', '@date', '@message'],
-    checkin: ['@status', '@date', '@message'],
-  },
-];
-
-const LABEL_BLUEPRINT: BlueprintEntry[] = [
-  { frame: ['@width', '@height', '@direction', '@svg'] },
-];
-
-const EDM_BLUEPRINT: BlueprintEntry[] = [
-  '@text_color', '@font_size', '@font_family', '@bg_color', '@image_padding',
-  '@button_color', '@button_text_color', '@headline_font_size', '@headline_padding',
-  '@table_padding', '@paragraph_bottom_margin',
-  '*event', '*event.name', '@sender', '@reply_to', '@bcc',
-  'subject', 'heading', 'body:richtext/md', 'landing_subject', 'date_text', 'time',
-  'address_1', 'address_2', 'address_3',
-  'thankyou_heading:text', 'thankyou_body:richtext/md', '@thankyou_picture:picture',
-  'decline_heading:text', 'decline_body:richtext/md',
-  '@quick_confirm:switch', '@cc_enable:switch', 'rsvp_button', 'rsvp_form_button', 'rsvp_form_decline_button',
-];
-
-const MAIL_LIST_BLUEPRINT: BlueprintEntry[] = [
-  '*event', '*edm', '*mail_preview_list', '@blast_datetime', '@allow_checkin',
-  '@show_in_checkin_lite:switch', '@checkin_lite_passcode',
-];
-
-const MAIL_PREVIEW_LIST_BLUEPRINT: BlueprintEntry[] = [
-  '@name', { user: ['@name', '@email'] },
-];
-
-// ── Blocks ────────────────────────────────────────────────────────────────────
-const CONTENT_BLOCKS: Record<string, BlueprintEntry[]> = {
-  label: ['name'],
-  logos: ['label', { pictures: ['url'] }],
-  paragraph: ['subject', 'body:richtext/md'],
-  picture: ['@picture:picture', 'caption', '@width', '@align'],
-  button: ['label', 'url'],
-  table: ['title:richtext/md', '@first_column_width', { row: ['name:richtext/md', 'description:richtext/md'] }],
-  spacer: ['@lines'],
-};
-
-const EDM_BLOCKS: Record<string, BlueprintEntry[]> = {
-  'edm-attachments': [{ attachment: ['@file:picture', '@name'] }],
-  'edm-unsubscribe': [],
-};
-
-const RSVP_BLOCKS: Record<string, BlueprintEntry[]> = {
-  'rsvp-location': ['name', 'address_1', 'address_2', 'address_3', 'city', 'state', 'country'],
-  'rsvp-date-time': ['date_text', 'time', 'timezone'],
-  'rsvp-plus-one': ['@max_guests', 'title'],
-  'rsvp-meal-preferences': [
-    'title', 'body:richtext/md', '@allow_message:boolean', 'message_placeholder',
-    { food: ['name', 'description'] },
-  ],
-  'rsvp-travel-hotel': [
-    'title', 'body:richtext/md',
-    { flight_custom_input: ['@type', 'label'] },
-    { hotel_custom_input: ['@type', 'label'] },
-  ],
-  'rsvp-custom': [
-    'title', 'body:richtext/md',
-    { custom_input: ['@required:boolean', '@type', 'label', 'default_value'] },
-  ],
-  'rsvp-public-form': [
-    'title', 'body:richtext/md', 'label_salutation', 'label_first_name', 'label_last_name',
-    'label_email', 'label_organization', 'label_job_title',
-    { custom_input: ['@name', '@required:boolean', '@type', 'label', 'default_value'] },
-  ],
-  'rsvp-accept': ['label'],
-  'rsvp-sessions': [],
-  'rsvp-qrcode': ['title', 'message', '@size'],
-  'rsvp-pickup': [
-    'title', 'pickup_date_label', 'pickup_time_label', 'pickup_location_label',
-    'dropoff_date_label', 'dropoff_time_label', 'dropoff_location_label',
-    'accommodation_title', 'checkin_date_label', 'checkout_date_label',
-  ],
-  'rsvp-button': ['label'],
-};
-
-const MANIFEST = {
-  id: 'events',
-  name: 'Events Suite',
-  version: '0.1.0',
-  hooks: ['publish', 'unpublish', 'delete'],
-  nav: [
-    { label: 'Events', href: 'events', roles: ['admin', 'editor'] },
-    { label: 'RSVP', href: 'rsvp', roles: ['admin', 'editor'] },
-    { label: 'EDM', href: 'edm', roles: ['admin', 'editor'] },
-  ],
-  contentTypes: {
-    blueprint: {
-      event: EVENT_BLUEPRINT,
-      guest: GUEST_BLUEPRINT,
-      label: LABEL_BLUEPRINT,
-      edm: EDM_BLUEPRINT,
-      mail_list: MAIL_LIST_BLUEPRINT,
-      mail_preview_list: MAIL_PREVIEW_LIST_BLUEPRINT,
-    },
-    // Read-only access to contact pages (owned by the contacts plugin) so a
-    // guest can be refreshed from its linked contact.
-    readTypes: ['contact'],
-    blocks: { ...CONTENT_BLOCKS, ...EDM_BLOCKS, ...RSVP_BLOCKS },
-    blockLists: {
-      events: ['picture', 'paragraph', 'table', 'button', ...Object.keys(RSVP_BLOCKS)],
-      edm: ['picture', 'paragraph', 'table', 'button', 'spacer', 'edm-attachments', 'edm-unsubscribe', ...Object.keys(RSVP_BLOCKS)],
-      rsvp: Object.keys(RSVP_BLOCKS),
-    },
-  },
-  // `edm` pages render the bespoke EDM editor (legacy Eventuai design) via
-  // POST /__plugin/edit instead of the CMS's generic structured editor.
-  editViews: ['edm'],
-};
 
 export default {
   async fetch(request: Request, env: PluginEnv): Promise<Response> {
@@ -318,7 +186,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   try {
     if (section === 'rsvp') {
       const qr = { secret: env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL };
-      return handleRsvpAdmin(request, cms, env.VIEWS, segments.slice(1), url, qr);
+      return handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr);
     }
     if (section === 'edm') return handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url);
 
@@ -406,17 +274,19 @@ async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
 }
 
 async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+  // `mail_list` and `edm` group under their event by the `event` pointer (their
+  // parent page may be a different page type), so filter on the pointer.
   const [event, guestLists, edms] = await Promise.all([
     cms.get(eventId),
-    cms.list('mail_list', { parentId: eventId, limit: 500 }),
-    cms.list('edm', { parentId: eventId, limit: 500 }),
+    listByEvent(cms, 'mail_list', eventId),
+    listByEvent(cms, 'edm', eventId),
   ]);
   // The CMS page API is generic, so the plugin tallies each list's guests itself
   // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
   // The same fetch also yields the guests who have responded, so the dashboard's
   // response feed costs no extra subrequests.
   const responsesByList = await Promise.all(
-    guestLists.pages.map(async (list) => {
+    guestLists.map(async (list) => {
       const { pages: guests } = await cms.list('guest', { parentId: list.id, limit: 500 });
       list.guest_summary = computeGuestListSummary(guests);
       return guests.filter(hasResponded).map((guest) => responseRow(list, guest));
@@ -424,9 +294,9 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
   );
   // Most recent response first, mirroring the legacy event "Guest Responses" feed.
   const responses = responsesByList.flat().sort((a, b) => b.date.localeCompare(a.date));
-  const r = rollupGuestListSummaries(guestLists.pages);
+  const r = rollupGuestListSummaries(guestLists);
   // Admin-controlled display order (list weight, then name).
-  const orderedLists = [...guestLists.pages].sort((a, b) => (a.weight - b.weight) || a.name.localeCompare(b.name));
+  const orderedLists = [...guestLists].sort((a, b) => (a.weight - b.weight) || a.name.localeCompare(b.name));
 
   return adminView(views, event.name, 'event-dashboard', {
     eventName: event.name,
@@ -449,7 +319,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     })),
     newGuestListHref: `${ADMIN_BASE}/rsvp/new?event_id=${eventId}`,
     // Email Templates section — EDMs belonging to this event.
-    edms: edms.pages.map((edm) => ({
+    edms: edms.map((edm) => ({
       name: edm.name,
       subject: localized(edm.lect, 'subject') || edm.name,
       // Edit directly in the page editor (the plugin renders the EDM edit view),

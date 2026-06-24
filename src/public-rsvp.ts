@@ -1,4 +1,4 @@
-import { CmsClient, attr, items, localized, type CmsPage } from './cms';
+import { CmsClient, attr, items, localized, pointer, type CmsPage } from './cms';
 import { verifyPayload } from './crypto';
 import { renderLiquid } from './templates/liquid';
 
@@ -75,7 +75,8 @@ async function thankYou(views: Fetcher, status: string): Promise<Response> {
 
 function validContext(event: CmsPage, list: CmsPage, guest: CmsPage, eventId: number, listId: number): boolean {
   return event.page_type === 'event'
-    && list.page_type === 'mail_list' && list.page_id === eventId
+    // The list belongs to the event via its `event` pointer (not parent page).
+    && list.page_type === 'mail_list' && pointer(list.lect, 'event') === String(eventId)
     && guest.page_type === 'guest' && guest.page_id === listId;
 }
 
