@@ -311,7 +311,16 @@ export async function handleEdmEditView(
     hasBlocks: Array.isArray(lect._blocks) && (lect._blocks as unknown[]).length > 0,
     blockOptions: EDM_BLOCK_OPTIONS,
     // EDM-specific actions (edit mode only).
-    previewHref: isEdit ? `${selfHref}/preview` : '',
+    previewHref: isEdit ? `${selfHref}/preview?language=${encodeURIComponent(lang)}` : '',
+    // Language tabs for the preview pane — each loads the iframe in that language
+    // (anchors targeting the iframe by name, so no client JS is needed).
+    previewLangs: isEdit
+      ? EDM_LANGUAGES.map((option) => ({
+          label: option.label,
+          href: `${selfHref}/preview?language=${encodeURIComponent(option.value)}`,
+          active: option.value === lang,
+        }))
+      : [],
     testAction: isEdit ? `${selfHref}/send-test` : '',
     deleteAction: isEdit ? `/admin/pages/${ctx.page.id}/delete` : '',
     senderSet: attr(lect, 'sender') !== '',
@@ -342,7 +351,7 @@ export async function handleEdmAdmin(
 
   const edmId = pageId(segments[0]);
   if (!edmId) return notFoundView(views, 'EDM not found.');
-  if (segments[1] === 'preview') return edmPreview(cms, views, env, edmId);
+  if (segments[1] === 'preview') return edmPreview(cms, views, env, edmId, url.searchParams.get('language') ?? undefined);
   if (segments[1] === 'duplicate' && request.method === 'POST') return duplicateEdm(cms, views, edmId);
   if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId);
   if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, views, edmId);
@@ -454,11 +463,18 @@ async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number): Prom
   return redirect(editorHref(copy.id));
 }
 
-async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
+async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, language?: string): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
-  const html = await renderEmail(views, edm, env, { server: env.PUBLIC_BASE_URL });
-  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  const html = await renderEmail(views, edm, env, { server: env.PUBLIC_BASE_URL, language });
+  return new Response(html, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      // Opt into being embedded in a same-origin <iframe> (the EDM editor's
+      // preview pane). The CMS proxy turns this into X-Frame-Options: SAMEORIGIN.
+      'x-cms-frame': '1',
+    },
+  });
 }
 
 async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
@@ -557,13 +573,13 @@ async function renderEmail(
   views: Fetcher,
   edm: CmsPage,
   env: EdmEnv,
-  options: { rsvpUrl?: string; server?: string } = {},
+  options: { rsvpUrl?: string; server?: string; language?: string } = {},
 ): Promise<string> {
-  const tokens = edmTokens(edm);
+  const tokens = edmTokens(edm, options.language);
   const server = options.server ?? '';
   // Stage 1 — build the MJML body from the EDM's content blocks.
   const main = await renderLiquid(views, '/templates/edm-mjml.liquid', {
-    blocks: edmRenderBlocks(edm),
+    blocks: edmRenderBlocks(edm, options.language),
     server,
     rsvpUrl: options.rsvpUrl ?? '',
     rsvp_button: tokens.rsvp_button,
@@ -633,13 +649,13 @@ async function mjmlCacheKey(mjml: string): Promise<string> {
 }
 
 /** Flat token map the MJML layout reads (content + styling), each a string. */
-function edmTokens(edm: CmsPage): Record<string, string> {
+function edmTokens(edm: CmsPage, language?: string): Record<string, string> {
   const lect = edm.lect;
   return {
-    subject: localized(lect, 'subject') || edm.name,
-    heading: localized(lect, 'heading'),
-    body: safeHtml(localized(lect, 'body')),
-    rsvp_button: localized(lect, 'rsvp_button') || 'RSVP',
+    subject: localized(lect, 'subject', language) || edm.name,
+    heading: localized(lect, 'heading', language),
+    body: safeHtml(localized(lect, 'body', language)),
+    rsvp_button: localized(lect, 'rsvp_button', language) || 'RSVP',
     text_color: attr(lect, 'text_color'),
     font_size: attr(lect, 'font_size'),
     font_family: attr(lect, 'font_family'),
@@ -658,24 +674,24 @@ function edmTokens(edm: CmsPage): Record<string, string> {
  * Projects the EDM's content blocks into the flat, sanitised shapes the MJML
  * block snippets expect (rich-text fields run through safeHtml).
  */
-function edmRenderBlocks(edm: CmsPage): Array<Record<string, unknown>> {
+function edmRenderBlocks(edm: CmsPage, language?: string): Array<Record<string, unknown>> {
   return blocks(edm.lect).map((block) => {
     const type = attr(block, '_type');
     switch (type) {
       case 'paragraph':
-        return { _type: type, subject: localized(block, 'subject'), body: safeHtml(localized(block, 'body')) };
+        return { _type: type, subject: localized(block, 'subject', language), body: safeHtml(localized(block, 'body', language)) };
       case 'picture':
         return { _type: type, picture: attr(block, 'picture'), width: attr(block, 'width'), align: attr(block, 'align') };
       case 'button':
-        return { _type: type, label: localized(block, 'label') || attr(block, 'label'), url: localized(block, 'url') || attr(block, 'url') };
+        return { _type: type, label: localized(block, 'label', language) || attr(block, 'label'), url: localized(block, 'url', language) || attr(block, 'url') };
       case 'table':
         return {
           _type: type,
-          title: safeHtml(localized(block, 'title')),
+          title: safeHtml(localized(block, 'title', language)),
           first_column_width: attr(block, 'first_column_width'),
           row: items(block, 'row').map((row) => ({
-            name: safeHtml(localized(row, 'name')),
-            description: safeHtml(localized(row, 'description')),
+            name: safeHtml(localized(row, 'name', language)),
+            description: safeHtml(localized(row, 'description', language)),
           })),
         };
       case 'spacer':

@@ -540,6 +540,8 @@ describe('EDM and labels', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/html');
+    // Opts into same-origin framing so the editor's preview pane can embed it.
+    expect(response.headers.get('x-cms-frame')).toBe('1');
     const html = await response.text();
     // Compiled to real HTML — no MJML tags survive.
     expect(html).toContain('<!doctype html>');
@@ -555,6 +557,34 @@ describe('EDM and labels', () => {
     // Styling tokens applied.
     expect(html).toContain('#0f172a'); // bg color
     expect(html).toContain('#4f46e5'); // button color
+  });
+
+  it('renders the EDM preview in the requested language', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: {
+          id: 12, page_type: 'edm', name: 'Invite', page_id: 7,
+          lect: {
+            subject: { en: 'You are invited', 'zh-hant': '誠邀閣下' },
+            heading: { en: 'Join us', 'zh-hant': '誠摯邀請' },
+            body: { en: '<p>English body</p>', 'zh-hant': '<p>中文內容</p>' },
+          },
+        } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/preview?language=zh-hant', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('誠摯邀請');     // zh-hant heading
+    expect(html).toContain('中文內容');     // zh-hant body
+    expect(html).not.toContain('Join us');  // not the English heading
   });
 
   it('compiles EDM MJML via the MJML API when credentials are set', async () => {
@@ -805,11 +835,18 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('name="@sender"');
     expect(html).toContain('name=".subject|mis"');
     expect(html).toContain('You are invited');
+    // Language selector lives in the form and auto-reloads on change (CSP-safe
+    // via the CMS layout's data-autosubmit handler).
+    expect(html).toContain('name="_language" form="main-form" data-autosubmit');
     // The paragraph block is rendered with #<index> field names + a delete action.
     expect(html).toContain('name="#0.subject|mis"');
     expect(html).toContain('value="block-delete:0"');
     // The parent event name appears in the header.
     expect(html).toContain('Town &amp; Country');
+    // The preview pane is embedded as a same-origin iframe, scoped to the language,
+    // with per-language tabs that retarget it.
+    expect(html).toContain('name="edm-preview" src="/admin/plugins/events/edm/50/preview?language=mis"');
+    expect(html).toContain('href="/admin/plugins/events/edm/50/preview?language=en" target="edm-preview"');
   });
 
   it('falls back (404) for a non-edm page type', async () => {

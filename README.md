@@ -35,10 +35,21 @@ Eventuai admin: template name, sender/styling, subject/headline/body, a content-
 block builder, RSVP/thank-you/decline settings, an email-preview iframe, and a
 test-send form.
 
+The preview pane embeds `GET /__plugin/admin/edm/:id/preview?language=<lang>` in a
+same-origin `<iframe>`. That preview route sets `x-cms-frame: 1`, which the CMS
+proxy turns into `X-Frame-Options: SAMEORIGIN` (admin pages are `DENY` by default,
+which is what otherwise blocks the embed). Per-language tabs above the iframe
+retarget it (plain anchors with `target="edm-preview"`, no client JS), and the
+selected editor language drives the initial preview language.
+
 The editor's single `<form>` posts back to the CMS's normal save handler using
 the CMS field-name conventions (`@attr`, `.field|<lang>`, `*event`, `#<block>…`,
 and the `block-add` / `block-delete` / `block-item-*` actions), so save,
-versioning and publish all flow through the CMS unchanged. Markup uses only the
+versioning and publish all flow through the CMS unchanged. The language selector
+sits in the Email-content card (like the CMS page editor) as a `_language` field
+marked `data-autosubmit`, so changing it reloads the page in that language — the
+CMS layout's nonce'd script auto-submits the form (a CSP-safe replacement for an
+inline `onchange`). Markup uses only the
 Tailwind utilities the host CMS emits (it borrows the host's `admin.css`), and
 collapsibles use native `<details>` rather than purged `peer-checked:*` classes.
 Returning `404` (any non-`edm` page, or an unconfigured CMS link) makes the CMS

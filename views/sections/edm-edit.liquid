@@ -17,14 +17,6 @@
     {% if eventName != blank %}<p class="mt-1 text-sm text-gray-500">Email template for {{ eventName | escape }}</p>{% endif %}
   </div>
   <div class="flex flex-wrap items-center gap-2">
-    <label class="flex items-center gap-2 text-xs text-gray-500">
-      Language
-      <select name="_language" form="main-form" class="px-2 py-1 border border-gray-300 rounded-lg text-xs">
-        {% for option in languageOptions %}
-          <option value="{{ option.value | escape }}"{% if option.selected %} selected{% endif %}>{{ option.label | escape }}</option>
-        {% endfor %}
-      </select>
-    </label>
     {% if previewHref != blank %}<a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ previewHref | escape }}" target="_blank" rel="noopener">Preview ↗</a>{% endif %}
     <button form="main-form" type="submit" name="action" value="update" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">Save</button>
   </div>
@@ -86,9 +78,20 @@
     </div>
   </div>
 
-  {%- comment -%} ── Email content ── {%- endcomment -%}
+  {%- comment -%} ── Email content (with the language selector, like the CMS page editor) ── {%- endcomment -%}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-    <h2 class="text-lg font-bold text-gray-900">Email content</h2>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <h2 class="text-lg font-bold text-gray-900">Email content</h2>
+      <label class="flex items-center gap-2 text-xs text-gray-500">
+        Language
+        {%- comment -%} data-autosubmit: the CMS layout reloads the page on change (CSP-safe). {%- endcomment -%}
+        <select name="_language" form="main-form" data-autosubmit class="px-2 py-1 border border-gray-300 rounded-lg text-xs">
+          {% for option in languageOptions %}
+            <option value="{{ option.value | escape }}"{% if option.selected %} selected{% endif %}>{{ option.label | escape }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
     <label class="block"><span class="{{ cls_lbl }}">Subject</span>
       <input type="text" name="{{ subject.name }}" value="{{ subject.value | escape }}" placeholder="{{ subject.placeholder | escape }}" class="{{ cls_input }}"{% if language == "mis" %} required{% endif %}></label>
     <label class="block"><span class="{{ cls_lbl }}">Headline</span>
@@ -232,8 +235,17 @@
 
 {% if previewHref != blank %}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6" style="max-width:54rem;margin-top:1.5rem">
-    <h2 class="text-lg font-bold text-gray-900 mb-2">Email preview</h2>
-    <iframe src="{{ previewHref | escape }}" class="w-full border border-gray-200 rounded-lg" style="height:40rem" title="Email preview"></iframe>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
+      <h2 class="text-lg font-bold text-gray-900">Email preview</h2>
+      {%- comment -%} Language tabs load the iframe (by name) without leaving the editor. {%- endcomment -%}
+      <div class="flex flex-wrap items-center gap-1">
+        {% for lang in previewLangs %}
+          <a href="{{ lang.href | escape }}" target="edm-preview" class="px-2 py-1 rounded-lg text-xs font-semibold {% if lang.active %}bg-indigo-600 text-white{% else %}border border-gray-300 text-gray-700 hover:bg-gray-50{% endif %}">{{ lang.label | escape }}</a>
+        {% endfor %}
+        <a href="{{ previewHref | escape }}" target="_blank" rel="noopener" class="px-2 py-1 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-800">Open ↗</a>
+      </div>
+    </div>
+    <iframe name="edm-preview" src="{{ previewHref | escape }}" class="w-full border border-gray-200 rounded-lg" style="height:40rem" title="Email preview"></iframe>
   </div>
 {% endif %}
 
