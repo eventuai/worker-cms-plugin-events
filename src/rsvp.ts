@@ -197,6 +197,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     listsHref: context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`,
     newGuestHref: `${ADMIN_BASE}/rsvp/${listId}/guests/new`,
+    editHref: `/admin/pages/${listId}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}`,
     importHref: `${ADMIN_BASE}/rsvp/${listId}/import`,
     exportHref: `${ADMIN_BASE}/rsvp/${listId}/export`,
     updateFromContactsAction: `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts`,

@@ -8,6 +8,7 @@
     <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700" href="{{ newGuestHref | escape }}">New guest</a>
     <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ importHref | escape }}">Import CSV</a>
     <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ exportHref | escape }}">Export CSV</a>
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ editHref | escape }}">Edit guest list ↗</a>
     <form method="post" action="{{ updateFromContactsAction | escape }}" onsubmit="return confirm('Refresh every linked guest from its contact record?')"><button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Update from contacts</button></form>
     <form method="post" action="{{ deleteAction | escape }}" onsubmit="return confirm('Delete this guest list and its guests?')"><button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer" type="submit">Delete list</button></form>
   </div>
