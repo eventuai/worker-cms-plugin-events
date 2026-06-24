@@ -469,9 +469,9 @@ describe('EDM and labels', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    // Hands off to the native CMS page editor, returning to the EDM landing.
+    // Hands off to the page editor (plugin-rendered EDM edit view), returning to the EDM list.
     expect(response.headers.get('location'))
-      .toBe('/admin/pages/12/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm%2F12');
+      .toBe('/admin/pages/12/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm');
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
       page_type: 'edm', page_id: 7, name: 'Launch invitation',
       lect: { _type: 'edm', name: { en: 'Launch invitation' }, subject: { en: 'Launch invitation' }, _pointers: { event: '7' } },
@@ -502,7 +502,8 @@ describe('EDM and labels', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/edm/88');
+    // Duplicating opens the copy directly in the page editor (no intermediate page).
+    expect(response.headers.get('location')).toBe('/admin/pages/88/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm');
     // The copy keeps the event (page_id + pointer) and clones the content.
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
       page_type: 'edm', page_id: 7, name: 'Copy of Invite',
@@ -708,6 +709,39 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
   it('declares the edm edit view in the manifest', async () => {
     const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
     await expect(response.json()).resolves.toMatchObject({ editViews: ['edm'] });
+  });
+
+  it('links the EDM list straight to the page editor (no intermediate page)', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [{ id: 50, page_type: 'edm', name: 'Save the date', page_id: 12, lect: { subject: { en: 'Hi' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'event') {
+        return Response.json({ pages: [{ id: 12, page_type: 'event', name: 'Gala', lect: {} }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('href="/admin/pages/50/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm"');
+    // The old standalone landing page (/edm/50 with no sub-route) is not linked.
+    expect(html).not.toContain('href="/admin/plugins/events/edm/50"');
+  });
+
+  it('forwards a bare /edm/:id to the page editor', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
+    const response = await plugin.fetch(request('/__plugin/admin/edm/50', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/pages/50/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm');
   });
 
   function editContext(overrides: Record<string, unknown> = {}) {

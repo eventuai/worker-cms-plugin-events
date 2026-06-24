@@ -452,7 +452,9 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     edms: edms.pages.map((edm) => ({
       name: edm.name,
       subject: localized(edm.lect, 'subject') || edm.name,
-      href: `${ADMIN_BASE}/edm/${edm.id}`,
+      // Edit directly in the page editor (the plugin renders the EDM edit view),
+      // returning to this event dashboard.
+      href: `/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/events/${eventId}`)}`,
       previewHref: `${ADMIN_BASE}/edm/${edm.id}/preview`,
       duplicateAction: `${ADMIN_BASE}/edm/${edm.id}/duplicate`,
     })),

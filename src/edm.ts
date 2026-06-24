@@ -347,7 +347,17 @@ export async function handleEdmAdmin(
   if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId);
   if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, views, edmId);
   if (segments[1] === 'send-list' && request.method === 'POST') return sendGuestList(request, cms, views, env, edmId);
-  return edmDashboard(cms, views, edmId);
+  // The EDM is edited directly in the page editor (the plugin renders that view —
+  // see handleEdmEditView). The old standalone EDM landing page is gone, so a bare
+  // /edm/:id just forwards there; stale bookmarks keep working.
+  return redirect(editorHref(edmId));
+}
+
+/** Link into the EDM page editor (the plugin-rendered edit view), returning to
+ *  the EDM list. Extra query params (e.g. a `flash` message) are appended. */
+function editorHref(edmId: number, params: Record<string, string> = {}): string {
+  const query = new URLSearchParams({ return_to: `${ADMIN_BASE}/edm`, ...params });
+  return `/admin/pages/${edmId}/edit?${query.toString()}`;
 }
 
 export async function deliverQueuedEmail(env: EdmEnv, delivery: EmailDelivery): Promise<void> {
@@ -392,43 +402,10 @@ async function edmIndex(cms: CmsClient, views: Fetcher): Promise<Response> {
         name: edm.name,
         subject: localized(edm.lect, 'subject') || edm.name,
         eventName: event?.name ?? 'Unknown event',
-        href: `${ADMIN_BASE}/edm/${edm.id}`,
+        href: editorHref(edm.id),
         previewHref: `${ADMIN_BASE}/edm/${edm.id}/preview`,
       };
     }),
-  });
-}
-
-/**
- * EDM landing page. Content + settings are edited in the native CMS page editor
- * (which renders the `edm` blueprint with Settings grouping and per-language
- * fields); this page only carries the EDM-specific actions — edit handoff,
- * preview and test send — that the generic page editor doesn't provide.
- */
-async function edmDashboard(cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
-  const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
-
-  const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
-  let eventName = '';
-  if (eventId) {
-    try {
-      const event = await cms.get(eventId);
-      if (event.page_type === 'event') eventName = event.name;
-    } catch (error) {
-      if (!(error instanceof CmsApiError && error.status === 404)) throw error;
-    }
-  }
-
-  const selfHref = `${ADMIN_BASE}/edm/${edm.id}`;
-  return adminView(views, `Edit ${edm.name}`, 'edm-dashboard', {
-    name: edm.name,
-    subject: localized(edm.lect, 'subject'),
-    eventName,
-    backHref: `${ADMIN_BASE}/edm`,
-    editHref: `/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(selfHref)}`,
-    previewHref: `${selfHref}/preview`,
-    testAction: `${selfHref}/send-test`,
   });
 }
 
@@ -461,7 +438,7 @@ async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Prom
     name,
     lect: { _type: 'edm', name: { en: name }, subject: { en: name }, _pointers: { event: String(eventId) } },
   });
-  return redirect(`/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/edm/${edm.id}`)}`);
+  return redirect(editorHref(edm.id));
 }
 
 /** Clones an EDM (content + event pointer) under the same event, then opens the copy. */
@@ -474,7 +451,7 @@ async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number): Prom
     name: `Copy of ${edm.name}`,
     lect: { ...edm.lect },
   });
-  return redirect(`${ADMIN_BASE}/edm/${copy.id}`);
+  return redirect(editorHref(copy.id));
 }
 
 async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
@@ -494,30 +471,30 @@ async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: E
   } catch (error) {
     return mailError(views, error instanceof Error ? error.message : 'Unable to send the test email.');
   }
-  return redirect(`${ADMIN_BASE}/edm/${edmId}?test=sent`);
+  return redirect(editorHref(edmId, { flash: `Test email sent to ${recipient}` }));
 }
 
 async function assignGuestList(request: Request, cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   const listId = pageId(formText(await request.formData(), 'list_id'));
-  if (!listId) return redirect(`${ADMIN_BASE}/edm/${edmId}`);
+  if (!listId) return redirect(editorHref(edmId));
   const list = await cms.get(listId);
   const eventId = edm.page_id ?? pageId(pointer(edm.lect, 'event'));
   if (list.page_type !== 'mail_list' || list.page_id !== eventId) return notFoundView(views, 'Guest list not found.');
   await cms.update(list.id, {
     lect: { ...list.lect, _pointers: { ...pointers(list), edm: String(edmId) } },
   });
-  return redirect(`${ADMIN_BASE}/edm/${edmId}`);
+  return redirect(editorHref(edmId));
 }
 
 async function sendGuestList(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
   if (!env.MAIL_QUEUE) return mailError(views, 'MAIL_QUEUE must be configured before sending to a guest list.');
   const listId = pageId(formText(await request.formData(), 'list_id'));
-  if (!listId) return redirect(`${ADMIN_BASE}/edm/${edmId}`);
+  if (!listId) return redirect(editorHref(edmId));
   const queued = await queueGuestList(cms, views, env, edmId, listId);
   if (queued < 0) return notFoundView(views, 'EDM or guest list not found.');
-  return redirect(`${ADMIN_BASE}/edm/${edmId}?queued=${queued}`);
+  return redirect(editorHref(edmId, { flash: `Queued ${queued} email(s)` }));
 }
 
 async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, listId: number): Promise<number> {
