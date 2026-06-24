@@ -1,0 +1,252 @@
+{%- comment -%}
+  Bespoke EDM editor (ported from the legacy Eventuai admin), rendered by the
+  events plugin for `edm` pages and wrapped in the CMS admin chrome. The single
+  <form id="main-form"> posts back to the CMS save handler at {{ action }} using
+  the CMS field-name conventions (@attr, .field|lang, *event, #<block>… , and the
+  block-add / block-delete / block-item-* actions). Styling uses only utilities
+  the host CMS emits (host-subset Tailwind); collapsibles use native <details>.
+{%- endcomment -%}
+{%- assign cls_input = "block min-w-0 w-full max-w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" -%}
+{%- assign cls_area = "block min-w-0 w-full max-w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" -%}
+{%- assign cls_lbl = "block text-sm font-medium text-gray-700 mb-1" -%}
+
+<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+  <div class="min-w-0">
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← EDMs</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ title | escape }}</h1>
+    {% if eventName != blank %}<p class="mt-1 text-sm text-gray-500">Email template for {{ eventName | escape }}</p>{% endif %}
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <label class="flex items-center gap-2 text-xs text-gray-500">
+      Language
+      <select name="_language" form="main-form" class="px-2 py-1 border border-gray-300 rounded-lg text-xs">
+        {% for option in languageOptions %}
+          <option value="{{ option.value | escape }}"{% if option.selected %} selected{% endif %}>{{ option.label | escape }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if previewHref != blank %}<a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ previewHref | escape }}" target="_blank" rel="noopener">Preview ↗</a>{% endif %}
+    <button form="main-form" type="submit" name="action" value="update" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">Save</button>
+  </div>
+</div>
+
+{% if errors and errors != empty %}
+  <ul class="mb-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-red-600">
+    {% for error in errors %}<li>{{ error | escape }}</li>{% endfor %}
+  </ul>
+{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | escape }}</p>{% endif %}
+
+<form id="main-form" method="post" action="{{ action | escape }}" class="space-y-6" style="max-width:54rem">
+  {%- comment -%} Carry the page basics the editor doesn't surface visually. {%- endcomment -%}
+  <input type="hidden" name="page_type" value="edm">
+  <input type="hidden" name="slug" value="{{ slug | escape }}">
+  <input type="hidden" name="weight" value="{{ weight }}">
+  <input type="hidden" name="return_to" value="{{ backHref | escape }}">
+  {% if hasEvent %}<input type="hidden" name="*event" value="{{ eventId }}">{% endif %}
+
+  {%- comment -%} ── Template name + event picker ── {%- endcomment -%}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <label class="block">
+      <span class="{{ cls_lbl }}">Template name</span>
+      <input type="text" name="name" value="{{ name | escape }}" required class="{{ cls_input }}" placeholder="Invitation email">
+      <span class="block text-xs text-gray-400 mt-1">Internal only — not shown to guests.</span>
+    </label>
+    {% unless hasEvent %}
+      <label class="block">
+        <span class="{{ cls_lbl }}">Event</span>
+        <select name="*event" required class="{{ cls_input }}">
+          <option value="">Select an event…</option>
+          {% for event in events %}<option value="{{ event.id }}">{{ event.name | escape }}</option>{% endfor %}
+        </select>
+      </label>
+    {% endunless %}
+  </div>
+
+  {%- comment -%} ── Sender & styling ── {%- endcomment -%}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <h2 class="text-lg font-bold text-gray-900">Sender &amp; styling</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <label class="block"><span class="{{ cls_lbl }}">Sender email</span>
+        <input type="text" name="@sender" value="{{ sender | escape }}" class="{{ cls_input }}" placeholder="events@example.com"></label>
+      <label class="block"><span class="{{ cls_lbl }}">Reply-to</span>
+        <input type="email" name="@reply_to" value="{{ reply_to | escape }}" class="{{ cls_input }}" placeholder="reply@example.com"></label>
+    </div>
+    <label class="block"><span class="{{ cls_lbl }}">Bcc</span>
+      <input type="text" name="@bcc" value="{{ bcc | escape }}" class="{{ cls_input }}" placeholder="archive@example.com, …"></label>
+    <div class="grid grid-cols-2 gap-4">
+      <label class="block"><span class="{{ cls_lbl }}">Text color</span>
+        <input type="color" name="@text_color" value="{{ text_color | escape }}" class="block w-full h-8 rounded-lg border border-gray-300"></label>
+      <label class="block"><span class="{{ cls_lbl }}">Button color</span>
+        <input type="color" name="@button_color" value="{{ button_color | escape }}" class="block w-full h-8 rounded-lg border border-gray-300"></label>
+      <label class="block"><span class="{{ cls_lbl }}">Button text</span>
+        <input type="color" name="@button_text_color" value="{{ button_text_color | escape }}" class="block w-full h-8 rounded-lg border border-gray-300"></label>
+      <label class="block"><span class="{{ cls_lbl }}">Line height</span>
+        <input type="text" name="@line_height" value="{{ line_height | escape }}" class="{{ cls_input }}"></label>
+    </div>
+  </div>
+
+  {%- comment -%} ── Email content ── {%- endcomment -%}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <h2 class="text-lg font-bold text-gray-900">Email content</h2>
+    <label class="block"><span class="{{ cls_lbl }}">Subject</span>
+      <input type="text" name="{{ subject.name }}" value="{{ subject.value | escape }}" placeholder="{{ subject.placeholder | escape }}" class="{{ cls_input }}"{% if language == "mis" %} required{% endif %}></label>
+    <label class="block"><span class="{{ cls_lbl }}">Headline</span>
+      <input type="text" name="{{ heading.name }}" value="{{ heading.value | escape }}" placeholder="{{ heading.placeholder | escape }}" class="{{ cls_input }}"></label>
+    <label class="block"><span class="flex items-center justify-between gap-2 mb-1"><span class="block text-sm font-medium text-gray-700">Body</span><span class="text-xs text-gray-400">Markdown / HTML</span></span>
+      <textarea name="{{ body_field.name }}" rows="10" placeholder="{{ body_field.placeholder | escape }}" class="{{ cls_area }}">{{ body_field.value | escape }}</textarea></label>
+  </div>
+
+  {%- comment -%} ── Content blocks ── {%- endcomment -%}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <h2 class="text-lg font-bold text-gray-900">Content blocks</h2>
+      <div class="flex items-center gap-2">
+        <label for="block-select" class="sr-only">Block type</label>
+        <select id="block-select" name="block-select" form="main-form" class="px-2 py-1 border border-gray-300 rounded-lg text-xs">
+          {% for option in blockOptions %}<option value="{{ option.value | escape }}">{{ option.label | escape }}</option>{% endfor %}
+        </select>
+        <button form="main-form" type="submit" name="action" value="block-add" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-transparent bg-gray-900 text-white hover:bg-gray-700 cursor-pointer">Add block</button>
+      </div>
+    </div>
+
+    {% if hasBlocks %}
+      <ul class="space-y-3">
+        {% for block in blocks %}
+          <li class="rounded-lg border border-gray-200">
+            <details open>
+              <summary class="flex items-center justify-between gap-2 px-4 py-2 cursor-pointer bg-gray-50 rounded-lg">
+                <span class="text-sm font-semibold text-gray-700">{{ block.title | escape }}{% if block.nameValue != blank %} · {{ block.nameValue | escape }}{% endif %}</span>
+                <span class="flex items-center gap-2">
+                  <span class="text-xs text-gray-400">#{{ block.index }}</span>
+                  <button form="main-form" type="submit" name="action" value="{{ block.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">Delete</button>
+                </span>
+              </summary>
+              <div class="px-4 py-4 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label class="block"><span class="{{ cls_lbl }}">Block label</span>
+                    <input type="text" name="{{ block.nameName }}" value="{{ block.nameValue | escape }}" class="{{ cls_input }}" placeholder="optional"></label>
+                  <label class="block"><span class="{{ cls_lbl }}">Order</span>
+                    <input type="number" name="{{ block.weightName }}" value="{{ block.weightValue }}" class="{{ cls_input }}"></label>
+                </div>
+                {% for field in block.fields %}
+                  {% if field.control == "textarea" %}
+                    <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
+                      <textarea name="{{ field.name }}" rows="4" placeholder="{{ field.placeholder | escape }}" class="{{ cls_area }}">{{ field.value | escape }}</textarea></label>
+                  {% else %}
+                    <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
+                      <input type="{% if field.control == 'number' %}number{% else %}text{% endif %}" name="{{ field.name }}" value="{{ field.value | escape }}" placeholder="{{ field.placeholder | escape }}" class="{{ cls_input }}"></label>
+                  {% endif %}
+                {% endfor %}
+
+                {% if block.hasRows %}
+                  <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 space-y-3">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-sm font-semibold text-gray-700">{{ block.rowLabel | escape }}s</span>
+                      <button form="main-form" type="submit" name="action" value="{{ block.addRowAction }}" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer">Add {{ block.rowLabel | downcase }}</button>
+                    </div>
+                    {% for row in block.rows %}
+                      <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+                        <div class="flex items-center justify-between gap-2">
+                          <span class="text-xs text-gray-400">{{ row.label | escape }}</span>
+                          <button form="main-form" type="submit" name="action" value="{{ row.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">Remove</button>
+                        </div>
+                        {% for field in row.fields %}
+                          {% if field.control == "textarea" %}
+                            <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
+                              <textarea name="{{ field.name }}" rows="3" placeholder="{{ field.placeholder | escape }}" class="{{ cls_area }}">{{ field.value | escape }}</textarea></label>
+                          {% else %}
+                            <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
+                              <input type="text" name="{{ field.name }}" value="{{ field.value | escape }}" placeholder="{{ field.placeholder | escape }}" class="{{ cls_input }}"></label>
+                          {% endif %}
+                        {% endfor %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </details>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-sm text-gray-400">No content blocks yet. Use “Add block” to build the email body.</p>
+    {% endif %}
+  </div>
+
+  {%- comment -%} ── RSVP, thank-you & decline ── {%- endcomment -%}
+  <details class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <summary class="text-lg font-bold text-gray-900 cursor-pointer">RSVP &amp; response pages</summary>
+    <div class="space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <label class="block"><span class="{{ cls_lbl }}">RSVP button text</span>
+          <input type="text" name="{{ rsvp_button.name }}" value="{{ rsvp_button.value | escape }}" placeholder="{{ rsvp_button.placeholder | escape }}" class="{{ cls_input }}"></label>
+        <label class="block"><span class="{{ cls_lbl }}">RSVP form button</span>
+          <input type="text" name="{{ rsvp_form_button.name }}" value="{{ rsvp_form_button.value | escape }}" placeholder="{{ rsvp_form_button.placeholder | escape }}" class="{{ cls_input }}"></label>
+      </div>
+      <label class="block"><span class="{{ cls_lbl }}">RSVP form decline button</span>
+        <input type="text" name="{{ rsvp_form_decline_button.name }}" value="{{ rsvp_form_decline_button.value | escape }}" placeholder="{{ rsvp_form_decline_button.placeholder | escape }}" class="{{ cls_input }}"></label>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-200" style="padding-top:1rem">
+        <fieldset>
+          <span class="{{ cls_lbl }}">Quick-confirm RSVP</span>
+          <div class="flex items-center gap-4">
+            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@quick_confirm" value="yes"{% if quick_confirm == "yes" %} checked{% endif %} class="h-4 w-4"> Yes</label>
+            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@quick_confirm" value="no"{% unless quick_confirm == "yes" %} checked{% endunless %} class="h-4 w-4"> No</label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <span class="{{ cls_lbl }}">CC assistants &amp; spouse</span>
+          <div class="flex items-center gap-4">
+            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@cc_enable" value="yes"{% if cc_enable == "yes" %} checked{% endif %} class="h-4 w-4"> Yes</label>
+            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@cc_enable" value="no"{% unless cc_enable == "yes" %} checked{% endunless %} class="h-4 w-4"> No</label>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="border-t border-gray-200 space-y-4" style="padding-top:1rem">
+        <label class="block"><span class="{{ cls_lbl }}">Thank-you picture URL</span>
+          <input type="text" name="@thankyou_picture" value="{{ thankyou_picture | escape }}" class="{{ cls_input }}" placeholder="https://…"></label>
+        <label class="block"><span class="{{ cls_lbl }}">Thank-you heading</span>
+          <input type="text" name="{{ thankyou_heading.name }}" value="{{ thankyou_heading.value | escape }}" placeholder="{{ thankyou_heading.placeholder | escape }}" class="{{ cls_input }}"></label>
+        <label class="block"><span class="{{ cls_lbl }}">Thank-you body</span>
+          <textarea name="{{ thankyou_body.name }}" rows="4" placeholder="{{ thankyou_body.placeholder | escape }}" class="{{ cls_area }}">{{ thankyou_body.value | escape }}</textarea></label>
+      </div>
+
+      <div class="border-t border-gray-200 space-y-4" style="padding-top:1rem">
+        <label class="block"><span class="{{ cls_lbl }}">Decline heading</span>
+          <input type="text" name="{{ decline_heading.name }}" value="{{ decline_heading.value | escape }}" placeholder="{{ decline_heading.placeholder | escape }}" class="{{ cls_input }}"></label>
+        <label class="block"><span class="{{ cls_lbl }}">Decline body</span>
+          <textarea name="{{ decline_body.name }}" rows="4" placeholder="{{ decline_body.placeholder | escape }}" class="{{ cls_area }}">{{ decline_body.value | escape }}</textarea></label>
+      </div>
+    </div>
+  </details>
+
+  <div class="flex items-center justify-between gap-2">
+    {% if deleteAction != blank %}
+      <button type="submit" formaction="{{ deleteAction | escape }}" formmethod="post" data-confirm="Move this EDM to trash?" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer">Delete</button>
+    {% else %}<span></span>{% endif %}
+    <button type="submit" name="action" value="update" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">Save</button>
+  </div>
+</form>
+
+{% if previewHref != blank %}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6" style="max-width:54rem;margin-top:1.5rem">
+    <h2 class="text-lg font-bold text-gray-900 mb-2">Email preview</h2>
+    <iframe src="{{ previewHref | escape }}" class="w-full border border-gray-200 rounded-lg" style="height:40rem" title="Email preview"></iframe>
+  </div>
+{% endif %}
+
+{% if testAction != blank %}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:54rem">
+    <h2 class="text-lg font-bold text-gray-900">Send a test</h2>
+    {% if senderSet %}
+      <form method="post" action="{{ testAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
+        <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">
+        <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Send test email</button>
+      </form>
+    {% else %}
+      <p class="text-sm text-gray-500" style="margin-top:0.5rem">Set the sender email above and save before sending a test.</p>
+    {% endif %}
+  </div>
+{% endif %}

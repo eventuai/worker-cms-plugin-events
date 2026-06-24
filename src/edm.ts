@@ -46,6 +46,286 @@ const MJML_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Placeholder swapped for each guest's signed RSVP URL after a single MJML render. */
 const RSVP_URL_PLACEHOLDER = 'https://__edm_rsvp_url__/';
 
+// ── Plugin edit view (manifest `editViews: ['edm']`) ───────────────────────────
+// The CMS hands the whole edit/new view for `edm` pages to this plugin: it POSTs
+// the editor context to /__plugin/edit, and we return an HTML fragment (the
+// bespoke EDM editor, ported from the legacy Eventuai admin) that the CMS wraps
+// in its admin chrome. The editor's form posts back to the CMS's normal save
+// handler (`ctx.action`) using the CMS field-name conventions (@attr, .field|lang,
+// *pointer, #<block>… , block-add/block-delete/… actions), so save / version /
+// publish all flow through the CMS unchanged.
+
+/** Editor context the CMS POSTs to /__plugin/edit. Mirrors the CMS EditViewContext. */
+interface EditViewContext {
+  mode: 'new' | 'edit';
+  action: string;
+  backHref: string;
+  language: string;
+  pageType: string;
+  page: {
+    id: number | string;
+    name: string;
+    slug: string;
+    pageType: string;
+    weight: number;
+    start: string | null;
+    end: string | null;
+    timezone: string | null;
+    editors: string | null;
+    lect: string;
+  };
+  versions: Array<{ id: number; created_at: string; action: string | null }>;
+  flash?: string;
+  errors?: string[];
+}
+
+/** Languages the EDM editor offers (must be a subset of the CMS `languages`). */
+const EDM_LANGUAGES: Array<{ value: string; label: string }> = [
+  { value: 'mis', label: 'Default' },
+  { value: 'en', label: 'EN' },
+  { value: 'zh-hant', label: '繁' },
+  { value: 'zh-hans', label: '简' },
+];
+
+/** Content blocks offered in the EDM editor's "add block" picker, with labels. */
+const EDM_BLOCK_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'paragraph', label: 'Paragraph' },
+  { value: 'picture', label: 'Picture' },
+  { value: 'button', label: 'Button' },
+  { value: 'table', label: 'Table' },
+  { value: 'spacer', label: 'Spacer' },
+  { value: 'edm-attachments', label: 'Attachments' },
+  { value: 'edm-unsubscribe', label: 'Unsubscribe footer' },
+];
+
+type BlockFieldSpec = { key: string; label: string; kind: 'attr' | 'value'; control: 'text' | 'textarea' | 'number' };
+
+/** Per-block-type scalar fields, mirroring the EDM block blueprints in index.ts. */
+const EDM_BLOCK_FIELDS: Record<string, BlockFieldSpec[]> = {
+  paragraph: [
+    { key: 'subject', label: 'Subject', kind: 'value', control: 'text' },
+    { key: 'body', label: 'Body', kind: 'value', control: 'textarea' },
+  ],
+  picture: [
+    { key: 'picture', label: 'Image URL', kind: 'attr', control: 'text' },
+    { key: 'caption', label: 'Caption', kind: 'value', control: 'text' },
+    { key: 'width', label: 'Width', kind: 'attr', control: 'text' },
+    { key: 'align', label: 'Align (left/center/right)', kind: 'attr', control: 'text' },
+  ],
+  button: [
+    { key: 'label', label: 'Label', kind: 'value', control: 'text' },
+    { key: 'url', label: 'URL', kind: 'value', control: 'text' },
+  ],
+  spacer: [
+    { key: 'lines', label: 'Blank lines', kind: 'attr', control: 'number' },
+  ],
+  table: [
+    { key: 'title', label: 'Title', kind: 'value', control: 'textarea' },
+    { key: 'first_column_width', label: 'First column width', kind: 'attr', control: 'text' },
+  ],
+};
+
+/** Per-block-type repeatable item groups (nested items), mirroring the blueprints. */
+const EDM_BLOCK_ROWS: Record<string, { item: string; label: string; fields: BlockFieldSpec[] }> = {
+  table: {
+    item: 'row',
+    label: 'Row',
+    fields: [
+      { key: 'name', label: 'Name', kind: 'value', control: 'textarea' },
+      { key: 'description', label: 'Description', kind: 'value', control: 'textarea' },
+    ],
+  },
+  'edm-attachments': {
+    item: 'attachment',
+    label: 'Attachment',
+    fields: [
+      { key: 'file', label: 'File URL', kind: 'attr', control: 'text' },
+      { key: 'name', label: 'Display name', kind: 'attr', control: 'text' },
+    ],
+  },
+};
+
+/** Parses the stringified lect the CMS sends; tolerant of malformed input. */
+function parseLect(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Exact per-language value (no cross-language fallback), for editor inputs. */
+function locExact(lect: Record<string, unknown>, key: string, lang: string): string {
+  const value = lect[key];
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const map = value as Record<string, unknown>;
+    return map[lang] == null ? '' : String(map[lang]);
+  }
+  return value == null ? '' : String(value);
+}
+
+interface EditFieldVM { control: string; label: string; name: string; value: string; placeholder: string; }
+interface EditRowVM { label: string; deleteAction: string; fields: EditFieldVM[]; }
+interface EditBlockVM {
+  index: number;
+  type: string;
+  title: string;
+  nameName: string;
+  nameValue: string;
+  weightName: string;
+  weightValue: number;
+  deleteAction: string;
+  fields: EditFieldVM[];
+  hasRows: boolean;
+  rowLabel: string;
+  addRowAction: string;
+  rows: EditRowVM[];
+}
+
+/** One scalar field's view-model (input name + current value + cross-language placeholder). */
+function fieldVM(
+  lect: Record<string, unknown>,
+  prefix: string,
+  spec: BlockFieldSpec,
+  lang: string,
+  defaultLang: string,
+): EditFieldVM {
+  const name = spec.kind === 'attr' ? `${prefix}@${spec.key}` : `${prefix}.${spec.key}|${lang}`;
+  const value = spec.kind === 'attr' ? attr(lect, spec.key) : locExact(lect, spec.key, lang);
+  const placeholder = spec.kind === 'value' && lang !== defaultLang ? locExact(lect, spec.key, defaultLang) : '';
+  return { control: spec.control, label: spec.label, name, value, placeholder };
+}
+
+/** Projects a page's `_blocks` into editor view-models, preserving array index
+ *  (the `#<index>` field names round-trip through the CMS save handler). */
+function editBlocks(lect: Record<string, unknown>, lang: string, defaultLang: string): EditBlockVM[] {
+  const raw = Array.isArray(lect._blocks) ? (lect._blocks as Array<Record<string, unknown>>) : [];
+  const models = raw.map((block, index) => {
+    const type = attr(block, '_type') || 'paragraph';
+    const prefix = `#${index}`;
+    const fields = (EDM_BLOCK_FIELDS[type] ?? []).map((spec) => fieldVM(block, prefix, spec, lang, defaultLang));
+    const rowSpec = EDM_BLOCK_ROWS[type];
+    const rows: EditRowVM[] = rowSpec
+      ? items(block, rowSpec.item).map((row, rowIndex) => ({
+          label: `${rowSpec.label} ${rowIndex + 1}`,
+          deleteAction: `block-item-delete:${index}|${rowSpec.item}|${rowIndex}`,
+          fields: rowSpec.fields.map((spec) => fieldVM(row, `${prefix}.${rowSpec.item}[${rowIndex}]`, spec, lang, defaultLang)),
+        }))
+      : [];
+    return {
+      index,
+      type,
+      title: EDM_BLOCK_OPTIONS.find((option) => option.value === type)?.label ?? type,
+      nameName: `${prefix}@_name`,
+      nameValue: attr(block, '_name'),
+      weightName: `${prefix}@_weight`,
+      weightValue: Number(block._weight) || index,
+      deleteAction: `block-delete:${index}`,
+      fields,
+      hasRows: !!rowSpec,
+      rowLabel: rowSpec?.label ?? '',
+      addRowAction: rowSpec ? `block-item-add:${index}|${rowSpec.item}` : '',
+      rows,
+    };
+  });
+  // Display in weight order, but the field names keep the original array index.
+  return models.sort((a, b) => a.weightValue - b.weightValue);
+}
+
+/**
+ * Renders the bespoke EDM editor for an `edm` page. Returns 404 for any other
+ * page type so the CMS falls back to its built-in editor.
+ */
+export async function handleEdmEditView(
+  request: Request,
+  cms: CmsClient,
+  views: Fetcher,
+  env: EdmEnv,
+): Promise<Response> {
+  const ctx = (await request.json().catch(() => null)) as EditViewContext | null;
+  if (!ctx || ctx.pageType !== 'edm') return new Response('not found', { status: 404 });
+
+  const lect = parseLect(ctx.page.lect);
+  const lang = ctx.language || 'mis';
+  const defaultLang = 'mis';
+  const isEdit = ctx.mode === 'edit';
+
+  // Resolve the parent event (for the header + preview) from the page's pointer.
+  const eventId = pageId(pointer(lect, 'event'));
+  let eventName = '';
+  if (eventId) {
+    try {
+      const event = await cms.get(eventId);
+      if (event.page_type === 'event') eventName = event.name;
+    } catch (error) {
+      if (!(error instanceof CmsApiError && error.status === 404)) throw error;
+    }
+  }
+  // Offer an event picker when the EDM has no event yet (e.g. a bare new page).
+  const events = eventId ? [] : (await cms.list('event', { limit: 500 })).pages;
+
+  const valueField = (key: string) => ({ name: `.${key}|${lang}`, value: locExact(lect, key, lang), placeholder: lang !== defaultLang ? locExact(lect, key, defaultLang) : '' });
+  const selfHref = isEdit ? `${ADMIN_BASE}/edm/${ctx.page.id}` : '';
+
+  const body = await renderLiquid(views, '/sections/edm-edit.liquid', {
+    title: isEdit ? `Edit ${ctx.page.name}` : 'New EDM',
+    action: ctx.action,
+    backHref: ctx.backHref || `${ADMIN_BASE}/edm`,
+    isEdit,
+    language: lang,
+    languageOptions: EDM_LANGUAGES.map((option) => ({ ...option, selected: option.value === lang })),
+    name: ctx.page.name,
+    slug: ctx.page.slug,
+    weight: ctx.page.weight,
+    eventName,
+    eventId: eventId ?? '',
+    hasEvent: !!eventId,
+    events: events.map((event) => ({ id: event.id, name: event.name })),
+    flash: ctx.flash ?? '',
+    errors: ctx.errors ?? [],
+    // Attributes (sender / styling) — `@field` names.
+    sender: attr(lect, 'sender'),
+    reply_to: attr(lect, 'reply_to'),
+    bcc: attr(lect, 'bcc'),
+    text_color: attr(lect, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
+    button_color: attr(lect, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
+    button_text_color: attr(lect, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
+    line_height: attr(lect, 'line_height') || EDM_STYLE_DEFAULTS.line_height,
+    cc_enable: attr(lect, 'cc_enable') || 'no',
+    quick_confirm: attr(lect, 'quick_confirm') || 'no',
+    thankyou_picture: attr(lect, 'thankyou_picture'),
+    // Localized content — `.field|<lang>` names.
+    subject: valueField('subject'),
+    heading: valueField('heading'),
+    body_field: valueField('body'),
+    rsvp_button: valueField('rsvp_button'),
+    rsvp_form_button: valueField('rsvp_form_button'),
+    rsvp_form_decline_button: valueField('rsvp_form_decline_button'),
+    thankyou_heading: valueField('thankyou_heading'),
+    thankyou_body: valueField('thankyou_body'),
+    decline_heading: valueField('decline_heading'),
+    decline_body: valueField('decline_body'),
+    // Content blocks.
+    blocks: editBlocks(lect, lang, defaultLang),
+    hasBlocks: Array.isArray(lect._blocks) && (lect._blocks as unknown[]).length > 0,
+    blockOptions: EDM_BLOCK_OPTIONS,
+    // EDM-specific actions (edit mode only).
+    previewHref: isEdit ? `${selfHref}/preview` : '',
+    testAction: isEdit ? `${selfHref}/send-test` : '',
+    deleteAction: isEdit ? `/admin/pages/${ctx.page.id}/delete` : '',
+    senderSet: attr(lect, 'sender') !== '',
+  });
+
+  return new Response(body, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'x-cms-chrome': '1',
+      'x-cms-title': encodeURIComponent(isEdit ? `Edit ${ctx.page.name}` : 'New EDM'),
+    },
+  });
+}
+
 export async function handleEdmAdmin(
   request: Request,
   cms: CmsClient,

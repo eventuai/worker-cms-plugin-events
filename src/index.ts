@@ -23,7 +23,7 @@ import {
   type CmsPage,
 } from './cms';
 import { signPayload, verifyPayload } from './crypto';
-import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, type EdmEnv, type EmailDelivery } from './edm';
+import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
 import { handlePublicRsvp } from './public-rsvp';
 import {
@@ -181,6 +181,9 @@ const MANIFEST = {
       rsvp: Object.keys(RSVP_BLOCKS),
     },
   },
+  // `edm` pages render the bespoke EDM editor (legacy Eventuai design) via
+  // POST /__plugin/edit instead of the CMS's generic structured editor.
+  editViews: ['edm'],
 };
 
 export default {
@@ -190,7 +193,8 @@ export default {
 
     const secretRequired = path.startsWith('/__plugin/hooks/')
       || path.startsWith('/__plugin/publish/')
-      || path.startsWith('/__plugin/admin');
+      || path.startsWith('/__plugin/admin')
+      || path === '/__plugin/edit';
     if (secretRequired && env.PLUGIN_SECRET && request.headers.get('x-plugin-secret') !== env.PLUGIN_SECRET) {
       return new Response('forbidden', { status: 403 });
     }
@@ -212,6 +216,20 @@ export default {
       const payload = await request.json().catch(() => ({}));
       console.log(`[events-suite] hook ${event}:`, JSON.stringify(payload));
       return new Response('ok');
+    }
+
+    // Plugin-rendered page edit view (manifest `editViews`). The CMS POSTs the
+    // editor context for an `edm` page; we return the bespoke EDM editor as an
+    // HTML fragment the CMS wraps in its admin chrome.
+    if (path === '/__plugin/edit' && request.method === 'POST') {
+      let cms: CmsClient;
+      try {
+        cms = new CmsClient(env);
+      } catch (error) {
+        if (error instanceof CmsNotConfiguredError) return new Response('not found', { status: 404 });
+        throw error;
+      }
+      return handleEdmEditView(request, cms, env.VIEWS, env);
     }
 
     if (path.startsWith('/__plugin/admin')) {

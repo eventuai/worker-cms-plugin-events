@@ -704,6 +704,100 @@ describe('EDM and labels', () => {
   });
 });
 
+describe('EDM edit view (plugin-rendered page editor)', () => {
+  it('declares the edm edit view in the manifest', async () => {
+    const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    await expect(response.json()).resolves.toMatchObject({ editViews: ['edm'] });
+  });
+
+  function editContext(overrides: Record<string, unknown> = {}) {
+    return {
+      mode: 'edit',
+      action: '/admin/pages/50',
+      backHref: '/admin/plugins/events/edm/50',
+      language: 'mis',
+      pageType: 'edm',
+      page: {
+        id: 50,
+        name: 'Save the date',
+        slug: 'save-the-date',
+        pageType: 'edm',
+        weight: 5,
+        start: null,
+        end: null,
+        timezone: null,
+        editors: null,
+        lect: JSON.stringify({
+          _type: 'edm',
+          _pointers: { event: '12' },
+          sender: 'events@example.com',
+          subject: { mis: 'You are invited' },
+          _blocks: [
+            { _type: 'paragraph', _weight: 0, subject: { mis: 'Welcome' }, body: { mis: 'See you there' } },
+          ],
+        }),
+      },
+      versions: [],
+      ...overrides,
+    };
+  }
+
+  it('renders the bespoke EDM editor and wraps it in CMS chrome', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: { id: 12, page_type: 'event', name: 'Town & Country', lect: {} } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext()),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-cms-chrome')).toBe('1');
+    const html = await response.text();
+    // Form posts back to the CMS save handler.
+    expect(html).toContain('action="/admin/pages/50"');
+    // Page-basics carried as hidden fields + the event pointer.
+    expect(html).toContain('name="page_type" value="edm"');
+    expect(html).toContain('name="*event" value="12"');
+    // Template name, sender attribute (@field) and subject value (.field|lang).
+    expect(html).toContain('value="Save the date"');
+    expect(html).toContain('name="@sender"');
+    expect(html).toContain('name=".subject|mis"');
+    expect(html).toContain('You are invited');
+    // The paragraph block is rendered with #<index> field names + a delete action.
+    expect(html).toContain('name="#0.subject|mis"');
+    expect(html).toContain('value="block-delete:0"');
+    // The parent event name appears in the header.
+    expect(html).toContain('Town &amp; Country');
+  });
+
+  it('falls back (404) for a non-edm page type', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({ pageType: 'guest' })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects the edit view without the shared secret', async () => {
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(editContext()),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    expect(response.status).toBe(403);
+  });
+});
+
 describe('public RSVP', () => {
   it('accepts a signed RSVP and records the response against the guest', async () => {
     let updateRequest: RequestInit | undefined;

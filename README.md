@@ -16,9 +16,33 @@ Part of the RSVP/contact port — see `cms/../cms-to-rsvp.md`. Pairs with
 - **Blocks + block lists:** content blocks, EDM blocks, all `rsvp-*` blocks;
   `events` / `edm` / `rsvp` block lists.
 - **Nav (3 items):** Events, RSVP, EDM — each a section of the same plugin admin.
+- **Edit view:** `editViews: ['edm']` — `edm` pages open the bespoke EDM editor
+  (ported from the legacy Eventuai admin) instead of the CMS's generic structured
+  editor. See [EDM editor](#edm-editor).
 - **Hooks:** `publish`, `unpublish`, `delete`.
 - **Public routes (own domain):** `/qr` + `/sign` (signed QR, live); RSVP forms,
   check-in, and EDM unsubscribe are TODO.
+
+## EDM editor
+
+Because the manifest lists `editViews: ['edm']`, the CMS hands the whole edit/new
+view for an `edm` page to this plugin: it `POST`s the editor context to
+`/__plugin/edit`, and the plugin returns the bespoke EDM editor
+([`src/edm.ts` → `handleEdmEditView`](src/edm.ts),
+[`views/sections/edm-edit.liquid`](views/sections/edm-edit.liquid)) as an HTML
+fragment the CMS wraps in its admin chrome. The design follows the legacy
+Eventuai admin: template name, sender/styling, subject/headline/body, a content-
+block builder, RSVP/thank-you/decline settings, an email-preview iframe, and a
+test-send form.
+
+The editor's single `<form>` posts back to the CMS's normal save handler using
+the CMS field-name conventions (`@attr`, `.field|<lang>`, `*event`, `#<block>…`,
+and the `block-add` / `block-delete` / `block-item-*` actions), so save,
+versioning and publish all flow through the CMS unchanged. Markup uses only the
+Tailwind utilities the host CMS emits (it borrows the host's `admin.css`), and
+collapsibles use native `<details>` rather than purged `peer-checked:*` classes.
+Returning `404` (any non-`edm` page, or an unconfigured CMS link) makes the CMS
+fall back to its built-in editor.
 
 ## Develop
 
@@ -38,6 +62,7 @@ No `wrangler.toml` change or CMS redeploy needed.
 
 - [x] All event/RSVP/EDM blueprints + blocks + block lists; 3-section admin
 - [x] Signed QR `/qr` + `/sign` (HMAC via Web Crypto; image is a placeholder)
+- [x] Bespoke EDM editor as a plugin edit view (`editViews: ['edm']`)
 - [ ] Guest lists, label designer, public check-in (events)
 - [ ] Guest management, public RSVP form + submit → write-back F1 (rsvp)
 - [ ] Render/send email, scheduled blasts (edm — bindings stubbed in `wrangler.toml`)
