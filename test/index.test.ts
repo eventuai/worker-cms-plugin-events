@@ -1416,61 +1416,39 @@ describe('per-list import preview', () => {
     expect(sink.updates).toHaveLength(0);
   });
 
-  it('on confirm with the default mode, creates new and updates existing', async () => {
-    const sink = { batches: [] as Array<{ pages: Array<Record<string, unknown>> }>, updates: [] as Array<{ id: number; body: unknown }> };
+  // The confirm step carries the raw CSV (not an expanded payload) and re-derives
+  // the plan server-side against the list's current guests.
+  const confirmCsv = 'name,email,phone\nAda,ada@x.io,555-1234\nBob,bob@x.io,555-9999\n';
+  const confirm = (mode: string, sink: { batches: unknown[]; updates: Array<{ id: number; body: unknown }> }) => {
     vi.stubGlobal('fetch', listFetch(sink));
-
-    const payload = JSON.stringify({
-      create: [{ page_type: 'guest', page_id: 8, name: 'Bob', lect: { email: 'bob@x.io' } }],
-      update: [{ id: 100, lect: { phone: '555-1234' } }],
-    });
-    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+    return plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
-      body: new URLSearchParams({ mode: 'new_and_update', payload }),
+      body: new URLSearchParams({ mode, csv: confirmCsv }),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+  };
+
+  it('on confirm with the default mode, creates new and updates existing', async () => {
+    const sink = { batches: [] as Array<{ pages: Array<Record<string, unknown>> }>, updates: [] as Array<{ id: number; body: unknown }> };
+    const response = await confirm('new_and_update', sink as unknown as { batches: unknown[]; updates: Array<{ id: number; body: unknown }> });
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
     expect(sink.batches).toHaveLength(1);
-    expect(sink.batches[0].pages[0]).toMatchObject({ page_type: 'guest', page_id: 8, name: 'Bob' });
+    expect(sink.batches[0].pages[0]).toMatchObject({ page_type: 'guest', page_id: 8, name: 'Bob' }); // new
+    // Ada (id 100) matched by email → her missing phone is added.
     expect(sink.updates).toEqual([{ id: 100, body: { lect: { phone: '555-1234' } } }]);
   });
 
   it('mode new_only skips updates; update_only skips creates', async () => {
-    const payload = JSON.stringify({
-      create: [{ page_type: 'guest', page_id: 8, name: 'Bob', lect: {} }],
-      update: [{ id: 100, lect: { phone: '555-1234' } }],
-    });
-    const confirm = (mode: string, sink: { batches: unknown[]; updates: Array<{ id: number; body: unknown }> }) => {
-      vi.stubGlobal('fetch', listFetch(sink));
-      return plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
-        body: new URLSearchParams({ mode, payload }),
-      }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
-    };
-
     const newOnly = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
     await confirm('new_only', newOnly);
-    expect(newOnly.batches).toHaveLength(1);
-    expect(newOnly.updates).toHaveLength(0);
+    expect(newOnly.batches).toHaveLength(1); // Bob created
+    expect(newOnly.updates).toHaveLength(0); // Ada untouched
 
     const updateOnly = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
     await confirm('update_only', updateOnly);
-    expect(updateOnly.batches).toHaveLength(0);
-    expect(updateOnly.updates).toHaveLength(1);
-  });
-
-  it('ignores updates for ids that do not belong to the list', async () => {
-    const sink = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
-    vi.stubGlobal('fetch', listFetch(sink)); // list only contains guest id 100
-    const payload = JSON.stringify({ create: [], update: [{ id: 999, lect: { phone: 'x' } }] });
-    await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
-      body: new URLSearchParams({ mode: 'update_only', payload }),
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
-    expect(sink.updates).toHaveLength(0); // id 999 is not in the list
+    expect(updateOnly.batches).toHaveLength(0); // Bob not created
+    expect(updateOnly.updates).toHaveLength(1); // Ada updated
   });
 });
