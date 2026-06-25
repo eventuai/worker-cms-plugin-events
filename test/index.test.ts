@@ -1024,6 +1024,65 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('<option value="vegan" selected>Vegan</option>');
   });
 
+  it('renders guest Activity from RSVP, check-in and sent EDM history', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Town & Country', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/50') {
+        return Response.json({ page: { id: 50, page_type: 'edm', name: 'Annual invite', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({
+        action: '/admin/pages/9',
+        backHref: '/admin/plugins/events/rsvp/8',
+        pageType: 'guest',
+        page: {
+          id: 9,
+          name: 'Ada Lovelace',
+          slug: 'ada-lovelace',
+          pageType: 'guest',
+          page_id: 8,
+          lect: JSON.stringify({
+            _type: 'guest',
+            name: { mis: 'Ada Lovelace' },
+            email: 'ada@example.com',
+            status: 'confirmed',
+            _pointers: { event: '7', mail_list: '8' },
+            response: [{ status: 'confirmed', date: '2026-06-25T09:30:00Z', message: 'Looking forward to it' }],
+            checkin: [{ status: 'checked-in', date: '2026-06-26T01:15:00Z', message: 'front desk' }],
+            sent_edm: [{ edm: '50', date: '2026-06-24T08:00:00Z', message: 'manual send' }],
+          }),
+        },
+      })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Activity');
+    expect(html).toContain('Response');
+    expect(html).toContain('Confirmed');
+    expect(html).toContain('Looking forward to it');
+    expect(html).toContain('Check-in');
+    expect(html).toContain('front desk');
+    expect(html).toContain('Sent eDM');
+    expect(html).toContain('Annual invite');
+    expect(html).toContain('manual send');
+  });
+
   it('does not serve the old plugin guest edit URL', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);

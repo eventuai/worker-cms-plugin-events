@@ -1,12 +1,11 @@
 <div class="flex items-center justify-between gap-4 mb-4">
-  <div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventsHref | escape }}">← Events</a><h1 class="text-2xl font-bold text-gray-900">{{ eventName | escape }}</h1></div>
+  <div>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventsHref | escape }}">← Events</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ eventName | escape }}</h1>
+  </div>
   <div class="flex flex-wrap gap-2">
     <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700" href="{{ adhocCheckinHref | escape }}">Adhoc check-in</a>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ guestListsHref | escape }}">Guest lists</a>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ allGuestsHref | escape }}">All guests</a>
     <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ sessionsHref | escape }}">Sessions</a>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ importHref | escape }}">Import</a>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ exportAllHref | escape }}">Export all guests</a>
     <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ labelsHref | escape }}">Labels</a>
     <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ editHref | escape }}">Edit event ↗</a>
   </div>
@@ -16,12 +15,20 @@
     {% for stat in stats %}
       <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900"{% if stat.color %} style="color:{{ stat.color | escape }}"{% endif %}>{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label | escape }}</span></div>
     {% endfor %}
+    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold bg-white text-gray-700 hover:bg-gray-50" href="{{ allGuestsHref | escape }}">View all guests →</a>
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto mt-4">
   <div class="flex items-center justify-between gap-4" style="padding:1rem 1rem 0;margin-bottom:.75rem">
-    <div><h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>Guest lists</h2><p class="mt-1 text-sm text-gray-500">Invitation, RSVP and check-in summary by list.</p></div>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ newGuestListHref | escape }}">New guest list</a>
+    <div>
+      <a class="hover:underline flex items-center gap-2 text-lg font-bold text-gray-900" href="{{ guestListsHref | escape }}"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>Guest lists</a>
+    <p class="mt-1 text-sm text-gray-500">Invitation, RSVP and check-in summary by list.</p></div>
+    <div>
+<a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ importHref | escape }}">Import</a>
+<a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ exportAllHref | escape }}">Export</a>
+<a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ newGuestListHref | escape }}">New</a>
+    </div>
+
   </div>
   <table class="w-full text-left text-sm" data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only>
     <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-4 py-3 w-10"></th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guests</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invitation</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">RSVP</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
@@ -34,7 +41,7 @@
           <td class="px-6 py-3 text-sm text-gray-700">On hold {{ list.summary.onhold_count }} · To invite {{ list.summary.to_be_invited_count }} · Invited {{ list.summary.invited_count }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">Confirmed {{ list.summary.confirmed_count }} · Declined {{ list.summary.declined_count }}{% if list.summary.unconfirmed_count > 0 %} · Unconfirmed {{ list.summary.unconfirmed_count }}{% endif %}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ list.summary.checked_in_count }} groups<br><span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} people</span></td>
-          <td class="px-6 py-3 text-right"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">Manage →</a></td>
+          <td class="px-6 py-3 text-right"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">→</a></td>
         </tr>
       {% else %}
         <tr><td colspan="7" class="px-6 py-10 text-center text-sm text-gray-400">No guest lists yet. Create one to begin inviting guests.</td></tr>

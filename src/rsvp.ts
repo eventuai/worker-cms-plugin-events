@@ -91,6 +91,14 @@ interface AdminCustomField {
   source: string;
 }
 
+interface ActivityItem {
+  kind: string;
+  label: string;
+  status: string;
+  date: string;
+  message: string;
+}
+
 /** Signing context for per-guest check-in QR codes. */
 export interface QrOptions {
   secret?: string;
@@ -405,6 +413,7 @@ async function guestFormView(
   }
 
   const adminCustomFields = adminCustomFieldsForGuest(context.event, context.list, guest);
+  const activity = guest ? await guestActivity(cms, guest) : [];
 
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
     title: options.title ?? (guest ? 'Edit guest' : 'New guest'),
@@ -423,6 +432,8 @@ async function guestFormView(
     statuses: GUEST_STATUSES.map((status) => ({ value: status, selected: values.status === status })),
     adminCustomFields,
     hasAdminCustomFields: adminCustomFields.length > 0,
+    activity,
+    hasActivity: activity.length > 0,
     deleteAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
     qrHref: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode` : '',
     updateFromContactAction: guest && attr(guest.lect, 'contact_id')
@@ -1554,6 +1565,82 @@ function guestValues(guest: CmsPage): Record<string, string> {
     cc: attr(guest.lect, 'cc'),
     remarks: attr(guest.lect, 'remarks'),
   };
+}
+
+async function guestActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityItem[]> {
+  const responseActivity = items(guest.lect, 'response')
+    .filter(hasActivityContent)
+    .map((entry) => ({
+      kind: 'response',
+      label: 'Response',
+      status: String(entry.status ?? ''),
+      date: String(entry.date ?? ''),
+      message: String(entry.message ?? ''),
+    }));
+
+  const checkinActivity = checkins(guest.lect).map((entry) => ({
+    kind: 'checkin',
+    label: 'Check-in',
+    status: String(entry.status ?? 'checked-in') || 'checked-in',
+    date: String(entry.date ?? ''),
+    message: String(entry.message ?? ''),
+  }));
+
+  const sentActivity = await sentEdmActivity(cms, guest);
+
+  return [...responseActivity, ...checkinActivity, ...sentActivity].sort((a, b) => {
+    const aTime = Date.parse(a.date);
+    const bTime = Date.parse(b.date);
+    if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+    if (Number.isNaN(aTime)) return 1;
+    if (Number.isNaN(bTime)) return -1;
+    return bTime - aTime;
+  });
+}
+
+function hasActivityContent(entry: Record<string, unknown>): boolean {
+  return ['status', 'date', 'message'].some((key) => String(entry[key] ?? '').trim() !== '');
+}
+
+async function sentEdmActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityItem[]> {
+  const sent = Array.isArray(guest.lect.sent_edm) ? guest.lect.sent_edm : [];
+  if (!sent.length) return [];
+
+  const edmNames = new Map<string, string>();
+  const ids = [...new Set(sent.map(sentEdmId).filter(Boolean))];
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const edm = await cms.get(Number(id));
+      if (edm.page_type === 'edm') edmNames.set(id, edm.name);
+    } catch (error) {
+      if (!(error instanceof CmsApiError && error.status === 404)) throw error;
+    }
+  }));
+
+  return sent
+    .map((entry) => {
+      const id = sentEdmId(entry);
+      if (!id) return null;
+      const record = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry as Record<string, unknown> : {};
+      const name = edmNames.get(id) ?? `EDM ${id}`;
+      return {
+        kind: 'edm',
+        label: 'Sent eDM',
+        status: name,
+        date: String(record.date ?? record.sent_at ?? ''),
+        message: String(record.message ?? record.subject ?? ''),
+      };
+    })
+    .filter((entry): entry is ActivityItem => entry !== null);
+}
+
+function sentEdmId(entry: unknown): string {
+  if (entry == null) return '';
+  if (typeof entry === 'object' && !Array.isArray(entry)) {
+    const record = entry as Record<string, unknown>;
+    return String(record.edm ?? record.edm_id ?? record.id ?? '').trim();
+  }
+  return String(entry).trim();
 }
 
 function guestStatus(guest: CmsPage): GuestStatus {
