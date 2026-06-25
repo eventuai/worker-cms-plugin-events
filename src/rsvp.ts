@@ -1084,7 +1084,7 @@ function importGuestFromValue(value: (...names: string[]) => string): IncomingGu
     value('checkin_date', 'rsvp_custom_checkin_date'),
     value('checkin_message', 'rsvp_custom_checkin_message'),
   );
-  const rawId = pageId(value('id')) ?? null;
+  const rawId = parseImportId(value('id'));
   return { id: rawId, name, values, custom: {}, checkin: checkin ?? undefined };
 }
 
@@ -1386,6 +1386,7 @@ function guestListRow(list: CmsPage, event?: CmsPage): Record<string, unknown> {
     eventName: event?.name ?? 'Unknown event',
     eventHref: event ? `${ADMIN_BASE}/events/${event.id}` : '',
     href: `${ADMIN_BASE}/rsvp/${list.id}`,
+    canDelete: !isAdhocList(list),
     deleteAction: isAdhocList(list) ? '' : `${ADMIN_BASE}/rsvp/${list.id}/delete`,
     allowCheckin: attr(list.lect, 'allow_checkin') !== 'no',
   };
@@ -1512,6 +1513,17 @@ function normalizeStatus(value: string | null): GuestStatus | null {
 function pageId(value: unknown): number | null {
   const id = typeof value === 'number' ? value : Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+// Excel exports large integers as ="N" to prevent scientific notation.
+// parseCsv strips the outer quote delimiters, leaving "=N" in the cell value.
+// This helper accepts plain integers, =N, or (if somehow preserved) ="N".
+function parseImportId(raw: string): number | null {
+  const s = raw.trim();
+  const digits = /^="?(\d+)"?$/.exec(s)?.[1] ?? (/^\d+$/.test(s) ? s : null);
+  if (!digits) return null;
+  const n = Number(digits);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 function formText(form: FormData, key: string): string {
