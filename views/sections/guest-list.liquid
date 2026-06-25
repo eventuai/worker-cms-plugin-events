@@ -73,7 +73,7 @@
         <tr>
           <td class="px-6 py-3 text-sm text-gray-700">
             <a class="block text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.editHref | escape }}">{{ guest.name | escape }}</a>
-            <div>
+            <div class="text-gray-500 text-sm">
             {{ guest.email | escape }}
             {% if hasEdm %}
               {% if guest.isGood %}<span class="ml-1 inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">good</span>
