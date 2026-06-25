@@ -10,24 +10,25 @@ export async function handleLabelsAdmin(
   eventId: number,
   segments: string[],
   url: URL,
+  jsonOnly = false,
 ): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
-  if (!segments.length) return labelsIndex(cms, views, event);
+  if (!segments.length) return labelsIndex(cms, views, event, jsonOnly);
   if (segments[0] === 'new') {
     if (request.method === 'POST') return createLabel(request, cms, event);
-    return labelForm(cms, views, event);
+    return labelForm(cms, views, event, undefined, jsonOnly);
   }
 
   const labelId = pageId(segments[0]);
   if (!labelId) return new Response('not found', { status: 404 });
   if (segments[1] === 'preview') return labelPreview(cms, event, labelId, url);
   if (request.method === 'POST') return updateLabel(request, cms, event, labelId);
-  return labelForm(cms, views, event, labelId);
+  return labelForm(cms, views, event, labelId, jsonOnly);
 }
 
-async function labelsIndex(cms: CmsClient, views: Fetcher, event: CmsPage): Promise<Response> {
+async function labelsIndex(cms: CmsClient, views: Fetcher, event: CmsPage, jsonOnly = false): Promise<Response> {
   const { pages } = await cms.list('label', { parentId: event.id, limit: 500 });
   return adminView(views, `Labels — ${event.name}`, 'labels', {
     eventName: event.name,
@@ -40,10 +41,10 @@ async function labelsIndex(cms: CmsClient, views: Fetcher, event: CmsPage): Prom
       width: frame(label).width,
       height: frame(label).height,
     })),
-  });
+  }, jsonOnly);
 }
 
-async function labelForm(cms: CmsClient, views: Fetcher, event: CmsPage, labelId?: number): Promise<Response> {
+async function labelForm(cms: CmsClient, views: Fetcher, event: CmsPage, labelId?: number, jsonOnly = false): Promise<Response> {
   const label = labelId ? await cms.get(labelId) : undefined;
   if (label && (label.page_type !== 'label' || label.page_id !== event.id)) return new Response('not found', { status: 404 });
   const value = label ? labelValues(label) : emptyLabel();
@@ -61,7 +62,7 @@ async function labelForm(cms: CmsClient, views: Fetcher, event: CmsPage, labelId
     previewHref: label ? `${ADMIN_BASE}/events/${event.id}/labels/${label.id}/preview` : '',
     label: value,
     guests: guestOptions,
-  });
+  }, jsonOnly);
 }
 
 async function createLabel(request: Request, cms: CmsClient, event: CmsPage): Promise<Response> {

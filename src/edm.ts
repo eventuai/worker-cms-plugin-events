@@ -342,20 +342,21 @@ export async function handleEdmAdmin(
   env: EdmEnv,
   segments: string[],
   url: URL,
+  jsonOnly = false,
 ): Promise<Response> {
-  if (!segments.length) return edmIndex(cms, views);
+  if (!segments.length) return edmIndex(cms, views, jsonOnly);
   if (segments[0] === 'new') {
-    if (request.method === 'POST') return createEdm(request, cms, views);
-    return edmNewForm(cms, views, url);
+    if (request.method === 'POST') return createEdm(request, cms, views, jsonOnly);
+    return edmNewForm(cms, views, url, jsonOnly);
   }
 
   const edmId = pageId(segments[0]);
-  if (!edmId) return notFoundView(views, 'EDM not found.');
+  if (!edmId) return notFoundView(views, 'EDM not found.', jsonOnly);
   if (segments[1] === 'preview') return edmPreview(cms, views, env, edmId, url.searchParams.get('language') ?? undefined);
-  if (segments[1] === 'duplicate' && request.method === 'POST') return duplicateEdm(cms, views, edmId);
-  if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId);
-  if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, views, edmId);
-  if (segments[1] === 'send-list' && request.method === 'POST') return sendGuestList(request, cms, views, env, edmId);
+  if (segments[1] === 'duplicate' && request.method === 'POST') return duplicateEdm(cms, views, edmId, jsonOnly);
+  if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId, jsonOnly);
+  if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, views, edmId, jsonOnly);
+  if (segments[1] === 'send-list' && request.method === 'POST') return sendGuestList(request, cms, views, env, edmId, jsonOnly);
   // The EDM is edited directly in the page editor (the plugin renders that view —
   // see handleEdmEditView). The old standalone EDM landing page is gone, so a bare
   // /edm/:id just forwards there; stale bookmarks keep working.
@@ -397,7 +398,7 @@ export async function dispatchDueMailLists(cms: CmsClient, views: Fetcher, env: 
   return queued;
 }
 
-async function edmIndex(cms: CmsClient, views: Fetcher): Promise<Response> {
+async function edmIndex(cms: CmsClient, views: Fetcher, jsonOnly = false): Promise<Response> {
   const [{ pages: edms }, { pages: events }] = await Promise.all([
     cms.list('edm', { limit: 500 }),
     cms.list('event', { limit: 500 }),
@@ -415,18 +416,18 @@ async function edmIndex(cms: CmsClient, views: Fetcher): Promise<Response> {
         previewHref: `${ADMIN_BASE}/edm/${edm.id}/preview`,
       };
     }),
-  });
+  }, jsonOnly);
 }
 
 /** Minimal "New EDM" step: pick the event + name, then hand off to the editor. */
-async function edmNewForm(cms: CmsClient, views: Fetcher, url: URL): Promise<Response> {
+async function edmNewForm(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false): Promise<Response> {
   const { pages: events } = await cms.list('event', { limit: 500 });
   const selectedEventId = pageId(url.searchParams.get('event_id'));
   return adminView(views, 'New EDM', 'edm-form', {
     action: `${ADMIN_BASE}/edm/new`,
     backHref: `${ADMIN_BASE}/edm`,
     events: events.map((event) => ({ id: event.id, name: event.name, selected: event.id === selectedEventId })),
-  });
+  }, jsonOnly);
 }
 
 /**
@@ -434,13 +435,13 @@ async function edmNewForm(cms: CmsClient, views: Fetcher, url: URL): Promise<Res
  * page), then redirects into the editor so the rest of the blueprint — settings
  * and per-language content — is filled there.
  */
-async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Promise<Response> {
+async function createEdm(request: Request, cms: CmsClient, views: Fetcher, jsonOnly = false): Promise<Response> {
   const form = await request.formData();
   const eventId = pageId(form.get('event_id'));
   const name = formText(form, 'name');
   if (!eventId || !name) return redirect(`${ADMIN_BASE}/edm/new`);
   const event = await cms.get(eventId);
-  if (event.page_type !== 'event') return notFoundView(views, 'Event not found.');
+  if (event.page_type !== 'event') return notFoundView(views, 'Event not found.', jsonOnly);
   const edm = await cms.create({
     page_type: 'edm',
     name,
@@ -450,9 +451,9 @@ async function createEdm(request: Request, cms: CmsClient, views: Fetcher): Prom
 }
 
 /** Clones an EDM (content + event pointer) under the same event, then opens the copy. */
-async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
+async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number, jsonOnly = false): Promise<Response> {
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.', jsonOnly);
   // The event grouping rides along in the copied lect's `_pointers.event`.
   const copy = await cms.create({
     page_type: 'edm',
@@ -476,40 +477,40 @@ async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: nu
   });
 }
 
-async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
+async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, jsonOnly = false): Promise<Response> {
   const recipient = formText(await request.formData(), 'recipient');
-  if (!recipient || !isEmail(recipient)) return mailError(views, 'Enter a valid test-recipient email address.');
+  if (!recipient || !isEmail(recipient)) return mailError(views, 'Enter a valid test-recipient email address.', jsonOnly);
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.', jsonOnly);
   try {
     await deliverQueuedEmail(env, { ...await emailFor(views, edm, recipient, env, { server: env.PUBLIC_BASE_URL }), edmId });
   } catch (error) {
-    return mailError(views, error instanceof Error ? error.message : 'Unable to send the test email.');
+    return mailError(views, error instanceof Error ? error.message : 'Unable to send the test email.', jsonOnly);
   }
   return redirect(editorHref(edmId, { flash: `Test email sent to ${recipient}` }));
 }
 
-async function assignGuestList(request: Request, cms: CmsClient, views: Fetcher, edmId: number): Promise<Response> {
+async function assignGuestList(request: Request, cms: CmsClient, views: Fetcher, edmId: number, jsonOnly = false): Promise<Response> {
   const edm = await cms.get(edmId);
-  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
+  if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.', jsonOnly);
   const listId = pageId(formText(await request.formData(), 'list_id'));
   if (!listId) return redirect(editorHref(edmId));
   const list = await cms.get(listId);
   // The list and EDM must belong to the same event (by their `event` pointer).
   const eventId = pointer(edm.lect, 'event');
-  if (list.page_type !== 'mail_list' || pointer(list.lect, 'event') !== eventId) return notFoundView(views, 'Guest list not found.');
+  if (list.page_type !== 'mail_list' || pointer(list.lect, 'event') !== eventId) return notFoundView(views, 'Guest list not found.', jsonOnly);
   await cms.update(list.id, {
     lect: { ...list.lect, _pointers: { ...pointers(list), edm: String(edmId) } },
   });
   return redirect(editorHref(edmId));
 }
 
-async function sendGuestList(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number): Promise<Response> {
-  if (!env.MAIL_QUEUE) return mailError(views, 'MAIL_QUEUE must be configured before sending to a guest list.');
+async function sendGuestList(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, jsonOnly = false): Promise<Response> {
+  if (!env.MAIL_QUEUE) return mailError(views, 'MAIL_QUEUE must be configured before sending to a guest list.', jsonOnly);
   const listId = pageId(formText(await request.formData(), 'list_id'));
   if (!listId) return redirect(editorHref(edmId));
   const queued = await queueGuestList(cms, views, env, edmId, listId);
-  if (queued < 0) return notFoundView(views, 'EDM or guest list not found.');
+  if (queued < 0) return notFoundView(views, 'EDM or guest list not found.', jsonOnly);
   return redirect(editorHref(edmId, { flash: `Queued ${queued} email(s)` }));
 }
 
@@ -876,6 +877,6 @@ function redirect(to: string): Response {
   return new Response(null, { status: 302, headers: { Location: to } });
 }
 
-function mailError(views: Fetcher, message: string): Promise<Response> {
-  return adminView(views, 'Email delivery unavailable', 'error', { heading: 'Email delivery unavailable', message });
+function mailError(views: Fetcher, message: string, jsonOnly = false): Promise<Response> {
+  return adminView(views, 'Email delivery unavailable', 'error', { heading: 'Email delivery unavailable', message }, jsonOnly);
 }

@@ -177,13 +177,19 @@ function errorPanel(views: Fetcher, message: string, showConfig = false, jsonOnl
   return adminView(views, 'Error', 'error', { message, showConfig }, jsonOnly);
 }
 
+function wantsJson(url: URL): boolean {
+  const json = url.searchParams.get('json')?.trim().toLowerCase();
+  const format = url.searchParams.get('format')?.trim().toLowerCase();
+  return format === 'json' || (url.searchParams.has('json') && json !== '0' && json !== 'false');
+}
+
 // ── Admin router ──────────────────────────────────────────────────────────────
 
 async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<Response> {
   const rest = url.pathname.replace(/^\/__plugin\/admin\/?/, '');
   const segments = rest.split('/').filter(Boolean);
   const section = segments[0] || 'events';
-  const jsonOnly = url.searchParams.get('json') === '1';
+  const jsonOnly = wantsJson(url);
 
   let cms: CmsClient;
   try {
@@ -213,7 +219,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     if (eventId && sub === 'export') return exportEventGuests(cms, eventId);
     if (eventId && sub === 'import') {
       if (segments[3] === 'confirm' && request.method === 'POST') return confirmEventGuestImport(request, cms, eventId);
-      if (request.method === 'POST') return previewEventGuestImport(request, cms, env.VIEWS, eventId);
+      if (request.method === 'POST') return previewEventGuestImport(request, cms, env.VIEWS, eventId, jsonOnly);
       return eventGuestImport(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') return reorderGuestLists(request, cms, eventId);
@@ -272,7 +278,7 @@ function rollupGuestListSummaries(lists: CmsPage[]): Rollup {
 
 // ── Events section views ──────────────────────────────────────────────────────
 
-async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
+async function eventsList(cms: CmsClient, views: Fetcher, jsonOnly = false): Promise<Response> {
   const { pages } = await cms.list('event', { limit: 200 });
   return adminView(views, 'Events', 'events', {
     events: pages.map((event) => ({
@@ -284,10 +290,10 @@ async function eventsList(cms: CmsClient, views: Fetcher): Promise<Response> {
       dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
       editHref: editHrefReturningTo(event.id, `${ADMIN_BASE}/events`),
     })),
-  });
+  }, jsonOnly);
 }
 
-async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   // `mail_list` and `edm` group under their event by the `event` pointer (their
   // parent page may be a different page type), so filter on the pointer.
   const [event, guestLists, edms] = await Promise.all([
@@ -354,7 +360,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     // Guest Responses section.
     responses,
     responsesShowCheckin: responses.some((row) => row.checkedIn),
-  });
+  }, jsonOnly);
 }
 
 function colorTagOptions(): Array<{ value: string; label: string }> {
@@ -405,7 +411,7 @@ function latestResponseDate(guest: CmsPage): string {
   return dates[dates.length - 1] ?? guest.updated_at;
 }
 
-async function adhocCheckinForm(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+async function adhocCheckinForm(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   return adminView(views, `Adhoc check-in — ${event.name}`, 'adhoc-checkin', {
     eventName: event.name,
@@ -419,7 +425,7 @@ async function adhocCheckinForm(cms: CmsClient, views: Fetcher, eventId: number)
       { name: 'job_title', label: 'Job title', type: 'text' },
       { name: 'plus_guests', label: 'Plus guests', type: 'number' },
     ],
-  });
+  }, jsonOnly);
 }
 
 async function adhocCheckinSubmit(cms: CmsClient, eventId: number, request: Request): Promise<Response> {

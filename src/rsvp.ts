@@ -116,12 +116,13 @@ export async function handleRsvpAdmin(
   segments: string[],
   url: URL,
   qr: QrOptions = {},
+  jsonOnly = false,
 ): Promise<Response> {
-  if (!segments.length) return rsvpIndex(cms, views, url);
+  if (!segments.length) return rsvpIndex(cms, views, url, jsonOnly);
 
   if (segments[0] === 'new') {
     if (request.method === 'POST') return createGuestList(request, cms);
-    return guestListForm(cms, views, url);
+    return guestListForm(cms, views, url, jsonOnly);
   }
 
   const listId = pageId(segments[0]);
@@ -149,13 +150,13 @@ export async function handleRsvpAdmin(
   if (segments[1] === 'export') return exportGuests(cms, listId);
   if (segments[1] === 'import') {
     if (segments[2] === 'confirm' && request.method === 'POST') return confirmImportGuests(request, cms, listId);
-    if (request.method === 'POST') return previewImportGuests(request, cms, views, listId);
-    return guestImport(cms, views, listId);
+    if (request.method === 'POST') return previewImportGuests(request, cms, views, listId, jsonOnly);
+    return guestImport(cms, views, listId, jsonOnly);
   }
 
   if (segments[1] === 'guests' && segments[2] === 'new') {
     if (request.method === 'POST') return createGuest(request, cms, listId);
-    return guestForm(cms, views, listId);
+    return guestForm(cms, views, listId, undefined, jsonOnly);
   }
 
   if (segments[1] === 'guests') {
@@ -168,13 +169,13 @@ export async function handleRsvpAdmin(
     if (segments[3] === 'update-from-contact' && request.method === 'POST') return updateGuestFromContact(cms, listId, guestId);
     if (segments[3] === 'send' && request.method === 'POST') return sendGuestEdm(request, cms, views, env, listId, guestId);
     if (segments[3] === 'preview') return previewGuestEdm(cms, views, env, listId, guestId);
-    if (segments[3] === 'qrcode') return guestQr(cms, views, listId, guestId, qr);
+    if (segments[3] === 'qrcode') return guestQr(cms, views, listId, guestId, qr, jsonOnly);
     return new Response('not found', { status: 404 });
   }
 
   if (segments[1] === 'reorder-guests' && request.method === 'POST') return reorderGuests(request, cms, listId);
 
-  return guestList(cms, views, listId, url);
+  return guestList(cms, views, listId, url, jsonOnly);
 }
 
 /**
@@ -226,7 +227,7 @@ export async function handleGuestEditView(request: Request, cms: CmsClient, view
 }
 
 /** Event dashboard route: lists that event's guest lists instead of a flat guest table. */
-export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   const pages = await listByEvent(cms, 'mail_list', eventId);
@@ -239,7 +240,7 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
     reorderAction: CMS_BATCH_WEIGHT_ACTION,
     reorderEventId: eventId,
     lists: sortByWeight(pages).map((list) => ({ ...guestListRow(list, event), id: list.id })),
-  });
+  }, jsonOnly);
 }
 
 export function isAdhocList(list: CmsPage): boolean {
@@ -262,9 +263,9 @@ export async function ensureAdhocGuestList(cms: CmsClient, eventId: number): Pro
   return pages.find(isAdhocList) ?? createAdhocGuestList(cms, eventId);
 }
 
-async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL): Promise<Response> {
+async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false): Promise<Response> {
   const eventFilter = pageId(url.searchParams.get('event'));
-  if (eventFilter) return eventGuestLists(cms, views, eventFilter);
+  if (eventFilter) return eventGuestLists(cms, views, eventFilter, jsonOnly);
 
   const [{ pages: events }, { pages: lists }] = await Promise.all([
     cms.list('event', { limit: 500 }),
@@ -277,10 +278,10 @@ async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL): Promise<Resp
     subtitle: 'Each list has its own guests, import/export tools and RSVP delivery state.',
     newHref: `${ADMIN_BASE}/rsvp/new`,
     lists: lists.map((list) => guestListRow(list, eventById.get(pageId(pointer(list.lect, 'event')) ?? 0))),
-  });
+  }, jsonOnly);
 }
 
-async function guestListForm(cms: CmsClient, views: Fetcher, url: URL): Promise<Response> {
+async function guestListForm(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false): Promise<Response> {
   const { pages } = await cms.list('event', { limit: 500 });
   const selectedEventId = pageId(url.searchParams.get('event_id'));
   const selectedEvent = selectedEventId && !pages.some((event) => event.id === selectedEventId)
@@ -292,7 +293,7 @@ async function guestListForm(cms: CmsClient, views: Fetcher, url: URL): Promise<
     backHref: selectedEventId ? `${ADMIN_BASE}/events/${selectedEventId}` : `${ADMIN_BASE}/rsvp`,
     selectedEventId,
     events: events.map((event) => ({ id: event.id, name: event.name, selected: event.id === selectedEventId })),
-  });
+  }, jsonOnly);
 }
 
 async function createGuestList(request: Request, cms: CmsClient): Promise<Response> {
@@ -324,7 +325,7 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
   return redirect(`${ADMIN_BASE}/events/${eventId}`);
 }
 
-async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: URL): Promise<Response> {
+async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: URL, jsonOnly = false): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
 
@@ -388,16 +389,16 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     selectedCustomFieldKey: selectedCustomField?.key ?? '',
     total: noFilter ? total : filteredGuests.length,
     guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null, selectedCustomField)),
-  });
+  }, jsonOnly);
 }
 
-async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId?: number): Promise<Response> {
+async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId?: number, jsonOnly = false): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
 
   const guest = guestId ? await cms.get(guestId) : undefined;
   if (guest && (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId))) return new Response('not found', { status: 404 });
-  return guestFormView(cms, views, context, listId, guest);
+  return guestFormView(cms, views, context, listId, guest, { jsonOnly });
 }
 
 async function guestFormView(
@@ -415,6 +416,7 @@ async function guestFormView(
     slug?: string;
     weight?: number;
     language?: string;
+    jsonOnly?: boolean;
   } = {},
 ): Promise<Response> {
   const values = guest ? guestValues(guest) : emptyGuestValues();
@@ -458,7 +460,7 @@ async function guestFormView(
       : '',
     moveAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/move` : '',
     moveLists,
-  });
+  }, options.jsonOnly ?? false);
 }
 
 async function createGuest(request: Request, cms: CmsClient, listId: number): Promise<Response> {
@@ -802,7 +804,7 @@ async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Prom
  * `listId.guestId.sig` token (as a check-in URL when a public base is set), so a
  * door scanner can identify the guest without trusting the unsigned payload.
  */
-async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, qr: QrOptions): Promise<Response> {
+async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, qr: QrOptions, jsonOnly = false): Promise<Response> {
   const context = await guestListContext(cms, listId);
   const guest = await cms.get(guestId);
   if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
@@ -823,7 +825,7 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     checkedIn: checkins(guest.lect).length > 0,
     payload,
     qrSvg: qrSvg(payload, { size: 240 }),
-  });
+  }, jsonOnly);
 }
 
 /**
@@ -899,7 +901,7 @@ function sessionWeight(session: Record<string, unknown>, index: number): number 
 }
 
 /** Lists an event's sessions in admin-defined order, with drag-to-reorder. */
-export async function eventSessions(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+export async function eventSessions(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   const sessions = items(event.lect, 'session')
@@ -918,14 +920,14 @@ export async function eventSessions(cms: CmsClient, views: Fetcher, eventId: num
       location: localized(session, 'location'),
       capacity: attr(session, 'capacity'),
     })),
-  });
+  }, jsonOnly);
 }
 
 /**
  * Flat view of every guest across all of an event's lists, with a status
  * filter — the cross-list roll-call the legacy `all_guests` screen provided.
  */
-export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: number, url: URL): Promise<Response> {
+export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: number, url: URL, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
@@ -982,18 +984,18 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
     totalCount,
     filteredCount: rows.length,
     guests: rows,
-  });
+  }, jsonOnly);
 }
 
 /** Import form for adding guests across multiple lists in one upload. */
-export async function eventGuestImport(cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+export async function eventGuestImport(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   return adminView(views, `Import guests — ${event.name}`, 'event-import', {
     eventName: event.name,
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     action: `${ADMIN_BASE}/events/${eventId}/import`,
-  });
+  }, jsonOnly);
 }
 
 /**
@@ -1001,7 +1003,7 @@ export async function eventGuestImport(cms: CmsClient, views: Fetcher, eventId: 
  * to a named list — the flat equivalent of the legacy multi-sheet workbook.
  * Missing lists are created under the event before their guests are added.
  */
-export async function previewEventGuestImport(request: Request, cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
+export async function previewEventGuestImport(request: Request, cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
@@ -1019,7 +1021,7 @@ export async function previewEventGuestImport(request: Request, cms: CmsClient, 
       backHref: `${ADMIN_BASE}/events/${eventId}`,
       action: `${ADMIN_BASE}/events/${eventId}/import`,
       error: 'No guests with a name were found in that file.',
-    });
+    }, jsonOnly);
   }
 
   const preview = await eventImportPreview(cms, eventId, groups);
@@ -1036,7 +1038,7 @@ export async function previewEventGuestImport(request: Request, cms: CmsClient, 
     newListCount: preview.newListCount,
     groups: preview.groups,
     csv,
-  });
+  }, jsonOnly);
 }
 
 export async function confirmEventGuestImport(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
@@ -1157,7 +1159,7 @@ async function eventImportPreview(cms: CmsClient, eventId: number, groups: Event
   return preview;
 }
 
-async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Promise<Response> {
+async function guestImport(cms: CmsClient, views: Fetcher, listId: number, jsonOnly = false): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   return adminView(views, `Import guests — ${context.list.name}`, 'guest-import', {
@@ -1165,7 +1167,7 @@ async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Prom
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     action: `${ADMIN_BASE}/rsvp/${listId}/import`,
-  });
+  }, jsonOnly);
 }
 
 /** A guest parsed from the uploaded CSV, before matching against the list. */
@@ -1406,7 +1408,7 @@ function shouldSplitImportBatch(error: CmsApiError): boolean {
  * (not the expanded plan) rides to confirm in a hidden field so the round-trip
  * body stays small; confirm re-parses and re-classifies it.
  */
-async function previewImportGuests(request: Request, cms: CmsClient, views: Fetcher, listId: number): Promise<Response> {
+async function previewImportGuests(request: Request, cms: CmsClient, views: Fetcher, listId: number, jsonOnly = false): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const form = await request.formData();
@@ -1424,7 +1426,7 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
       listHref: `${ADMIN_BASE}/rsvp/${listId}`,
       action: `${ADMIN_BASE}/rsvp/${listId}/import`,
       error: 'No guests with a name were found in that file.',
-    });
+    }, jsonOnly);
   }
 
   const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
@@ -1442,7 +1444,7 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
     unchangedCount: plan.rows.filter((row) => row.state === 'unchanged').length,
     guests: plan.rows,
     csv,
-  });
+  }, jsonOnly);
 }
 
 /**

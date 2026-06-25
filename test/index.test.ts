@@ -40,6 +40,14 @@ function env(overrides: Partial<PluginEnv> = {}): PluginEnv {
   return { VIEWS: views(), ...overrides };
 }
 
+function throwingViews(): Fetcher {
+  return {
+    async fetch(_input: RequestInfo | URL): Promise<Response> {
+      throw new Error('views should not be fetched for json-only admin responses');
+    },
+  } as unknown as Fetcher;
+}
+
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://events.test${path}`, init);
 }
@@ -114,6 +122,40 @@ describe('plugin contract', () => {
 });
 
 describe('events admin', () => {
+  it('returns admin view data as JSON without fetching Liquid templates when requested', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      expect(url.pathname).toBe('/__cms/pages');
+      expect(url.searchParams.get('page_type')).toBe('event');
+      return Response.json({
+        pages: [{ id: 12, name: 'Town & Country', start: '2026-10-12T09:00', timezone: '+0800', lect: {} }],
+        total: 1,
+      });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events?json', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', VIEWS: throwingViews() }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.get('x-cms-chrome')).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      title: 'Events',
+      template: 'events',
+      data: {
+        events: [
+          {
+            name: 'Town & Country',
+            start: '2026-10-12 09:00 +0800',
+            dashboardHref: '/admin/plugins/events/events/12',
+          },
+        ],
+      },
+    });
+  });
+
   it('renders CMS event data through the Liquid view', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);

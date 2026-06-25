@@ -24,6 +24,6 @@ export async function adminView(
 }
 
 /** Returns a proper admin-chrome 404 page instead of bare "not found" text. */
-export function notFoundView(views: Fetcher, message = 'Page not found.'): Promise<Response> {
-  return adminView(views, 'Not found', 'error', { heading: 'Not found', message });
+export function notFoundView(views: Fetcher, message = 'Page not found.', jsonOnly = false): Promise<Response> {
+  return adminView(views, 'Not found', 'error', { heading: 'Not found', message }, jsonOnly);
 }
