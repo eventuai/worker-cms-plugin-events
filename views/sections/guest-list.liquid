@@ -59,8 +59,9 @@
 </div>
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
-  <table class="w-full text-left text-sm">
+  <table class="w-full text-left text-sm"{% if reorderAction %} data-reorder="{{ reorderAction | escape }}" data-reorder-key="reorder" data-reorder-mode="weight" data-reorder-handle-only{% endif %}>
     <thead class="bg-gray-50 border-b border-gray-200"><tr>
+      {% if reorderAction %}<th class="px-4 py-3 w-10"></th>{% endif %}
       <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name / Email</th>
       <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Organisation</th>
       {% if hasEdm %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email&nbsp;send</th>{% endif %}
@@ -70,7 +71,8 @@
     </tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for guest in guests %}
-        <tr>
+        <tr{% if reorderAction %} data-id="{{ guest.id }}"{% endif %}>
+          {% if reorderAction %}<td class="px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
           <td class="px-6 py-3 text-sm text-gray-700">
             <a class="block text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.editHref | escape }}">{{ guest.name | escape }}</a>
             <div class="text-gray-500 text-sm">
@@ -123,7 +125,7 @@
           <td class="px-6 py-3 text-right text-sm"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.qrHref | escape }}">QR</a> · <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.editHref | escape }}">Edit →</a></td>
         </tr>
       {% else %}
-        <tr><td colspan="{% if hasEdm %}7{% else %}6{% endif %}" class="px-6 py-10 text-center text-sm text-gray-400">No guests match this list.</td></tr>
+        <tr><td colspan="{% if hasEdm %}{% if reorderAction %}8{% else %}7{% endif %}{% elsif reorderAction %}7{% else %}6{% endif %}" class="px-6 py-10 text-center text-sm text-gray-400">No guests match this list.</td></tr>
       {% endfor %}
     </tbody>
   </table>

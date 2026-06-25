@@ -160,6 +160,8 @@ export async function handleRsvpAdmin(
     return new Response('not found', { status: 404 });
   }
 
+  if (segments[1] === 'reorder-guests' && request.method === 'POST') return reorderGuests(request, cms, listId);
+
   return guestList(cms, views, listId, url);
 }
 
@@ -317,7 +319,9 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
   const { pages, total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, q, limit: 500 });
-  const guests = selectedStatus ? pages.filter((guest) => guestStatus(guest) === selectedStatus) : pages;
+  const filteredGuests = selectedStatus ? pages.filter((guest) => guestStatus(guest) === selectedStatus) : pages;
+  const noFilter = !q && !selectedStatus;
+  const guests = noFilter ? sortByWeight(filteredGuests) : filteredGuests;
 
   // EDMs of this list's event populate the "select EDM" dropdown; the list's own
   // `*edm` pointer is the current selection. When set, the send/preview controls
@@ -352,10 +356,11 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     edmEditHref: hasEdm ? `/admin/pages/${selectedEdm!.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
     autoSendGoodAction: `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=good`,
     autoSendRiskyAction: `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=risky`,
+    reorderAction: noFilter ? `${ADMIN_BASE}/rsvp/${listId}/reorder-guests` : '',
     q,
     selectedStatus: selectedStatus ?? '',
     statuses: GUEST_STATUSES,
-    total: selectedStatus ? guests.length : total,
+    total: selectedStatus ? filteredGuests.length : total,
     guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null)),
   });
 }
@@ -800,6 +805,21 @@ export async function reorderGuestLists(request: Request, cms: CmsClient, eventI
     if (!id || !Number.isFinite(weight)) continue;
     const list = await cms.get(id);
     if (list.page_type === 'mail_list' && pointer(list.lect, 'event') === String(eventId)) await cms.update(id, { weight });
+  }
+  return Response.json({ success: true });
+}
+
+/** Reorders a guest list's guests by writing each guest's `weight`. */
+async function reorderGuests(request: Request, cms: CmsClient, listId: number): Promise<Response> {
+  const body = await request.json().catch(() => null) as { reorder?: Array<{ id?: unknown; weight?: unknown }> } | null;
+  if (!body || !Array.isArray(body.reorder)) return Response.json({ success: false, error: 'invalid_request' }, { status: 400 });
+
+  for (const item of body.reorder) {
+    const id = pageId(item.id);
+    const weight = Number(item.weight);
+    if (!id || !Number.isFinite(weight)) continue;
+    const guest = await cms.get(id);
+    if (guest.page_type === 'guest' && pointer(guest.lect, 'mail_list') === String(listId)) await cms.update(id, { weight });
   }
   return Response.json({ success: true });
 }
