@@ -113,10 +113,10 @@
             </td>
           {% endif %}
           <td class="px-6 py-3 text-sm text-gray-700">
-            <form method="post" action="{{ guest.statusAction | escape }}" class="flex flex-wrap items-center gap-1.5">
-              <select class="border border-gray-300 rounded-md p-1 text-xs bg-white max-w-[9rem]" name="status">
+            <form method="post" action="{{ guest.statusAction | escape }}">
+              <select class="border border-gray-300 rounded-md p-1 text-xs bg-white max-w-[9rem]" name="status" data-autosubmit>
                 {% for status in statuses %}<option value="{{ status | escape }}"{% if status == guest.status %} selected{% endif %}>{{ status | escape }}</option>{% endfor %}
-              </select><button class="border-0 bg-transparent p-0 text-xs font-semibold text-indigo-600 cursor-pointer" type="submit">Save</button>
+              </select>
             </form>
           </td>
           <td class="px-6 py-3 text-sm text-gray-700">{% if guest.checkedIn %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Checked in</span>{% else %}<form method="post" action="{{ guest.checkinAction | escape }}"><button class="border-0 bg-transparent p-0 text-xs font-semibold text-indigo-600 cursor-pointer" type="submit">Check in</button></form>{% endif %}</td>
