@@ -1,0 +1,17 @@
+# Local development variables for the events plugin Worker.
+# Copy this file to `.dev.vars` and fill in real values. `.dev.vars` is
+# gitignored and never committed; values here override `[vars]` in wrangler.toml
+# while running `wrangler dev`.
+
+# Base URL of the CMS Worker the plugin reads/writes through ({CMS_URL}/__cms/*).
+# Point this at your locally running CMS dev server (default port 8787).
+CMS_URL=http://localhost:8787
+
+# Shared secret the CMS forwards on every hook/admin/publish call and the plugin
+# sends back on every F1 write. MUST match PLUGIN_SECRET in the CMS's .dev.vars,
+# or every plugin call 403s.
+PLUGIN_SECRET=replace-with-the-cms-plugin-secret
+
+# Optional: public origin of THIS plugin Worker, used to build signed RSVP links
+# in queued EDMs. Only needed when testing EDM delivery locally.
+# PUBLIC_BASE_URL=http://localhost:8788

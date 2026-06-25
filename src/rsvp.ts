@@ -31,6 +31,14 @@ const GUEST_STATUSES = ['to be invited', 'onhold', 'invited', 'confirmed', 'decl
 
 type GuestStatus = typeof GUEST_STATUSES[number];
 
+/**
+ * Guests created per CMS `/pages/batch` call. The host creates each guest with
+ * several D1 writes (plus an audit row), so a large chunk in one request can hit
+ * the Worker subrequest ceiling and fail the whole import. Keep chunks small and
+ * let the plugin make more sequential calls instead.
+ */
+const IMPORT_CHUNK = 50;
+
 interface GuestListContext {
   list: CmsPage;
   event: CmsPage | null;
@@ -83,7 +91,8 @@ export async function handleRsvpAdmin(
   if (segments[1] === 'update-from-contacts' && request.method === 'POST') return updateAllGuestsFromContacts(cms, listId);
   if (segments[1] === 'export') return exportGuests(cms, listId);
   if (segments[1] === 'import') {
-    if (request.method === 'POST') return importGuests(request, cms, listId);
+    if (segments[2] === 'confirm' && request.method === 'POST') return confirmImportGuests(request, cms, listId);
+    if (request.method === 'POST') return previewImportGuests(request, cms, views, listId);
     return guestImport(cms, views, listId);
   }
 
@@ -185,7 +194,7 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
   // Grouped to its event by the `event` pointer (not parent page).
-  const list = await cms.create({
+  await cms.create({
     page_type: 'mail_list',
     name,
     lect: {
@@ -195,7 +204,10 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
       allow_checkin: formText(form, 'allow_checkin') || 'yes',
     },
   });
-  return redirect(`${ADMIN_BASE}/rsvp/${list.id}`);
+  // Return to the event the list belongs to. Reading the just-created list back
+  // here (to render its page) can 404 on the read-after-write path; the event
+  // page is where the new list shows up anyway.
+  return redirect(`${ADMIN_BASE}/events/${eventId}`);
 }
 
 async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: URL): Promise<Response> {
@@ -847,7 +859,7 @@ export async function importEventGuests(request: Request, cms: CmsClient, eventI
       if (checkin) input.lect = { ...input.lect, checkin };
       inputs.push(input);
     }
-    for (const chunk of chunks(inputs, 200)) if (chunk.length) await cms.batchCreate(chunk);
+    for (const chunk of chunks(inputs, IMPORT_CHUNK)) if (chunk.length) await cms.batchCreate(chunk);
   }
 
   return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
@@ -864,16 +876,13 @@ async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Prom
   });
 }
 
-async function importGuests(request: Request, cms: CmsClient, listId: number): Promise<Response> {
-  const context = await guestListContext(cms, listId);
-  if (!context) return new Response('not found', { status: 404 });
-  const form = await request.formData();
-  const file = form.get('file') as unknown;
-  if (!file || typeof (file as { text?: unknown }).text !== 'function') {
-    return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
-  }
-
-  const [headers = [], ...rows] = parseCsv(await (file as { text(): Promise<string> }).text());
+/**
+ * Parses an uploaded CSV into guest page inputs (no writes). Header lookup is
+ * case-insensitive and space/underscore-insensitive, with the same column
+ * aliases the legacy export uses. Rows with no name are skipped.
+ */
+function csvToGuestInputs(text: string, eventId: number | null, listId: number): CmsPageInput[] {
+  const [headers = [], ...rows] = parseCsv(text);
   const columns = new Map(headers.map((header, index) => [header.trim().toLowerCase().replaceAll(' ', '_'), index]));
   const value = (row: string[], ...names: string[]): string => {
     for (const name of names) {
@@ -899,13 +908,92 @@ async function importGuests(request: Request, cms: CmsClient, listId: number): P
       ['cc', value(row, 'cc')],
       ['remarks', value(row, 'remarks', 'notes')],
     ]);
-    const input = guestPageInput(name, fields, context.eventId, listId);
+    const input = guestPageInput(name, fields, eventId, listId);
     const checkin = importedCheckin(value(row, 'checkin_status'), value(row, 'checkin_date'), value(row, 'checkin_message'));
     if (checkin) input.lect = { ...input.lect, checkin };
     inputs.push(input);
   }
+  return inputs;
+}
 
-  for (const chunk of chunks(inputs, 200)) await cms.batchCreate(chunk);
+/**
+ * Step 1 of import: parse the uploaded CSV and render a preview (no writes) so
+ * the admin can confirm what will be created. The parsed guests ride along in a
+ * hidden field to the confirm step, mirroring the legacy admin's import preview.
+ */
+async function previewImportGuests(request: Request, cms: CmsClient, views: Fetcher, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const file = form.get('file') as unknown;
+  if (!file || typeof (file as { text?: unknown }).text !== 'function') {
+    return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
+  }
+
+  const inputs = csvToGuestInputs(await (file as { text(): Promise<string> }).text(), context.eventId, listId);
+  if (!inputs.length) {
+    return adminView(views, `Import guests — ${context.list.name}`, 'guest-import', {
+      eventName: context.event?.name ?? 'Event',
+      listName: context.list.name,
+      listHref: `${ADMIN_BASE}/rsvp/${listId}`,
+      action: `${ADMIN_BASE}/rsvp/${listId}/import`,
+      error: 'No guests with a name were found in that file.',
+    });
+  }
+
+  const guests = inputs.map((input) => {
+    const lect = input.lect as Record<string, unknown>;
+    return {
+      name: input.name,
+      email: String(lect.email ?? ''),
+      phone: String(lect.phone ?? ''),
+      organization: String(lect.organization ?? ''),
+      status: String(lect.status ?? ''),
+      checkedIn: Array.isArray(lect.checkin),
+    };
+  });
+  return adminView(views, `Preview import — ${context.list.name}`, 'guest-import-preview', {
+    eventName: context.event?.name ?? 'Event',
+    listName: context.list.name,
+    listHref: `${ADMIN_BASE}/rsvp/${listId}`,
+    importHref: `${ADMIN_BASE}/rsvp/${listId}/import`,
+    confirmAction: `${ADMIN_BASE}/rsvp/${listId}/import/confirm`,
+    total: guests.length,
+    checkedInCount: guests.filter((guest) => guest.checkedIn).length,
+    guests,
+    payload: JSON.stringify(inputs),
+  });
+}
+
+/**
+ * Step 2 of import: create the previewed guests. Writes run in small chunks so a
+ * large list never exhausts one CMS request's subrequest budget, then returns to
+ * the list. `page_type`/`page_id`/`name` are re-asserted server-side; only the
+ * lect content rides through from the preview.
+ */
+async function confirmImportGuests(request: Request, cms: CmsClient, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const form = await request.formData();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(formText(form, 'payload'));
+  } catch {
+    return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
+  }
+  const inputs: CmsPageInput[] = (Array.isArray(parsed) ? parsed : [])
+    .map((guest) => guest as { name?: unknown; lect?: unknown })
+    .filter((guest) => typeof guest.name === 'string' && guest.name.trim())
+    .map((guest) => ({
+      page_type: 'guest',
+      page_id: listId,
+      name: String(guest.name),
+      lect: (guest.lect && typeof guest.lect === 'object' ? guest.lect : {}) as Record<string, unknown>,
+    }));
+  if (!inputs.length) return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+
+  for (const chunk of chunks(inputs, IMPORT_CHUNK)) await cms.batchCreate(chunk);
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
 

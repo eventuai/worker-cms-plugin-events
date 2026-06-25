@@ -266,7 +266,9 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+    // Returns to the event the list belongs to (not the freshly created list,
+    // whose read-back can 404 on the read-after-write path).
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7');
     // Grouped to the event by the pointer, not a parent page.
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
       page_type: 'mail_list', name: 'VIP guests',
