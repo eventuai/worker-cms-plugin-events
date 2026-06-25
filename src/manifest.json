@@ -6,7 +6,7 @@
   "nav": [
     { "label": "Events", "href": "events", "roles": ["admin", "editor"] }
   ],
-  "editViews": ["edm"],
+  "editViews": ["edm", "guest"],
   "contentTypes": {
     "readTypes": ["contact"],
     "blueprint": {

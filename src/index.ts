@@ -37,6 +37,7 @@ import {
   eventSessions,
   exportEventGuests,
   flatAllGuests,
+  handleGuestEditView,
   handleRsvpAdmin,
   confirmEventGuestImport,
   previewEventGuestImport,
@@ -91,8 +92,8 @@ export default {
     }
 
     // Plugin-rendered page edit view (manifest `editViews`). The CMS POSTs the
-    // editor context for an `edm` page; we return the bespoke EDM editor as an
-    // HTML fragment the CMS wraps in its admin chrome.
+    // editor context; we return a bespoke editor as an HTML fragment the CMS
+    // wraps in its admin chrome.
     if (path === '/__plugin/edit' && request.method === 'POST') {
       let cms: CmsClient;
       try {
@@ -101,7 +102,9 @@ export default {
         if (error instanceof CmsNotConfiguredError) return new Response('not found', { status: 404 });
         throw error;
       }
-      return handleEdmEditView(request, cms, env.VIEWS, env);
+      const edmResponse = await handleEdmEditView(request.clone(), cms, env.VIEWS, env);
+      if (edmResponse.status !== 404) return edmResponse;
+      return handleGuestEditView(request, cms, env.VIEWS);
     }
 
     if (path.startsWith('/__plugin/admin')) {
@@ -373,7 +376,7 @@ function responseRow(list: CmsPage, guest: CmsPage): ResponseRow {
     contact: attr(guest.lect, 'email') || attr(guest.lect, 'phone'),
     status: (attr(guest.lect, 'status') || '').trim().toLowerCase(),
     checkedIn: checkins(guest.lect).length > 0,
-    href: `${ADMIN_BASE}/rsvp/${list.id}/guests/${guest.id}`,
+    href: `/admin/pages/${guest.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${list.id}`)}`,
   };
 }
 

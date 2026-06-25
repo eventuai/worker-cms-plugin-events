@@ -2,6 +2,7 @@ import {
   CmsClient,
   CmsApiError,
   attr,
+  blocks,
   checkins,
   compareByWeightThenName,
   items,
@@ -55,6 +56,38 @@ interface GuestListContext {
   list: CmsPage;
   event: CmsPage | null;
   eventId: number | null;
+}
+
+interface EditViewContext {
+  mode: string;
+  action: string;
+  backHref?: string;
+  language?: string;
+  pageType: string;
+  page: {
+    id: number;
+    name: string;
+    slug?: string;
+    weight?: number;
+    pageType?: string;
+    page_id?: number | null;
+    pageId?: number | null;
+    lect: string | Record<string, unknown>;
+  };
+}
+
+interface AdminCustomField {
+  key: string;
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  value: string;
+  defaultValue: string;
+  options: Array<{ value: string; label: string; selected: boolean }>;
+  checked: boolean;
+  blockTitle: string;
+  source: string;
 }
 
 /** Signing context for per-guest check-in QR codes. */
@@ -124,11 +157,58 @@ export async function handleRsvpAdmin(
     if (segments[3] === 'send' && request.method === 'POST') return sendGuestEdm(cms, views, env, listId, guestId);
     if (segments[3] === 'preview') return previewGuestEdm(cms, views, env, listId, guestId);
     if (segments[3] === 'qrcode') return guestQr(cms, views, listId, guestId, qr);
-    if (request.method === 'POST') return updateGuest(request, cms, listId, guestId);
-    return guestForm(cms, views, listId, guestId);
+    return new Response('not found', { status: 404 });
   }
 
   return guestList(cms, views, listId, url);
+}
+
+/**
+ * Plugin-rendered CMS page editor for guest pages. The CMS opens `/__plugin/edit`
+ * for page types in manifest.editViews; for guests we render the same event-aware
+ * form the RSVP admin route uses, using native CMS field names so the host page
+ * save handler can own the write path.
+ */
+export async function handleGuestEditView(request: Request, cms: CmsClient, views: Fetcher): Promise<Response> {
+  const ctx = (await request.json().catch(() => null)) as EditViewContext | null;
+  if (!ctx || ctx.pageType !== 'guest') return new Response('not found', { status: 404 });
+
+  const lect = parseLect(ctx.page.lect);
+  const listId = pageId(pointer(lect, 'mail_list')) ?? pageId(ctx.page.page_id) ?? pageId(ctx.page.pageId);
+  if (!listId) return new Response('not found', { status: 404 });
+
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+
+  const guest: CmsPage = {
+    id: ctx.page.id,
+    uuid: '',
+    page_type: 'guest',
+    name: ctx.page.name,
+    slug: ctx.page.slug ?? '',
+    weight: 0,
+    start: null,
+    end: null,
+    timezone: null,
+    page_id: listId,
+    created_at: '',
+    updated_at: '',
+    lect: {
+      ...lect,
+      _pointers: { ...(lect._pointers as Record<string, unknown> ?? {}), mail_list: String(listId) },
+    },
+  };
+
+  return guestFormView(cms, views, context, listId, guest, {
+    title: `Edit ${guestValues(guest).name || 'guest'}`,
+    action: ctx.action,
+    backHref: ctx.backHref || `${ADMIN_BASE}/rsvp/${listId}`,
+    returnTo: ctx.backHref || `${ADMIN_BASE}/rsvp/${listId}`,
+    nativePageAction: true,
+    slug: ctx.page.slug ?? '',
+    weight: ctx.page.weight ?? 0,
+    language: ctx.language || 'mis',
+  });
 }
 
 /** Event dashboard route: lists that event's guest lists instead of a flat guest table. */
@@ -286,10 +366,30 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
 
   const guest = guestId ? await cms.get(guestId) : undefined;
   if (guest && (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId))) return new Response('not found', { status: 404 });
+  return guestFormView(cms, views, context, listId, guest);
+}
+
+async function guestFormView(
+  cms: CmsClient,
+  views: Fetcher,
+  context: GuestListContext,
+  listId: number,
+  guest?: CmsPage,
+  options: {
+    title?: string;
+    action?: string;
+    backHref?: string;
+    returnTo?: string;
+    nativePageAction?: boolean;
+    slug?: string;
+    weight?: number;
+    language?: string;
+  } = {},
+): Promise<Response> {
   const values = guest ? guestValues(guest) : emptyGuestValues();
-  const action = guest
+  const action = options.action ?? (guest
     ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}`
-    : `${ADMIN_BASE}/rsvp/${listId}/guests/new`;
+    : `${ADMIN_BASE}/rsvp/${listId}/guests/new`);
 
   // Sibling lists of the same event a guest can be moved into (edit only).
   let moveLists: Array<{ id: number; name: string }> = [];
@@ -298,14 +398,25 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
     moveLists = pages.filter((list) => list.id !== listId).map((list) => ({ id: list.id, name: list.name }));
   }
 
+  const adminCustomFields = adminCustomFieldsForGuest(context.event, context.list, guest);
+
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
-    title: guest ? 'Edit guest' : 'New guest',
+    title: options.title ?? (guest ? 'Edit guest' : 'New guest'),
     eventName: context.event?.name ?? 'Event',
     listName: context.list.name,
-    listHref: `${ADMIN_BASE}/rsvp/${listId}`,
+    listHref: options.backHref ?? `${ADMIN_BASE}/rsvp/${listId}`,
     action,
+    returnTo: options.returnTo ?? '',
+    nativePageAction: options.nativePageAction ?? false,
+    slug: options.slug ?? guest?.slug ?? '',
+    weight: options.weight ?? guest?.weight ?? 0,
+    pageId: listId,
+    eventId: context.eventId ?? '',
+    language: options.language ?? 'mis',
     guest: values,
     statuses: GUEST_STATUSES.map((status) => ({ value: status, selected: values.status === status })),
+    adminCustomFields,
+    hasAdminCustomFields: adminCustomFields.length > 0,
     deleteAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
     qrHref: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode` : '',
     updateFromContactAction: guest && attr(guest.lect, 'contact_id')
@@ -323,20 +434,9 @@ async function createGuest(request: Request, cms: CmsClient, listId: number): Pr
   const input = guestInput(form, context.eventId, listId);
   if (!input.name) return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/new`);
 
+  applyAdminCustomResponse(input.lect, form, adminCustomFieldsForGuest(context.event, context.list));
   await cms.create({ page_type: 'guest', page_id: listId, name: input.name, lect: input.lect });
-  return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
-}
-
-async function updateGuest(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
-  const context = await guestListContext(cms, listId);
-  const guest = await cms.get(guestId);
-  if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
-
-  const form = await request.formData();
-  const input = guestInput(form, context.eventId, listId, guest);
-  if (!input.name) return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`);
-  await cms.update(guestId, { name: input.name, lect: input.lect });
-  return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+  return redirect(safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`);
 }
 
 async function deleteGuest(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
@@ -521,7 +621,7 @@ async function moveGuest(request: Request, cms: CmsClient, listId: number, guest
 
   const form = await request.formData();
   const targetId = pageId(form.get('target_mail_list'));
-  if (!targetId || targetId === listId) return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`);
+  if (!targetId || targetId === listId) return redirect(guestEditHref(guestId, listId));
 
   const target = await cms.get(targetId);
   // Only allow moves within the same event, so a guest never leaves its event.
@@ -644,7 +744,7 @@ async function updateGuestFromContact(cms: CmsClient, listId: number, guestId: n
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   await applyContactToGuest(cms, guest);
-  return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`);
+  return redirect(guestEditHref(guestId, listId));
 }
 
 /** POST handler: refresh every linked guest in a list from its contact. */
@@ -678,7 +778,7 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     organization: values.organization,
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
-    editHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`,
+    editHref: guestEditHref(guestId, listId),
     checkedIn: checkins(guest.lect).length > 0,
     payload,
     qrSvg: qrSvg(payload, { size: 240 }),
@@ -788,7 +888,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
       rows.push({
         ...values,
         listName: list.name,
-        editHref: `${ADMIN_BASE}/rsvp/${list.id}/guests/${guest.id}`,
+        editHref: guestEditHref(guest.id, list.id, `${ADMIN_BASE}/events/${eventId}/all-guests`),
         checkedIn: checkins(guest.lect).length > 0,
       });
     }
@@ -1045,36 +1145,39 @@ function customGuestAttrs(columns: Map<string, number>, row: string[]): Record<s
   const out: Record<string, string> = {};
   for (const [key, index] of columns) {
     if (!isCustomKey(key)) continue;
-    const val = (row[index] ?? '').trim().replace(/\s+/g, ' ');
+    const val = stripExcelFormula((row[index] ?? '').trim()).replace(/\s+/g, ' ');
     if (val) out[key] = val;
   }
   return out;
 }
 
 function importGuestFromValue(value: (...names: string[]) => string): IncomingGuest | null {
-  const name = value('name', 'full_name')
-    || [value('first_name', 'rsvp_custom_first_name'), value('last_name', 'rsvp_custom_last_name')].filter(Boolean).join(' ');
+  // Strip Excel ="..." formula prefix that Excel adds to text cells to prevent
+  // them being interpreted as numbers. parseCsv leaves the leading = behind.
+  const v = (...names: string[]) => stripExcelFormula(value(...names));
+  const name = v('name', 'full_name')
+    || [v('first_name', 'rsvp_custom_first_name'), v('last_name', 'rsvp_custom_last_name')].filter(Boolean).join(' ');
   if (!name) return null;
   // Raw values only — an absent/blank column must stay blank so it never counts
   // as a change against an existing guest. Defaults are applied on create.
   const values: Record<string, string> = {
-    last_name: value('last_name', 'rsvp_custom_last_name'),
-    email: value('email', 'primary_email'),
-    phone: value('phone', 'mobile'),
-    organization: value('organization', 'company', 'rsvp_custom_referral_organization'),
-    job_title: value('job_title', 'title'),
-    plus_guests: value('plus_guests'),
-    status: normalizeStatus(value('status', 'rsvp_status')) ?? '',
-    prefer_language: value('prefer_language', 'language'),
-    cc: value('cc', 'cc_email'),
-    remarks: value('remarks', 'notes'),
+    last_name: v('last_name', 'rsvp_custom_last_name'),
+    email: v('email', 'primary_email'),
+    phone: v('phone', 'mobile'),
+    organization: v('organization', 'company', 'rsvp_custom_referral_organization'),
+    job_title: v('job_title', 'title'),
+    plus_guests: v('plus_guests'),
+    status: normalizeStatus(v('status', 'rsvp_status')) ?? '',
+    prefer_language: v('prefer_language', 'language'),
+    cc: v('cc', 'cc_email'),
+    remarks: v('remarks', 'notes'),
   };
   const checkin = importedCheckin(
-    value('checkin_status', 'rsvp_custom_checkin_status'),
-    value('checkin_date', 'rsvp_custom_checkin_date'),
-    value('checkin_message', 'rsvp_custom_checkin_message'),
+    v('checkin_status', 'rsvp_custom_checkin_status'),
+    v('checkin_date', 'rsvp_custom_checkin_date'),
+    v('checkin_message', 'rsvp_custom_checkin_message'),
   );
-  const rawId = parseImportId(value('id'));
+  const rawId = parseImportId(value('id')); // parseImportId handles = prefix itself
   return { id: rawId, name, values, custom: {}, checkin: checkin ?? undefined };
 }
 
@@ -1382,13 +1485,17 @@ function guestListRow(list: CmsPage, event?: CmsPage): Record<string, unknown> {
   };
 }
 
+function guestEditHref(guestId: number, listId: number, returnTo = `${ADMIN_BASE}/rsvp/${listId}`): string {
+  return `/admin/pages/${guestId}/edit?return_to=${encodeURIComponent(returnTo)}`;
+}
+
 function guestRow(guest: CmsPage, listId: number, edmId: number | null): Record<string, unknown> {
   const values = guestValues(guest);
   const quality = emailQuality(values.email);
   return {
     ...values,
     id: guest.id,
-    editHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}`,
+    editHref: guestEditHref(guest.id, listId),
     qrHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode`,
     statusAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/status`,
     checkinAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin`,
@@ -1432,27 +1539,99 @@ function guestStatus(guest: CmsPage): GuestStatus {
   return normalizeStatus(attr(guest.lect, 'status')) ?? 'to be invited';
 }
 
+function adminCustomFieldsForGuest(event: CmsPage | null, list: CmsPage, guest?: CmsPage): AdminCustomField[] {
+  const fields: AdminCustomField[] = [];
+  const seenTypes = new Set<string>();
+  for (const source of [
+    ...(event ? adminCustomBlocks(event, 'event') : []),
+    ...adminCustomBlocks(list, 'guest list'),
+  ]) {
+    const includeBlockId = seenTypes.has(source.type);
+    seenTypes.add(source.type);
+    const blockKey = includeBlockId ? `${source.type}-${source.id}` : source.type;
+
+    for (const input of items(source.block, 'custom_input')) {
+      const label = localized(input, 'label') || attr(input, 'label') || attr(input, 'name');
+      if (!label) continue;
+      const labelKey = adminFieldSlug(label);
+      const key = `rsvp_custom_${includeBlockId ? `${adminFieldSlug(blockKey)}_` : ''}${labelKey}`;
+      const value = attr(guest?.lect ?? {}, key);
+      const type = adminInputType(attr(input, 'type'));
+      const defaultValue = attr(input, 'default_value');
+      fields.push({
+        key,
+        name: `@${key}`,
+        label,
+        type,
+        required: attr(input, 'required') === 'yes' || attr(input, 'required') === 'true',
+        value,
+        defaultValue,
+        options: adminInputOptions(defaultValue, value),
+        checked: value !== '' && value === (defaultValue || 'yes'),
+        blockTitle: localized(source.block, 'title') || (source.source === 'event' ? 'Event custom information' : 'Guest list custom information'),
+        source: source.source,
+      });
+    }
+  }
+  return fields;
+}
+
+function adminCustomBlocks(page: CmsPage, source: string): Array<{ type: string; id: string; source: string; block: Record<string, unknown> }> {
+  return blocks(page.lect)
+    .map((block, index) => ({
+      type: attr(block, '_type'),
+      id: attr(block, '_id') || String(block._index ?? block._weight ?? index),
+      source,
+      block,
+    }))
+    .filter((entry) => entry.type === 'rsvp-custom' && items(entry.block, 'custom_input').length > 0);
+}
+
+function applyAdminCustomResponse(lect: Record<string, unknown>, form: FormData, fields: AdminCustomField[]): void {
+  for (const field of fields) lect[field.key] = formText(form, field.name);
+}
+
+function adminFieldSlug(label: string): string {
+  return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function adminInputType(type: string): string {
+  const normalized = type.trim().toLowerCase();
+  if (['checkbox', 'select', 'radio', 'textarea', 'email', 'tel', 'date', 'time', 'number', 'url'].includes(normalized)) return normalized;
+  return 'text';
+}
+
+function adminInputOptions(raw: string, selected: string): Array<{ value: string; label: string; selected: boolean }> {
+  return raw.split('|')
+    .map((entry) => {
+      const [value, label] = entry.split(':');
+      const cleanValue = value?.trim() ?? '';
+      return { value: cleanValue, label: (label ?? value ?? '').trim(), selected: cleanValue === selected };
+    })
+    .filter((option) => option.value || option.label);
+}
+
 function guestInput(
   form: FormData,
   eventId: number | null,
   listId: number,
   existing?: CmsPage,
 ): { name: string; lect: Record<string, unknown> } {
-  const name = formText(form, 'name');
+  const name = formText(form, 'name') || formLocalizedText(form, 'name');
   const fields = new Map<string, string>([
-    ['last_name', formText(form, 'last_name')],
-    ['email', formText(form, 'email')],
-    ['phone', formText(form, 'phone')],
-    ['organization', formText(form, 'organization')],
-    ['job_title', formText(form, 'job_title')],
-    ['plus_guests', formText(form, 'plus_guests') || '0'],
-    ['status', normalizeStatus(formText(form, 'status')) ?? 'to be invited'],
-    ['prefer_language', formText(form, 'prefer_language')],
-    ['cc', formText(form, 'cc')],
-    ['remarks', formText(form, 'remarks')],
+    ['last_name', formText(form, 'last_name') || formLocalizedText(form, 'last_name')],
+    ['email', formText(form, 'email') || formText(form, '@email')],
+    ['phone', formText(form, 'phone') || formText(form, '@phone')],
+    ['organization', formText(form, 'organization') || formText(form, '@organization')],
+    ['job_title', formText(form, 'job_title') || formText(form, '@job_title')],
+    ['plus_guests', formText(form, 'plus_guests') || formText(form, '@plus_guests') || '0'],
+    ['status', normalizeStatus(formText(form, 'status') || formText(form, '@status')) ?? 'to be invited'],
+    ['prefer_language', formText(form, 'prefer_language') || formText(form, '@prefer_language')],
+    ['cc', formText(form, 'cc') || formText(form, '@cc')],
+    ['remarks', formText(form, 'remarks') || formText(form, '@remarks')],
   ]);
   const input = guestPageInput(name, fields, eventId, listId);
-  return { name, lect: { ...(existing?.lect ?? {}), ...input.lect } };
+  return { name, lect: { ...(existing?.lect ?? {}), ...input.lect, ...nativeCustomGuestFields(form) } };
 }
 
 function guestPageInput(name: string, fields: Map<string, string>, eventId: number | null, listId: number): CmsPageInput {
@@ -1505,6 +1684,16 @@ function pageId(value: unknown): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+function parseLect(raw: string | Record<string, unknown>): Record<string, unknown> {
+  if (typeof raw !== 'string') return raw && typeof raw === 'object' ? raw : {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
 // Excel exports large integers as ="N" to prevent scientific notation.
 // parseCsv strips the outer quote delimiters, leaving "=N" in the cell value.
 // This helper accepts plain integers, =N, or (if somehow preserved) ="N".
@@ -1516,9 +1705,43 @@ function parseImportId(raw: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+// Excel forces text-like cells (phone numbers, long codes) through a ="..." formula
+// so they aren't misread as numbers. parseCsv strips the outer CSV quotes, leaving
+// the leading = (and any inner quotes). This strips that prefix from string fields.
+function stripExcelFormula(raw: string): string {
+  const s = raw.trim();
+  if (!s.startsWith('=')) return s;
+  // Remove leading =, then strip surrounding quotes if present: ="foo" → foo
+  const inner = s.slice(1);
+  return inner.startsWith('"') && inner.endsWith('"') ? inner.slice(1, -1) : inner;
+}
+
 function formText(form: FormData, key: string): string {
   const value = form.get(key);
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function formLocalizedText(form: FormData, key: string): string {
+  for (const [name, value] of form.entries()) {
+    if (name.startsWith(`.${key}|`) && typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function nativeCustomGuestFields(form: FormData): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const [name, value] of form.entries()) {
+    if (typeof value !== 'string') continue;
+    if (/^@rsvp_custom_\w+$/.test(name)) fields[name.slice(1)] = value.trim();
+    if (name.startsWith('admin-rsvp-custom-')) {
+      fields[`rsvp_custom_${adminFieldSlug(name.slice('admin-rsvp-custom-'.length))}`] = value.trim();
+    }
+  }
+  return fields;
+}
+
+function safeAdminReturn(value: string): string {
+  return value.startsWith('/admin') ? value : '';
 }
 
 function redirect(to: string): Response {

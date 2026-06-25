@@ -835,9 +835,9 @@ describe('EDM and labels', () => {
 });
 
 describe('EDM edit view (plugin-rendered page editor)', () => {
-  it('declares the edm edit view in the manifest', async () => {
+  it('declares the plugin-rendered edit views in the manifest', async () => {
     const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
-    await expect(response.json()).resolves.toMatchObject({ editViews: ['edm'] });
+    await expect(response.json()).resolves.toMatchObject({ editViews: ['edm', 'guest'] });
   });
 
   it('links the EDM list straight to the page editor (no intermediate page)', async () => {
@@ -948,12 +948,109 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('href="/admin/plugins/events/edm/50/preview?language=en" target="edm-preview"');
   });
 
-  it('falls back (404) for a non-edm page type', async () => {
+  it('renders the bespoke guest editor with RSVP custom fields from the event', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: {
+          id: 7,
+          page_type: 'event',
+          name: 'Town & Country',
+          lect: {
+            _blocks: [
+              {
+                _type: 'rsvp-custom',
+                _id: 'diet-block',
+                title: { mis: 'RSVP Details' },
+                custom_input: [
+                  { type: 'select', required: 'yes', label: { mis: 'Diet' }, default_value: 'vegan:Vegan|meat:Meat' },
+                ],
+              },
+            ],
+          },
+        } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({
+        action: '/admin/pages/9',
+        backHref: '/admin/plugins/events/rsvp/8',
+        pageType: 'guest',
+        page: {
+          id: 9,
+          name: 'Ada Lovelace',
+          slug: 'ada-lovelace',
+          pageType: 'guest',
+          page_id: 8,
+          lect: JSON.stringify({
+            _type: 'guest',
+            name: { mis: 'Ada Lovelace' },
+            email: 'ada@example.com',
+            phone: '+85290001000',
+            status: 'confirmed',
+            _pointers: { event: '7', mail_list: '8' },
+            rsvp_custom_diet: 'vegan',
+          }),
+        },
+      })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-cms-chrome')).toBe('1');
+    const html = await response.text();
+    expect(html).toContain('action="/admin/pages/9"');
+    expect(html).toContain('name="page_type" value="guest"');
+    expect(html).toContain('name="page_id" value="8"');
+    expect(html).toContain('name="*mail_list" value="8"');
+    expect(html).toContain('name="return_to" value="/admin/plugins/events/rsvp/8"');
+    expect(html).toContain('Town &amp; Country');
+    expect(html).toContain('name="@phone"');
+    expect(html).toContain('name=".last_name|mis"');
+    expect(html).toContain('Additional information');
+    expect(html).toContain('name="@rsvp_custom_diet"');
+    expect(html).toContain('<option value="vegan" selected>Vegan</option>');
+  });
+
+  it('does not serve the old plugin guest edit URL', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/9', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(404);
+
+    const post = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/9', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    expect(post.status).toBe(404);
+  });
+
+  it('falls back (404) for a non-edm and non-guest page type', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
     const response = await plugin.fetch(request('/__plugin/edit', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
-      body: JSON.stringify(editContext({ pageType: 'guest' })),
+      body: JSON.stringify(editContext({ pageType: 'event' })),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
     expect(response.status).toBe(404);
   });
@@ -1217,7 +1314,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         updateBody = JSON.parse(String(init.body));
         return Response.json({ page: { id: 55 } });
       }
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Stale', lect: { contact_id: '200', status: 'invited', response: [{ status: 'invited' }] } } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Stale', lect: { contact_id: '200', status: 'invited', _pointers: { mail_list: '8' }, response: [{ status: 'invited' }] } } });
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
       if (url.pathname === '/__cms/pages/200') return Response.json({ page: contact });
       return new Response('not found', { status: 404 });
@@ -1230,7 +1327,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8/guests/55');
+    expect(response.headers.get('location')).toBe('/admin/pages/55/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Frsvp%2F8');
     expect(updateBody?.name).toBe('Ada Lovelace');
     expect(updateBody?.lect).toMatchObject({
       name: { en: 'Ada Lovelace' },
@@ -1281,7 +1378,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: {} } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
@@ -1316,10 +1413,10 @@ describe('RSVP EDM sending (guest-list controls)', () => {
         return Response.json({ pages: [{ id: 50, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
       }
       if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        return Response.json({ pages: [{ id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com' } }], total: 1 });
+        return Response.json({ pages: [{ id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', _pointers: { mail_list: '8' } } }], total: 1 });
       }
       if (p === '/__cms/pages/55' && init?.method === 'PUT') { if (captured) captured.put = init; return Response.json({ page: { id: 55 } }); }
-      if (p === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com' } } });
+      if (p === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
   }
@@ -1337,6 +1434,8 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(html).toContain('/admin/plugins/events/rsvp/8/send-edm?quality=good');
     expect(html).toContain('data-autosubmit');                                   // EDM dropdown
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/55/send"'); // per-guest send
+    expect(html).toContain('href="/admin/pages/55/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Frsvp%2F8"');
+    expect(html).not.toContain('href="/admin/plugins/events/rsvp/8/guests/55"');
     expect(html).toContain('>good<');                                            // quality chip
   });
 
