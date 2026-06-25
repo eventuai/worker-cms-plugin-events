@@ -358,17 +358,7 @@ async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response
   // so removing the list row would instantly wipe all guest rows — nothing left
   // to copy into trash_pages. Trashing guests first removes them from draft_pages
   // cleanly, then trashing the list has no children left to cascade-delete.
-  //
-  // Use allSettled so that a guest already removed by a concurrent cascade (or a
-  // prior partial delete) doesn't abort the whole operation — only non-404 errors
-  // are re-thrown.
-  const guestResults = await Promise.allSettled(guests.map((guest) => cms.remove(guest.id)));
-  for (const result of guestResults) {
-    if (result.status === 'rejected') {
-      const err = result.reason;
-      if (!(err instanceof CmsApiError) || err.status !== 404) throw err;
-    }
-  }
+  await cms.batchRemove(guests.map((guest) => guest.id));
   await cms.remove(listId);
 
   return redirect(context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`);

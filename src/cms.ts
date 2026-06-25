@@ -17,6 +17,9 @@
 /** Manifest id — must equal MANIFEST.id and the CMS-registered plugin id. */
 export const PLUGIN_ID = 'events';
 
+/** Max ids per DELETE /pages/batch call — must not exceed the CMS server's MAX_BATCH. */
+const BATCH_DELETE_SIZE = 100;
+
 export interface CmsClientEnv {
   /** Base URL of the CMS Worker, e.g. https://cms.eventuai.com (no trailing slash needed). */
   CMS_URL?: string;
@@ -184,6 +187,18 @@ export class CmsClient {
   /** Batch-create (bulk import / bulk add-to-list); the CMS caps the batch size. */
   async batchCreate(pages: CmsPageInput[]): Promise<{ created: CmsPage[]; errors: Array<{ index: number; error: string }> }> {
     return this.json(await this.call('POST', '/pages/batch', { pages }), 'POST', '/pages/batch');
+  }
+
+  /**
+   * Batch soft-delete (trash) multiple pages. Chunks into MAX_BATCH-sized
+   * requests so callers don't need to worry about the server's batch limit.
+   * Pages not found are silently skipped, matching the single `remove` behaviour.
+   */
+  async batchRemove(ids: number[]): Promise<void> {
+    for (let i = 0; i < ids.length; i += BATCH_DELETE_SIZE) {
+      const chunk = ids.slice(i, i + BATCH_DELETE_SIZE);
+      await this.json(await this.call('DELETE', '/pages/batch', { ids: chunk }), 'DELETE', '/pages/batch');
+    }
   }
 }
 
