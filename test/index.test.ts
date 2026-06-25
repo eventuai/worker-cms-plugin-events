@@ -1376,7 +1376,7 @@ describe('check-in detection', () => {
 
 describe('legacy guest import', () => {
   it('groups by guest_list_name and carries over check-in state', async () => {
-    const guestCreates: Array<{ name: string; lect: Record<string, unknown> }> = [];
+    const batches: Array<{ pages: Array<{ name: string; lect: Record<string, unknown> }> }> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
@@ -1384,9 +1384,12 @@ describe('legacy guest import', () => {
         return Response.json({ pages: [], total: 0 }); // no lists yet
       }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
-        const body = JSON.parse(String(init.body)) as { page_type: string; name: string; lect: Record<string, unknown> };
-        if (body.page_type === 'guest') guestCreates.push(body);
+        const body = JSON.parse(String(init.body)) as { name: string };
         return Response.json({ page: { id: 50, name: body.name, lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
+        batches.push(JSON.parse(String(init.body)));
+        return Response.json({ created: [], errors: [] });
       }
       return new Response('not found', { status: 404 });
     });
@@ -1409,8 +1412,8 @@ describe('legacy guest import', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(guestCreates).toHaveLength(4);
-    const guests = new Map(guestCreates.map((p) => [p.name, p.lect]));
+    expect(batches).toHaveLength(1);
+    const guests = new Map(batches[0].pages.map((p) => [p.name, p.lect]));
     expect(checkins(guests.get('Ada')!)).toHaveLength(1);
     expect((guests.get('Ada')!.checkin as Array<Record<string, string>>)[0]).toMatchObject({ status: 'checked-in', date: '2026-06-10T01:00:00Z', message: 'from kiosk' });
     expect(checkins(guests.get('Cleo')!)).toHaveLength(1); // session check-in counts
@@ -1432,7 +1435,14 @@ describe('per-list import preview', () => {
   const existingGuests: ImportTestGuest[] = [
     { id: 100, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'ada@x.io', status: 'invited' } },
   ];
-  const listFetch = (sink?: { creates?: unknown[]; updates?: Array<{ id: number; body: unknown }> }, guests = existingGuests) =>
+  type ImportSink = {
+    batches?: Array<{ pages: Array<Record<string, unknown>> }>;
+    creates?: unknown[];
+    failNextBatch?: boolean;
+    updates?: Array<{ id: number; body: unknown }>;
+  };
+
+  const listFetch = (sink?: ImportSink, guests = existingGuests) =>
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') {
@@ -1441,6 +1451,15 @@ describe('per-list import preview', () => {
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') return Response.json({ pages: guests, total: guests.length });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') return Response.json({ pages: [], total: 0 });
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { pages: Array<Record<string, unknown>> };
+        sink?.batches?.push(body);
+        if (sink?.failNextBatch) {
+          sink.failNextBatch = false;
+          return Response.json({ error: 'error' }, { status: 503 });
+        }
+        return Response.json({ created: body.pages.map((page, index) => ({ id: 300 + index, ...page })), errors: [] });
+      }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
         sink?.creates?.push(JSON.parse(String(init.body)));
         return Response.json({ page: { id: 200 } });
@@ -1484,7 +1503,7 @@ describe('per-list import preview', () => {
   // The confirm step carries the raw CSV (not an expanded payload) and re-derives
   // the plan server-side against the list's current guests.
   const confirmCsv = 'name,email,phone\nAda,ada@x.io,555-1234\nBob,bob@x.io,555-9999\n';
-  const confirm = (mode: string, sink: { creates: unknown[]; updates: Array<{ id: number; body: unknown }> }) => {
+  const confirm = (mode: string, sink: ImportSink) => {
     vi.stubGlobal('fetch', listFetch(sink));
     return plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
       method: 'POST',
@@ -1521,6 +1540,54 @@ describe('per-list import preview', () => {
     expect(sink.creates[0]).toMatchObject({ page_type: 'guest', page_id: 8, name: 'Bob' }); // new
     // Ada (id 100) matched by email → her missing phone is added.
     expect(sink.updates).toEqual([{ id: 100, body: { lect: { phone: '555-1234' } } }]);
+  });
+
+  it('batches multiple new guests on confirm', async () => {
+    const sink = { batches: [] as Array<{ pages: Array<Record<string, unknown>> }>, creates: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    vi.stubGlobal('fetch', listFetch(sink, []));
+    const csv = [
+      'name,email',
+      'Bob,bob@x.io',
+      'Cleo,cleo@x.io',
+      'Dee,dee@x.io',
+      'Eve,eve@x.io',
+      'Finn,finn@x.io',
+    ].join('\n');
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', csv }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(sink.batches).toHaveLength(1);
+    expect(sink.batches[0].pages.map((page) => page.name)).toEqual(['Bob', 'Cleo', 'Dee', 'Eve', 'Finn']);
+    expect(sink.creates).toHaveLength(0);
+  });
+
+  it('splits a transiently failing import batch instead of failing the confirm', async () => {
+    const sink = {
+      batches: [] as Array<{ pages: Array<Record<string, unknown>> }>,
+      creates: [] as Array<Record<string, unknown>>,
+      failNextBatch: true,
+      updates: [] as Array<{ id: number; body: unknown }>,
+    };
+    vi.stubGlobal('fetch', listFetch(sink, []));
+    const csv = 'name,email\nBob,bob@x.io\nCleo,cleo@x.io\nDee,dee@x.io\n';
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', csv }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(sink.batches.map((batch) => batch.pages.map((page) => page.name))).toEqual([
+      ['Bob', 'Cleo', 'Dee'],
+      ['Bob', 'Cleo'],
+    ]);
+    expect(sink.creates.map((page) => page.name)).toEqual(['Dee']);
   });
 
   it('mode new_only skips updates; update_only skips creates', async () => {

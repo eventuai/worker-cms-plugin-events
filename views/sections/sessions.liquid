@@ -14,7 +14,7 @@
     <tbody class="divide-y divide-gray-100">
       {% for session in sessions %}
         <tr draggable="true" data-index="{{ session.index }}">
-          <td class="px-6 py-3 text-sm text-gray-400" title="Drag to reorder" style="cursor:grab">⠿</td>
+          <td class="px-6 py-3 text-sm text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab">⠿</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ session.name | escape }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ session.start | escape }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ session.location | escape }}</td>

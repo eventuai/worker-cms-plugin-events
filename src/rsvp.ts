@@ -32,6 +32,13 @@ const GUEST_STATUSES = ['to be invited', 'onhold', 'invited', 'confirmed', 'decl
 
 type GuestStatus = typeof GUEST_STATUSES[number];
 
+/**
+ * Guests per CMS `/pages/batch` call. The host creates each page through the
+ * full versioned CMS pipeline, so this stays intentionally smaller than the
+ * CMS's hard max and falls back further if the host reports transient pressure.
+ */
+const IMPORT_CREATE_BATCH = 5;
+
 /** Guest value fields the import compares and can add/update on an existing guest. */
 const IMPORT_FIELDS = [
   'last_name', 'email', 'phone', 'organization', 'job_title',
@@ -1031,15 +1038,36 @@ function classifyImport(incoming: IncomingGuest[], existingGuests: CmsPage[], ev
   return { create, update, rows };
 }
 
-/**
- * The CMS batch endpoint loops the full page-create pipeline inside one host
- * request. Guest imports can therefore 503 even for modest CSVs under local
- * wrangler/D1. One CMS create per guest keeps each host request small; in the
- * per-list preview/confirm flow, a retry also re-runs classification before
- * writing new guests.
- */
 async function createImportedGuests(cms: CmsClient, inputs: CmsPageInput[]): Promise<void> {
-  for (const input of inputs) await cms.create(input);
+  for (const chunk of chunks(inputs, IMPORT_CREATE_BATCH)) await createImportedGuestBatch(cms, chunk);
+}
+
+async function createImportedGuestBatch(cms: CmsClient, inputs: CmsPageInput[]): Promise<void> {
+  if (!inputs.length) return;
+  if (inputs.length === 1) {
+    await cms.create(inputs[0]);
+    return;
+  }
+
+  try {
+    const result = await cms.batchCreate(inputs);
+    if (result.errors.length) {
+      const first = result.errors[0];
+      throw new CmsApiError(400, `batch_item_${first.index}:${first.error}`, 'POST', '/pages/batch');
+    }
+  } catch (error) {
+    if (error instanceof CmsApiError && shouldSplitImportBatch(error)) {
+      const midpoint = Math.ceil(inputs.length / 2);
+      await createImportedGuestBatch(cms, inputs.slice(0, midpoint));
+      await createImportedGuestBatch(cms, inputs.slice(midpoint));
+      return;
+    }
+    throw error;
+  }
+}
+
+function shouldSplitImportBatch(error: CmsApiError): boolean {
+  return error.path === '/pages/batch' && [429, 500, 502, 503, 504].includes(error.status);
 }
 
 /**
@@ -1090,10 +1118,11 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
 /**
  * Step 2 of import: re-parse the CSV carried from the preview, re-classify it
  * against the list's current guests, and apply per the chosen mode —
- * `new_only`, `update_only`, or `new_and_update`. Creates run in small chunks so
- * a large list never exhausts one CMS request's subrequest budget; updates are
- * applied per guest. Re-deriving server-side keeps the round-trip body small and
- * means the client can't smuggle writes to other pages.
+ * `new_only`, `update_only`, or `new_and_update`. Creates run in adaptive small
+ * batches so normal imports are fast while oversized CMS requests split down on
+ * transient host pressure; updates are applied per guest. Re-deriving server-side
+ * keeps the round-trip body small and means the client can't smuggle writes to
+ * other pages.
  */
 async function confirmImportGuests(request: Request, cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
@@ -1330,6 +1359,12 @@ function formText(form: FormData, key: string): string {
 
 function redirect(to: string): Response {
   return new Response(null, { status: 302, headers: { Location: to } });
+}
+
+function chunks<T>(values: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
+  return result;
 }
 
 function parseCsv(text: string): string[][] {

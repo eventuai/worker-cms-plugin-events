@@ -3,66 +3,130 @@
 // Generic drag-to-reorder for any <table data-reorder="URL"> with draggable rows.
 // mode "weight" posts {key:[{id,weight}]}; mode "order" posts {key:[index,...]}.
 (function () {
+  var active = null;
+
   function closest(target, selector) {
     if (target && target.nodeType === 3) target = target.parentElement;
     return target && target.closest ? target.closest(selector) : null;
   }
 
+  function mode(table) {
+    return table.getAttribute('data-reorder-mode') || 'weight';
+  }
+
+  function rowSelector(table) {
+    return mode(table) === 'order' ? 'tr[data-index]' : 'tr[data-id]';
+  }
+
+  function rows(table) {
+    return Array.prototype.slice.call(table.tBodies[0].querySelectorAll(rowSelector(table)));
+  }
+
+  function orderKey(table) {
+    return rows(table).map(function (tr) {
+      return mode(table) === 'order' ? tr.dataset.index : tr.dataset.id;
+    }).join('|');
+  }
+
+  function insertionRow(table, pointerY, dragging) {
+    var tableRows = rows(table);
+    for (var i = 0; i < tableRows.length; i += 1) {
+      var row = tableRows[i];
+      if (row === dragging) continue;
+      var rect = row.getBoundingClientRect();
+      if (pointerY < rect.top + rect.height / 2) return row;
+    }
+    return null;
+  }
+
+  function persist(table) {
+    var tableRows = rows(table);
+    var key = table.getAttribute('data-reorder-key') || 'reorder';
+    var currentMode = mode(table);
+    var eventId = table.getAttribute('data-reorder-event-id');
+    var payload = {};
+    if (eventId) payload.event_id = eventId;
+    payload[key] = currentMode === 'order'
+      ? tableRows.map(function (tr) { return parseInt(tr.dataset.index, 10); })
+      : tableRows.map(function (tr, i) { return { id: parseInt(tr.dataset.id, 10), weight: i }; });
+    fetch(table.getAttribute('data-reorder'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function (response) {
+      if (!response.ok) throw new Error('reorder failed');
+      return response.json();
+    }).then(function (data) {
+      if (!data || data.success !== true) throw new Error((data && data.error) || 'reorder failed');
+    }).catch(function (error) {
+      console.error('Failed to save row order:', error);
+    });
+  }
+
+  function stopTracking() {
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+    document.removeEventListener('pointercancel', onPointerCancel);
+  }
+
+  function onPointerMove(e) {
+    if (!active) return;
+    e.preventDefault();
+    var before = insertionRow(active.table, e.clientY, active.row);
+    if (before === active.row || before === active.row.nextSibling) return;
+    active.tbody.insertBefore(active.row, before);
+    active.moved = true;
+  }
+
+  function finish(cancelled) {
+    if (!active) return;
+    var table = active.table;
+    var changed = active.moved && orderKey(table) !== active.startOrder;
+    active.row.style.opacity = '';
+    active.row.style.cursor = '';
+    active.tbody.style.userSelect = '';
+    active = null;
+    stopTracking();
+    if (!cancelled && changed) persist(table);
+  }
+
+  function onPointerUp(e) {
+    if (!active) return;
+    e.preventDefault();
+    finish(false);
+  }
+
+  function onPointerCancel() {
+    finish(true);
+  }
+
   document.querySelectorAll('table[data-reorder]').forEach(function (table) {
     var tbody = table.tBodies[0];
     if (!tbody) return;
-    var handleOnly = table.hasAttribute('data-reorder-handle-only');
-    var dragging = null;
-    tbody.addEventListener('dragstart', function (e) {
-      if (handleOnly && !closest(e.target, '[data-reorder-handle]')) {
-        e.preventDefault();
-        return;
-      }
-      dragging = closest(e.target, 'tr[draggable]');
-      if (!dragging) return;
-      dragging.style.opacity = '0.4';
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', '');
-      }
-    });
-    tbody.addEventListener('dragend', function () {
-      if (dragging) { dragging.style.opacity = ''; dragging = null; }
-    });
-    tbody.addEventListener('dragover', function (e) {
+    rows(table).forEach(function (row) { row.draggable = false; });
+    table.addEventListener('pointerdown', function (e) {
+      if (e.button != null && e.button !== 0) return;
+      var handle = closest(e.target, '[data-reorder-handle]');
+      if (!handle) return;
+      var row = closest(handle, rowSelector(table));
+      if (!row) return;
       e.preventDefault();
-      if (!dragging) return;
-      var tr = closest(e.target, 'tr[draggable]');
-      if (!tr || tr === dragging) return;
-      var rect = tr.getBoundingClientRect();
-      tbody.insertBefore(dragging, (e.clientY - rect.top) > rect.height / 2 ? tr.nextSibling : tr);
-    });
-    tbody.addEventListener('drop', function (e) {
-      e.preventDefault();
-      if (!dragging) return;
-      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[draggable]'));
-      var key = table.getAttribute('data-reorder-key') || 'reorder';
-      var mode = table.getAttribute('data-reorder-mode') || 'weight';
-      var eventId = table.getAttribute('data-reorder-event-id');
-      var payload = {};
-      if (eventId) payload.event_id = eventId;
-      payload[key] = mode === 'order'
-        ? rows.map(function (tr) { return parseInt(tr.dataset.index, 10); })
-        : rows.map(function (tr, i) { return { id: parseInt(tr.dataset.id, 10), weight: i }; });
-      fetch(table.getAttribute('data-reorder'), {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).then(function (response) {
-        if (!response.ok) throw new Error('reorder failed');
-        return response.json();
-      }).then(function (data) {
-        if (!data || data.success !== true) throw new Error((data && data.error) || 'reorder failed');
-      }).catch(function () {
-        window.location.reload();
-      });
+      active = {
+        table: table,
+        tbody: tbody,
+        row: row,
+        startOrder: orderKey(table),
+        moved: false,
+      };
+      row.style.opacity = '0.4';
+      row.style.cursor = 'grabbing';
+      tbody.style.userSelect = 'none';
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', onPointerUp, { passive: false });
+      document.addEventListener('pointercancel', onPointerCancel);
     });
   });
+
 })();
 </script>
