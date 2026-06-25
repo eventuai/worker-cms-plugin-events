@@ -26,6 +26,7 @@
         }
       ],
       "guest": [
+        "*mail_list",
         "@picture", "@email:email", "@primary_guest", "@max_main_checkin", "@nationality",
         "@cc", "@organization", "@contact_id", "@plus_guests", "@phone", "@parent",
         "@rsvp_code", "@status", "@checkin_remark", "@qrcode_remark", "@not_send", "@no",
