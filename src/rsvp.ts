@@ -33,11 +33,12 @@ type GuestStatus = typeof GUEST_STATUSES[number];
 
 /**
  * Guests created per CMS `/pages/batch` call. The host creates each guest with
- * several D1 writes (plus an audit row), so a large chunk in one request can hit
- * the Worker subrequest ceiling and fail the whole import. Keep chunks small and
+ * several D1 writes (INSERT + version + update + audit), so a large chunk makes
+ * one CMS request do a lot of work — which can hit the Worker subrequest ceiling
+ * (or, under local `wrangler dev`, time out into a 503). Keep chunks small and
  * let the plugin make more sequential calls instead.
  */
-const IMPORT_CHUNK = 50;
+const IMPORT_CHUNK = 25;
 
 /** Guest value fields the import compares and can add/update on an existing guest. */
 const IMPORT_FIELDS = [
@@ -969,43 +970,60 @@ interface ImportPlan {
   rows: ImportRow[];
 }
 
+/** Fields the import would add/change on `existing` to match `guest`, plus the PUT lect. */
+function diffGuest(guest: IncomingGuest, existing: CmsPage): { lect: Record<string, unknown>; changes: ImportRow['changes'] } {
+  const current = guestValues(existing);
+  const lect: Record<string, unknown> = {};
+  const changes: ImportRow['changes'] = [];
+  for (const field of IMPORT_FIELDS) {
+    const next = guest.values[field] ?? '';
+    if (!next) continue; // never blank out an existing value
+    const prev = current[field] ?? '';
+    if (next === prev) continue;
+    Object.assign(lect, updateLectFragment(field, next));
+    changes.push({ label: IMPORT_FIELD_LABELS[field], from: prev, to: next, add: prev === '' });
+  }
+  if (guest.checkin && checkins(existing.lect).length === 0) {
+    lect.checkin = guest.checkin;
+    changes.push({ label: IMPORT_FIELD_LABELS.checked_in, from: '', to: 'checked in', add: true });
+  }
+  return { lect, changes };
+}
+
 /**
  * Matches each incoming guest against the list's current guests (by email, else
  * name) and builds the create/update plan plus per-row diffs. Shared by the
  * preview (display) and the confirm (apply) so both see the same classification.
+ *
+ * Each existing guest is matched at most once, and within a group sharing a key
+ * an exact (zero-diff) guest is preferred — so re-importing the same file is
+ * idempotent even when the source has duplicate emails (which create one guest
+ * per row on the first import).
  */
 function classifyImport(incoming: IncomingGuest[], existingGuests: CmsPage[], eventId: number | null, listId: number): ImportPlan {
-  const existingByKey = new Map<string, CmsPage>();
+  const existingByKey = new Map<string, CmsPage[]>();
   for (const guest of existingGuests) {
     const values = guestValues(guest);
     const key = guestMatchKey(values.name, values.email);
-    if (!existingByKey.has(key)) existingByKey.set(key, guest); // first existing wins
+    const bucket = existingByKey.get(key);
+    if (bucket) bucket.push(guest);
+    else existingByKey.set(key, [guest]);
   }
 
   const create: CmsPageInput[] = [];
   const update: Array<{ id: number; lect: Record<string, unknown> }> = [];
   const rows = incoming.map((guest): ImportRow => {
-    const match = existingByKey.get(guestMatchKey(guest.name, guest.values.email));
-    if (!match) {
+    const candidates = existingByKey.get(guestMatchKey(guest.name, guest.values.email));
+    if (!candidates || !candidates.length) {
       create.push(incomingToCreateInput(guest, eventId, listId));
       return { name: guest.name, email: guest.values.email, state: 'new', changes: [] };
     }
 
-    const current = guestValues(match);
-    const lect: Record<string, unknown> = {};
-    const changes: ImportRow['changes'] = [];
-    for (const field of IMPORT_FIELDS) {
-      const next = guest.values[field] ?? '';
-      if (!next) continue; // never blank out an existing value
-      const prev = current[field] ?? '';
-      if (next === prev) continue;
-      Object.assign(lect, updateLectFragment(field, next));
-      changes.push({ label: IMPORT_FIELD_LABELS[field], from: prev, to: next, add: prev === '' });
-    }
-    if (guest.checkin && checkins(match.lect).length === 0) {
-      lect.checkin = guest.checkin;
-      changes.push({ label: IMPORT_FIELD_LABELS.checked_in, from: '', to: 'checked in', add: true });
-    }
+    // Prefer an existing guest that needs no change; else update the first.
+    let index = candidates.findIndex((candidate) => diffGuest(guest, candidate).changes.length === 0);
+    if (index === -1) index = 0;
+    const [match] = candidates.splice(index, 1); // consume so each existing matches once
+    const { lect, changes } = diffGuest(guest, match);
     if (changes.length) update.push({ id: match.id, lect });
     return { name: guest.name, email: guest.values.email, state: changes.length ? 'update' : 'unchanged', changes };
   });

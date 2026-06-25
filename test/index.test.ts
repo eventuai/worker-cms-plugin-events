@@ -1428,6 +1428,24 @@ describe('per-list import preview', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
   };
 
+  it('re-importing a file with duplicate emails shows no updates (idempotent)', async () => {
+    // Two existing guests share an email (one guest per CSV row was created on
+    // the first import). Re-importing must match each to its own twin, not both
+    // to the first — so nothing shows as an update.
+    const dupGuests = [
+      { id: 100, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'dup@x.io', phone: '111' } },
+      { id: 101, page_type: 'guest', page_id: 8, name: 'Ada Two', lect: { name: { en: 'Ada Two' }, email: 'dup@x.io', phone: '222' } },
+    ];
+    vi.stubGlobal('fetch', listFetch(undefined, dupGuests));
+    const csv = 'name,email,phone\nAda,dup@x.io,111\nAda Two,dup@x.io,222\n';
+    const response = await importCsv('/__plugin/admin/rsvp/8/import', csv);
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('0 new');
+    expect(html).toContain('0 to update');
+  });
+
   it('on confirm with the default mode, creates new and updates existing', async () => {
     const sink = { batches: [] as Array<{ pages: Array<Record<string, unknown>> }>, updates: [] as Array<{ id: number; body: unknown }> };
     const response = await confirm('new_and_update', sink as unknown as { batches: unknown[]; updates: Array<{ id: number; body: unknown }> });
