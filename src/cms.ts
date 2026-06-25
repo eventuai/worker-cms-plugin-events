@@ -70,9 +70,24 @@ export interface CmsPageInput {
   tags?: number[];
 }
 
+/** Compare admin-ordered pages by `weight`, keeping unweighted pages after weighted ones. */
+export function compareByWeightThenName(a: CmsPage, b: CmsPage): number {
+  const aw = Number(a.weight);
+  const bw = Number(b.weight);
+  const aWeight = Number.isFinite(aw) ? aw : Number.MAX_SAFE_INTEGER;
+  const bWeight = Number.isFinite(bw) ? bw : Number.MAX_SAFE_INTEGER;
+  return (aWeight - bWeight) || a.name.localeCompare(b.name);
+}
+
 export class CmsApiError extends Error {
-  constructor(public status: number, public code: string) {
-    super(`CMS API ${status}: ${code}`);
+  constructor(
+    public status: number,
+    public code: string,
+    public method = '',
+    public path = '',
+  ) {
+    const target = method && path ? ` ${method} ${path}` : '';
+    super(`CMS API${target} ${status}: ${code}`);
     this.name = 'CmsApiError';
   }
 }
@@ -107,10 +122,20 @@ export class CmsClient {
     });
   }
 
-  private async json<T>(res: Response): Promise<T> {
+  private async json<T>(res: Response, method = '', path = ''): Promise<T> {
     if (!res.ok) {
-      const code = await res.json().then((b) => (b as { error?: string }).error ?? 'error').catch(() => 'error');
-      throw new CmsApiError(res.status, code);
+      const code = await res.text()
+        .then((text) => {
+          if (!text) return 'error';
+          try {
+            const body = JSON.parse(text) as { error?: unknown };
+            return typeof body.error === 'string' && body.error ? body.error : 'error';
+          } catch {
+            return text.replace(/\s+/g, ' ').trim().slice(0, 160) || 'error';
+          }
+        })
+        .catch(() => 'error');
+      throw new CmsApiError(res.status, code, method, path);
     }
     return res.json() as Promise<T>;
   }
@@ -125,31 +150,35 @@ export class CmsClient {
     if (opts.q) params.set('q', opts.q);
     if (opts.limit != null) params.set('limit', String(opts.limit));
     if (opts.offset != null) params.set('offset', String(opts.offset));
-    return this.json(await this.call('GET', `/pages?${params.toString()}`));
+    const path = `/pages?${params.toString()}`;
+    return this.json(await this.call('GET', path), 'GET', path);
   }
 
   async get(id: number): Promise<CmsPage> {
-    const { page } = await this.json<{ page: CmsPage }>(await this.call('GET', `/pages/${id}`));
+    const path = `/pages/${id}`;
+    const { page } = await this.json<{ page: CmsPage }>(await this.call('GET', path), 'GET', path);
     return page;
   }
 
   async create(input: CmsPageInput): Promise<CmsPage> {
-    const { page } = await this.json<{ page: CmsPage }>(await this.call('POST', '/pages', input));
+    const { page } = await this.json<{ page: CmsPage }>(await this.call('POST', '/pages', input), 'POST', '/pages');
     return page;
   }
 
   async update(id: number, input: CmsPageInput): Promise<CmsPage> {
-    const { page } = await this.json<{ page: CmsPage }>(await this.call('PUT', `/pages/${id}`, input));
+    const path = `/pages/${id}`;
+    const { page } = await this.json<{ page: CmsPage }>(await this.call('PUT', path, input), 'PUT', path);
     return page;
   }
 
   async remove(id: number): Promise<void> {
-    await this.json(await this.call('DELETE', `/pages/${id}`));
+    const path = `/pages/${id}`;
+    await this.json(await this.call('DELETE', path), 'DELETE', path);
   }
 
   /** Batch-create (bulk import / bulk add-to-list); the CMS caps the batch size. */
   async batchCreate(pages: CmsPageInput[]): Promise<{ created: CmsPage[]; errors: Array<{ index: number; error: string }> }> {
-    return this.json(await this.call('POST', '/pages/batch', { pages }));
+    return this.json(await this.call('POST', '/pages/batch', { pages }), 'POST', '/pages/batch');
   }
 }
 

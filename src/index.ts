@@ -17,6 +17,7 @@ import {
   PLUGIN_ID,
   attr,
   checkins,
+  compareByWeightThenName,
   computeGuestListSummary,
   emptyGuestListSummary,
   items,
@@ -214,7 +215,10 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     if (eventId) return eventDashboard(cms, env.VIEWS, eventId);
     return eventsList(cms, env.VIEWS);
   } catch (error) {
-    if (error instanceof CmsApiError) return errorPanel(env.VIEWS, `CMS responded ${error.status} (${error.code}).`);
+    if (error instanceof CmsApiError) {
+      const target = error.method && error.path ? ` ${error.method} ${error.path}` : '';
+      return errorPanel(env.VIEWS, `CMS responded${target} ${error.status} (${error.code}).`);
+    }
     throw error;
   }
 }
@@ -297,7 +301,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
   const responses = responsesByList.flat().sort((a, b) => b.date.localeCompare(a.date));
   const r = rollupGuestListSummaries(guestLists);
   // Admin-controlled display order (list weight, then name).
-  const orderedLists = [...guestLists].sort((a, b) => (a.weight - b.weight) || a.name.localeCompare(b.name));
+  const orderedLists = [...guestLists].sort(compareByWeightThenName);
 
   return adminView(views, event.name, 'event-dashboard', {
     eventName: event.name,
@@ -311,6 +315,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
     editHref: editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`),
     reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-guest-lists`,
+    reorderEventId: eventId,
     stats: statTiles(r),
     guestLists: orderedLists.map((list) => ({
       id: list.id,

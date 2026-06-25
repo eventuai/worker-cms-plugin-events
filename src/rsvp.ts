@@ -3,6 +3,7 @@ import {
   CmsApiError,
   attr,
   checkins,
+  compareByWeightThenName,
   items,
   listByEvent,
   localized,
@@ -25,20 +26,11 @@ const ADMIN_BASE = '/admin/plugins/events';
 
 /** Guest lists display in admin-controlled order (page weight, then name). */
 function sortByWeight(pages: CmsPage[]): CmsPage[] {
-  return [...pages].sort((a, b) => (a.weight - b.weight) || a.name.localeCompare(b.name));
+  return [...pages].sort(compareByWeightThenName);
 }
 const GUEST_STATUSES = ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'] as const;
 
 type GuestStatus = typeof GUEST_STATUSES[number];
-
-/**
- * Guests created per CMS `/pages/batch` call. The host creates each guest with
- * several D1 writes (INSERT + version + update + audit), so a large chunk makes
- * one CMS request do a lot of work — which can hit the Worker subrequest ceiling
- * (or, under local `wrangler dev`, time out into a 503). Keep chunks small and
- * let the plugin make more sequential calls instead.
- */
-const IMPORT_CHUNK = 25;
 
 /** Guest value fields the import compares and can add/update on an existing guest. */
 const IMPORT_FIELDS = [
@@ -143,6 +135,7 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     newHref: `${ADMIN_BASE}/rsvp/new?event_id=${eventId}`,
     reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-guest-lists`,
+    reorderEventId: eventId,
     lists: sortByWeight(pages).map((list) => ({ ...guestListRow(list, event), id: list.id })),
   });
 }
@@ -879,7 +872,7 @@ export async function importEventGuests(request: Request, cms: CmsClient, eventI
       if (checkin) input.lect = { ...input.lect, checkin };
       inputs.push(input);
     }
-    for (const chunk of chunks(inputs, IMPORT_CHUNK)) if (chunk.length) await cms.batchCreate(chunk);
+    await createImportedGuests(cms, inputs);
   }
 
   return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
@@ -1039,6 +1032,17 @@ function classifyImport(incoming: IncomingGuest[], existingGuests: CmsPage[], ev
 }
 
 /**
+ * The CMS batch endpoint loops the full page-create pipeline inside one host
+ * request. Guest imports can therefore 503 even for modest CSVs under local
+ * wrangler/D1. One CMS create per guest keeps each host request small; in the
+ * per-list preview/confirm flow, a retry also re-runs classification before
+ * writing new guests.
+ */
+async function createImportedGuests(cms: CmsClient, inputs: CmsPageInput[]): Promise<void> {
+  for (const input of inputs) await cms.create(input);
+}
+
+/**
  * Step 1 of import: parse the CSV, classify each row against the list (new /
  * update-with-diff / unchanged), and render the preview — no writes. The raw CSV
  * (not the expanded plan) rides to confirm in a hidden field so the round-trip
@@ -1103,7 +1107,7 @@ async function confirmImportGuests(request: Request, cms: CmsClient, listId: num
   const plan = classifyImport(incoming, existingGuests, context.eventId, listId);
 
   if (mode !== 'update_only') {
-    for (const chunk of chunks(plan.create, IMPORT_CHUNK)) await cms.batchCreate(chunk);
+    await createImportedGuests(cms, plan.create);
   }
   if (mode !== 'new_only') {
     for (const entry of plan.update) await cms.update(entry.id, { lect: entry.lect });
@@ -1326,12 +1330,6 @@ function formText(form: FormData, key: string): string {
 
 function redirect(to: string): Response {
   return new Response(null, { status: 302, headers: { Location: to } });
-}
-
-function chunks<T>(values: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
-  return result;
 }
 
 function parseCsv(text: string): string[][] {

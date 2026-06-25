@@ -197,6 +197,44 @@ describe('events admin', () => {
     expect(html).toContain('2026-09-01');
   });
 
+  it('renders event guest lists in saved weight order with drag handles', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({
+          pages: [
+            { id: 8, page_type: 'mail_list', name: 'VIP', weight: 2, lect: { _pointers: { event: '7' } } },
+            { id: 9, page_type: 'mail_list', name: 'General', weight: 1, lect: { _pointers: { event: '7' } } },
+          ],
+          total: 2,
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html.indexOf('General')).toBeLessThan(html.indexOf('VIP'));
+    expect(html).toContain('data-reorder="/admin/plugins/events/events/7/reorder-guest-lists"');
+    expect(html).toContain('data-reorder-event-id="7"');
+    expect(html).toContain('data-reorder-handle-only');
+    expect(html).toContain('data-reorder-handle');
+  });
+
   it('creates and checks in an adhoc guest through the CMS write-back API', async () => {
     const cmsRequests: Array<{ url: URL; init?: RequestInit }> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -1035,8 +1073,8 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
   });
 
   it('imports guests into per-list groups, creating missing lists', async () => {
-    const creates: Array<Record<string, unknown>> = [];
-    const batches: unknown[] = [];
+    const listCreates: Array<Record<string, unknown>> = [];
+    const guestCreates: Array<Record<string, unknown>> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
@@ -1045,12 +1083,9 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-        creates.push(body);
+        if (body.page_type === 'mail_list') listCreates.push(body);
+        if (body.page_type === 'guest') guestCreates.push(body);
         return Response.json({ page: { id: 99, name: body.name } });
-      }
-      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
-        batches.push(JSON.parse(String(init.body)));
-        return Response.json({ created: [], errors: [] });
       }
       return new Response('not found', { status: 404 });
     });
@@ -1069,10 +1104,10 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/all-guests');
     // "General" did not exist, so it was created; "VIP" already existed.
-    expect(creates).toHaveLength(1);
-    expect(creates[0]).toMatchObject({ page_type: 'mail_list', name: 'General', lect: { _pointers: { event: '7' } } });
-    // Two batch calls, one per destination list.
-    expect(batches).toHaveLength(2);
+    expect(listCreates).toHaveLength(1);
+    expect(listCreates[0]).toMatchObject({ page_type: 'mail_list', name: 'General', lect: { _pointers: { event: '7' } } });
+    expect(guestCreates).toHaveLength(2);
+    expect(guestCreates.map((guest) => guest.name)).toEqual(['Ada', 'Grace']);
   });
 
   it('renders a flat all-guests view filtered by status', async () => {
@@ -1341,7 +1376,7 @@ describe('check-in detection', () => {
 
 describe('legacy guest import', () => {
   it('groups by guest_list_name and carries over check-in state', async () => {
-    const batches: Array<{ pages: Array<{ name: string; lect: Record<string, unknown> }> }> = [];
+    const guestCreates: Array<{ name: string; lect: Record<string, unknown> }> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
@@ -1349,12 +1384,9 @@ describe('legacy guest import', () => {
         return Response.json({ pages: [], total: 0 }); // no lists yet
       }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
-        const body = JSON.parse(String(init.body)) as { name: string };
+        const body = JSON.parse(String(init.body)) as { page_type: string; name: string; lect: Record<string, unknown> };
+        if (body.page_type === 'guest') guestCreates.push(body);
         return Response.json({ page: { id: 50, name: body.name, lect: {} } });
-      }
-      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
-        batches.push(JSON.parse(String(init.body)));
-        return Response.json({ created: [], errors: [] });
       }
       return new Response('not found', { status: 404 });
     });
@@ -1377,8 +1409,8 @@ describe('legacy guest import', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(batches).toHaveLength(1); // one list ("VIP") → one batch
-    const guests = new Map(batches[0].pages.map((p) => [p.name, p.lect]));
+    expect(guestCreates).toHaveLength(4);
+    const guests = new Map(guestCreates.map((p) => [p.name, p.lect]));
     expect(checkins(guests.get('Ada')!)).toHaveLength(1);
     expect((guests.get('Ada')!.checkin as Array<Record<string, string>>)[0]).toMatchObject({ status: 'checked-in', date: '2026-06-10T01:00:00Z', message: 'from kiosk' });
     expect(checkins(guests.get('Cleo')!)).toHaveLength(1); // session check-in counts
@@ -1400,7 +1432,7 @@ describe('per-list import preview', () => {
   const existingGuests: ImportTestGuest[] = [
     { id: 100, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'ada@x.io', status: 'invited' } },
   ];
-  const listFetch = (sink?: { batches?: unknown[]; updates?: Array<{ id: number; body: unknown }> }, guests = existingGuests) =>
+  const listFetch = (sink?: { creates?: unknown[]; updates?: Array<{ id: number; body: unknown }> }, guests = existingGuests) =>
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') {
@@ -1409,9 +1441,9 @@ describe('per-list import preview', () => {
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') return Response.json({ pages: guests, total: guests.length });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') return Response.json({ pages: [], total: 0 });
-      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
-        sink?.batches?.push(JSON.parse(String(init.body)));
-        return Response.json({ created: [], errors: [] });
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        sink?.creates?.push(JSON.parse(String(init.body)));
+        return Response.json({ page: { id: 200 } });
       }
       const updateMatch = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
       if (updateMatch && init?.method === 'PUT') {
@@ -1432,7 +1464,7 @@ describe('per-list import preview', () => {
   };
 
   it('classifies rows as new vs existing (with a diff) without writing', async () => {
-    const sink = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    const sink = { creates: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
     vi.stubGlobal('fetch', listFetch(sink));
 
     // Ada already exists (gets phone added); Bob is new.
@@ -1445,14 +1477,14 @@ describe('per-list import preview', () => {
     expect(html).toContain('1 new');
     expect(html).toContain('1 to update');
     expect(html).toContain('555-1234'); // the value being added to Ada
-    expect(sink.batches).toHaveLength(0); // preview is read-only
+    expect(sink.creates).toHaveLength(0); // preview is read-only
     expect(sink.updates).toHaveLength(0);
   });
 
   // The confirm step carries the raw CSV (not an expanded payload) and re-derives
   // the plan server-side against the list's current guests.
   const confirmCsv = 'name,email,phone\nAda,ada@x.io,555-1234\nBob,bob@x.io,555-9999\n';
-  const confirm = (mode: string, sink: { batches: unknown[]; updates: Array<{ id: number; body: unknown }> }) => {
+  const confirm = (mode: string, sink: { creates: unknown[]; updates: Array<{ id: number; body: unknown }> }) => {
     vi.stubGlobal('fetch', listFetch(sink));
     return plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
       method: 'POST',
@@ -1480,26 +1512,26 @@ describe('per-list import preview', () => {
   });
 
   it('on confirm with the default mode, creates new and updates existing', async () => {
-    const sink = { batches: [] as Array<{ pages: Array<Record<string, unknown>> }>, updates: [] as Array<{ id: number; body: unknown }> };
-    const response = await confirm('new_and_update', sink as unknown as { batches: unknown[]; updates: Array<{ id: number; body: unknown }> });
+    const sink = { creates: [] as Array<Record<string, unknown>>, updates: [] as Array<{ id: number; body: unknown }> };
+    const response = await confirm('new_and_update', sink);
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
-    expect(sink.batches).toHaveLength(1);
-    expect(sink.batches[0].pages[0]).toMatchObject({ page_type: 'guest', page_id: 8, name: 'Bob' }); // new
+    expect(sink.creates).toHaveLength(1);
+    expect(sink.creates[0]).toMatchObject({ page_type: 'guest', page_id: 8, name: 'Bob' }); // new
     // Ada (id 100) matched by email → her missing phone is added.
     expect(sink.updates).toEqual([{ id: 100, body: { lect: { phone: '555-1234' } } }]);
   });
 
   it('mode new_only skips updates; update_only skips creates', async () => {
-    const newOnly = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    const newOnly = { creates: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
     await confirm('new_only', newOnly);
-    expect(newOnly.batches).toHaveLength(1); // Bob created
+    expect(newOnly.creates).toHaveLength(1); // Bob created
     expect(newOnly.updates).toHaveLength(0); // Ada untouched
 
-    const updateOnly = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    const updateOnly = { creates: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
     await confirm('update_only', updateOnly);
-    expect(updateOnly.batches).toHaveLength(0); // Bob not created
+    expect(updateOnly.creates).toHaveLength(0); // Bob not created
     expect(updateOnly.updates).toHaveLength(1); // Ada updated
   });
 });
