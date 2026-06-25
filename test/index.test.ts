@@ -372,6 +372,47 @@ describe('events admin', () => {
     expect(new URL(String(listCall?.[0])).searchParams.get('page_id')).toBeNull();
   });
 
+  it('filters a guest list by name, email, phone, guest id and color tag in plugin code', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        expect(url.searchParams.get('q')).toBeNull();
+        return Response.json({
+          pages: [
+            { id: 55, page_type: 'guest', name: 'Ada', weight: 2, lect: { email: 'ada@example.com', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue' } },
+            { id: 56, page_type: 'guest', name: 'Grace', weight: 1, lect: { email: 'grace@example.com', phone: '+852 5555 9999', status: 'confirmed', color_tag: 'red' } },
+            { id: 57, page_type: 'guest', name: 'Lin', weight: 3, lect: { email: 'lin@example.com', phone: '+852 1234 0000', status: 'confirmed' } },
+          ],
+          total: 3,
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8?q=5555&color=blue&status=confirmed', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Ada');
+    expect(html).not.toContain('Grace');
+    expect(html).not.toContain('Lin');
+    expect(html).toContain('value="5555"');
+    expect(html).toContain('<option value="blue" selected>blue</option>');
+    expect(html).toContain('<option value="orange"');
+    expect(html).toContain('<option value="purple"');
+    expect(html).toContain('1 guest');
+  });
+
   it('deletes a guest list and returns to its event lists', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -412,7 +453,7 @@ describe('events admin', () => {
         ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        const listId = url.searchParams.get('page_id');
+        const listId = url.searchParams.get('page_id') ?? url.searchParams.get('pointer_value');
         if (listId === '8') return Response.json({ pages: [{ id: 1, name: 'Ada', lect: { status: 'confirmed', email: 'ada@x.io' } }], total: 1 });
         return Response.json({ pages: [{ id: 2, name: 'Grace', lect: { status: 'invited' } }], total: 1 });
       }
@@ -1287,7 +1328,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(guestCreates[0].lect).toMatchObject({ email: 'ada@x.io', cc: 'pa@x.io', organization: 'Analytical Engines', job_title: 'Engineer' });
   });
 
-  it('renders a flat all-guests view filtered by status', async () => {
+  it('renders a flat all-guests view filtered by search, status and color tag', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
@@ -1298,15 +1339,20 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        const listId = url.searchParams.get('page_id');
-        if (listId === '8') return Response.json({ pages: [{ id: 1, name: 'Ada', lect: { status: 'confirmed' } }], total: 1 });
-        return Response.json({ pages: [{ id: 2, name: 'Grace', lect: { status: 'invited' } }], total: 1 });
+        const listId = url.searchParams.get('page_id') ?? url.searchParams.get('pointer_value');
+        if (listId === '8') {
+          return Response.json({ pages: [
+            { id: 1, name: 'Ada', lect: { email: 'ada@x.io', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue' } },
+            { id: 3, name: 'Lin', lect: { email: 'lin@x.io', phone: '+852 5555 1111', status: 'confirmed', color_tag: 'red' } },
+          ], total: 2 });
+        }
+        return Response.json({ pages: [{ id: 2, name: 'Grace', lect: { email: 'grace@x.io', phone: '+852 5555 2222', status: 'invited', color_tag: 'blue' } }], total: 1 });
       }
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/all-guests?status=confirmed', {
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/all-guests?q=5555&status=confirmed&color=blue', {
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
@@ -1314,8 +1360,13 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     const html = await response.text();
     expect(html).toContain('All guests');
     expect(html).toContain('Ada');
+    expect(html).not.toContain('Lin');
     expect(html).not.toContain('Grace'); // filtered out
-    expect(html).toContain('1 of 2 guests');
+    expect(html).toContain('value="5555"');
+    expect(html).toContain('<option value="blue" selected>blue</option>');
+    expect(html).toContain('<option value="yellow"');
+    expect(html).toContain('<option value="purple"');
+    expect(html).toContain('1 of 3 guests');
   });
 
   it('renders the sessions view in event order', async () => {

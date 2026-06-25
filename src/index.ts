@@ -157,6 +157,7 @@ function placeholderQrSvg(views: Fetcher, data: string): Promise<string> {
 }
 
 const ADMIN_BASE = `/admin/plugins/${PLUGIN_ID}`;
+const COLOR_TAGS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const;
 
 /**
  * Edit link into the CMS page editor that carries a `return_to` so the editor's
@@ -298,15 +299,18 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
   // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
   // The same fetch also yields the guests who have responded, so the dashboard's
   // response feed costs no extra subrequests.
-  const responsesByList = await Promise.all(
+  const guestListDetails = await Promise.all(
     guestLists.map(async (list) => {
       const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
       list.guest_summary = computeGuestListSummary(guests);
-      return guests.filter(hasResponded).map((guest) => responseRow(list, guest));
+      return {
+        guests,
+        responses: guests.filter(hasResponded).map((guest) => responseRow(list, guest)),
+      };
     }),
   );
   // Most recent response first, mirroring the legacy event "Guest Responses" feed.
-  const responses = responsesByList.flat().sort((a, b) => b.date.localeCompare(a.date));
+  const responses = guestListDetails.flatMap((detail) => detail.responses).sort((a, b) => b.date.localeCompare(a.date));
   const r = rollupGuestListSummaries(guestLists);
   // Admin-controlled display order (list weight, then name).
   const orderedLists = [...guestLists].sort(compareByWeightThenName);
@@ -321,6 +325,9 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     importHref: `${ADMIN_BASE}/events/${eventId}/import`,
     exportAllHref: `${ADMIN_BASE}/events/${eventId}/export`,
     labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
+    guestSearchHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    guestSearchColorOptions: colorTagOptions(),
+    statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
     editHref: editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`),
     reorderAction: CMS_BATCH_WEIGHT_ACTION,
     reorderEventId: eventId,
@@ -347,6 +354,10 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     responses,
     responsesShowCheckin: responses.some((row) => row.checkedIn),
   });
+}
+
+function colorTagOptions(): Array<{ value: string; label: string }> {
+  return COLOR_TAGS.map((value) => ({ value, label: value }));
 }
 
 /** A guest counts as a "response" once they've confirmed or declined. */

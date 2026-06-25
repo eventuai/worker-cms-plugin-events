@@ -34,6 +34,8 @@ const GUEST_STATUSES = ['to be invited', 'onhold', 'invited', 'confirmed', 'decl
 
 type GuestStatus = typeof GUEST_STATUSES[number];
 
+const COLOR_TAGS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const;
+
 /**
  * Guests per CMS `/pages/batch` call. The host creates each page through the
  * full versioned CMS pipeline, so this stays intentionally smaller than the
@@ -327,9 +329,10 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
 
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
-  const { pages, total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, q, limit: 500 });
-  const filteredGuests = selectedStatus ? pages.filter((guest) => guestStatus(guest) === selectedStatus) : pages;
-  const noFilter = !q && !selectedStatus;
+  const selectedColor = normalizeColor(url.searchParams.get('color'));
+  const { pages, total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const filteredGuests = filterGuests(pages, q, selectedStatus ?? undefined, selectedColor);
+  const noFilter = !q && !selectedStatus && !selectedColor;
   const guests = noFilter ? sortByWeight(filteredGuests) : filteredGuests;
 
   // EDMs of this list's event populate the "select EDM" dropdown; the list's own
@@ -368,8 +371,10 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     reorderAction: noFilter ? CMS_BATCH_WEIGHT_ACTION : '',
     q,
     selectedStatus: selectedStatus ?? '',
+    selectedColor,
+    colorOptions: colorTagOptions(selectedColor),
     statuses: GUEST_STATUSES,
-    total: selectedStatus ? filteredGuests.length : total,
+    total: noFilter ? total : filteredGuests.length,
     guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null)),
   });
 }
@@ -912,13 +917,17 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   );
 
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
+  const q = url.searchParams.get('q')?.trim() ?? '';
+  const selectedColor = normalizeColor(url.searchParams.get('color'));
+  const colorOptions = colorTagOptions(selectedColor);
   const rows: Array<Record<string, unknown>> = [];
   ordered.forEach((list, index) => {
     for (const guest of guestsByList[index] ?? []) {
-      if (selectedStatus && guestStatus(guest) !== selectedStatus) continue;
+      if (!guestMatchesFilters(guest, q, selectedStatus ?? undefined, selectedColor)) continue;
       const values = guestValues(guest);
       rows.push({
         ...values,
+        id: guest.id,
         listName: list.name,
         editHref: guestEditHref(guest.id, list.id, `${ADMIN_BASE}/events/${eventId}/all-guests`),
         checkedIn: checkins(guest.lect).length > 0,
@@ -934,6 +943,9 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
     listHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
     statuses: GUEST_STATUSES,
     selectedStatus: selectedStatus ?? '',
+    q,
+    selectedColor,
+    colorOptions,
     totalCount,
     filteredCount: rows.length,
     guests: rows,
@@ -1547,7 +1559,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null): Record<
 function emptyGuestValues(): Record<string, string> {
   return {
     name: '', last_name: '', email: '', phone: '', organization: '', job_title: '', plus_guests: '0',
-    status: 'to be invited', prefer_language: '', cc: '', remarks: '',
+    status: 'to be invited', prefer_language: '', cc: '', remarks: '', color_tag: '',
   };
 }
 
@@ -1564,7 +1576,53 @@ function guestValues(guest: CmsPage): Record<string, string> {
     prefer_language: attr(guest.lect, 'prefer_language'),
     cc: attr(guest.lect, 'cc'),
     remarks: attr(guest.lect, 'remarks'),
+    color_tag: guestColorTag(guest),
   };
+}
+
+function filterGuests(guests: CmsPage[], q: string, status?: GuestStatus, color = ''): CmsPage[] {
+  return guests.filter((guest) => guestMatchesFilters(guest, q, status, color));
+}
+
+function guestMatchesFilters(guest: CmsPage, q: string, status?: GuestStatus, color = ''): boolean {
+  if (status && guestStatus(guest) !== status) return false;
+  if (color && !guestMatchesColor(guest, color)) return false;
+  if (q && !guestMatchesSearch(guest, q)) return false;
+  return true;
+}
+
+function guestMatchesSearch(guest: CmsPage, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+  const values = guestValues(guest);
+  return [
+    String(guest.id),
+    values.name,
+    values.last_name,
+    values.email,
+    values.phone,
+  ].some((value) => value.toLowerCase().includes(needle));
+}
+
+function guestMatchesColor(guest: CmsPage, color: string): boolean {
+  const tag = guestColorTag(guest);
+  return color === 'none' ? !tag : tag === color;
+}
+
+function normalizeColor(value: string | null): string {
+  return (value ?? '').trim();
+}
+
+function guestColorTag(guest: CmsPage): string {
+  return attr(guest.lect, 'color_tag').trim();
+}
+
+function colorTagOptions(selectedColor: string): Array<{ value: string; label: string; selected: boolean }> {
+  return COLOR_TAGS.map((value) => ({
+    value,
+    label: value,
+    selected: value === selectedColor,
+  }));
 }
 
 async function guestActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityItem[]> {
