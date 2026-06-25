@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { checkins } from '../src/cms';
 import { signPayload } from '../src/crypto';
 import worker from '../src/index';
 
@@ -1297,5 +1298,64 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toContain('/admin/plugins/events/rsvp/8?flash=');
     expect(EMAIL.send).toHaveBeenCalledTimes(1); // the one good guest
+  });
+});
+
+describe('check-in detection', () => {
+  it('ignores the empty check-in row the host seeds on new guests', () => {
+    // The guest blueprint declares a `checkin` block, so the host seeds one
+    // empty row on create. That must not read as a real check-in.
+    expect(checkins({ checkin: [{ status: '', date: '', message: '' }] })).toHaveLength(0);
+    expect(checkins({})).toHaveLength(0);
+    expect(checkins({ checkin: [{ status: 'checked-in', date: '2026-06-10T01:00:00Z' }] })).toHaveLength(1);
+    expect(checkins({ checkin: [{ date: '2026-06-10T01:00:00Z' }] })).toHaveLength(1);
+  });
+});
+
+describe('legacy guest import', () => {
+  it('groups by guest_list_name and carries over check-in state', async () => {
+    const batches: Array<{ pages: Array<{ name: string; lect: Record<string, unknown> }> }> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [], total: 0 }); // no lists yet
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { name: string };
+        return Response.json({ page: { id: 50, name: body.name, lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
+        batches.push(JSON.parse(String(init.body)));
+        return Response.json({ created: [], errors: [] });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const csv = [
+      'guest_list_name,name,email,checkin_status,checkin_date,checkin_message',
+      'VIP,Ada,ada@x.io,checked-in,2026-06-10T01:00:00Z,from kiosk',
+      'VIP,Bob,bob@x.io,,,',
+      'VIP,Cleo,cleo@x.io,session-checked-in,2026-06-10T02:00:00Z,Lunch',
+      'VIP,Dre,dre@x.io,undo-main-attendee,,',
+      '',
+    ].join('\n');
+    const form = new FormData();
+    form.set('file', new File([csv], 'guests.csv', { type: 'text/csv' }));
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/import', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+      body: form,
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(batches).toHaveLength(1); // one list ("VIP") → one batch
+    const guests = new Map(batches[0].pages.map((p) => [p.name, p.lect]));
+    expect(checkins(guests.get('Ada')!)).toHaveLength(1);
+    expect((guests.get('Ada')!.checkin as Array<Record<string, string>>)[0]).toMatchObject({ status: 'checked-in', date: '2026-06-10T01:00:00Z', message: 'from kiosk' });
+    expect(checkins(guests.get('Cleo')!)).toHaveLength(1); // session check-in counts
+    expect(guests.get('Bob')!.checkin).toBeUndefined(); // never checked in
+    expect(guests.get('Dre')!.checkin).toBeUndefined(); // undo-* is not a check-in
   });
 });

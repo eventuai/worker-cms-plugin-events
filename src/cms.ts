@@ -199,6 +199,18 @@ export function items(lect: Record<string, unknown>, key: string): Array<Record<
   return Array.isArray(v) ? (v as Array<Record<string, unknown>>) : [];
 }
 
+/**
+ * Real check-in entries for a guest. The host seeds every blueprint block —
+ * including `checkin` — with one empty row when a page is created, so a bare
+ * `items(lect, 'checkin').length` reports every new guest as checked in. A row
+ * only counts as a check-in once it carries an actual status or date.
+ */
+export function checkins(lect: Record<string, unknown>): Array<Record<string, unknown>> {
+  return items(lect, 'checkin').filter(
+    (entry) => String(entry.status ?? '').trim() !== '' || String(entry.date ?? '').trim() !== '',
+  );
+}
+
 /** Reads a page's content blocks (`_blocks`) sorted by their `_weight`. */
 export function blocks(lect: Record<string, unknown>): Array<Record<string, unknown>> {
   const v = lect._blocks;
@@ -239,7 +251,7 @@ export function computeGuestListSummary(guests: CmsPage[]): GuestListSummary {
     const plus = Number.parseInt(attr(guest.lect, 'plus_guests'), 10);
     const headcount = (Number.isFinite(plus) && plus > 0 ? plus : 0) + 1;
     const status = (attr(guest.lect, 'status') || 'to be invited').trim().toLowerCase();
-    const checkedIn = items(guest.lect, 'checkin').length > 0;
+    const checkedIn = checkins(guest.lect).length > 0;
 
     summary.guest_count += 1;
     summary.guest_total += headcount;

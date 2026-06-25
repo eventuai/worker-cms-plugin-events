@@ -2,6 +2,7 @@ import {
   CmsClient,
   CmsApiError,
   attr,
+  checkins,
   items,
   listByEvent,
   localized,
@@ -455,7 +456,7 @@ async function updateGuestStatus(request: Request, cms: CmsClient, listId: numbe
 async function checkInGuest(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
-  if (!items(guest.lect, 'checkin').length) {
+  if (!checkins(guest.lect).length) {
     await cms.update(guestId, {
       lect: {
         checkin: [{ status: 'checked-in', date: new Date().toISOString(), message: 'checked in by event admin' }],
@@ -635,7 +636,7 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     editHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`,
-    checkedIn: items(guest.lect, 'checkin').length > 0,
+    checkedIn: checkins(guest.lect).length > 0,
     payload,
     qrSvg: qrSvg(payload, { size: 240 }),
   });
@@ -745,7 +746,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
         ...values,
         listName: list.name,
         editHref: `${ADMIN_BASE}/rsvp/${list.id}/guests/${guest.id}`,
-        checkedIn: items(guest.lect, 'checkin').length > 0,
+        checkedIn: checkins(guest.lect).length > 0,
       });
     }
   });
@@ -807,7 +808,7 @@ export async function importEventGuests(request: Request, cms: CmsClient, eventI
   // Group inbound rows by destination list name.
   const grouped = new Map<string, string[][]>();
   for (const row of dataRows) {
-    const listName = value(row, 'list', 'mail_list', 'guest_list') || 'Imported';
+    const listName = value(row, 'list', 'mail_list', 'guest_list', 'guest_list_name') || 'Imported';
     const key = listName.trim().toLowerCase();
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(row);
@@ -841,7 +842,10 @@ export async function importEventGuests(request: Request, cms: CmsClient, eventI
         ['cc', value(row, 'cc')],
         ['remarks', value(row, 'remarks', 'notes')],
       ]);
-      inputs.push(guestPageInput(name, fields, eventId, list.id));
+      const input = guestPageInput(name, fields, eventId, list.id);
+      const checkin = importedCheckin(value(row, 'checkin_status'), value(row, 'checkin_date'), value(row, 'checkin_message'));
+      if (checkin) input.lect = { ...input.lect, checkin };
+      inputs.push(input);
     }
     for (const chunk of chunks(inputs, 200)) if (chunk.length) await cms.batchCreate(chunk);
   }
@@ -895,7 +899,10 @@ async function importGuests(request: Request, cms: CmsClient, listId: number): P
       ['cc', value(row, 'cc')],
       ['remarks', value(row, 'remarks', 'notes')],
     ]);
-    inputs.push(guestPageInput(name, fields, context.eventId, listId));
+    const input = guestPageInput(name, fields, context.eventId, listId);
+    const checkin = importedCheckin(value(row, 'checkin_status'), value(row, 'checkin_date'), value(row, 'checkin_message'));
+    if (checkin) input.lect = { ...input.lect, checkin };
+    inputs.push(input);
   }
 
   for (const chunk of chunks(inputs, 200)) await cms.batchCreate(chunk);
@@ -912,7 +919,7 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
     return [
       values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
       values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks,
-      items(guest.lect, 'checkin').length ? 'yes' : 'no',
+      checkins(guest.lect).length ? 'yes' : 'no',
     ];
   });
   const csv = [headers, ...rows].map((row) => row.map(csvValue).join(',')).join('\n');
@@ -946,7 +953,7 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
       rows.push([
         list.name, values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
         values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks,
-        items(guest.lect, 'checkin').length ? 'yes' : 'no',
+        checkins(guest.lect).length ? 'yes' : 'no',
       ]);
     }
   });
@@ -996,7 +1003,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null): Record<
     qrHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode`,
     statusAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/status`,
     checkinAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin`,
-    checkedIn: items(guest.lect, 'checkin').length > 0,
+    checkedIn: checkins(guest.lect).length > 0,
     // EDM send/preview controls (only meaningful when the list has an EDM).
     emailQuality: quality,
     canEmail: quality !== 'invalid',
@@ -1080,6 +1087,23 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
       _pointers: { ...(eventId ? { event: String(eventId) } : {}), mail_list: String(listId) },
     },
   };
+}
+
+/**
+ * Builds a `checkin` lect entry from a legacy export's check-in columns, or
+ * null when the row was never checked in. Treats a main (`checked-in`) or
+ * session (`session-checked-in`) check-in as checked in and ignores blanks and
+ * `undo-*` rows. Repeated check-ins are comma-joined in one cell, so it keeps
+ * the first timestamp/message.
+ */
+function importedCheckin(status: string, date: string, message: string): Array<Record<string, string>> | null {
+  const normalized = status.trim().toLowerCase();
+  if (normalized !== 'checked-in' && normalized !== 'session-checked-in') return null;
+  return [{
+    status: 'checked-in',
+    date: date.split(',')[0].trim(),
+    message: message.split(',')[0].trim() || 'imported check-in',
+  }];
 }
 
 function normalizeStatus(value: string | null): GuestStatus | null {

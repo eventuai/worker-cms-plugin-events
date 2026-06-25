@@ -16,6 +16,7 @@ import {
   CmsNotConfiguredError,
   PLUGIN_ID,
   attr,
+  checkins,
   computeGuestListSummary,
   emptyGuestListSummary,
   items,
@@ -362,7 +363,7 @@ function responseRow(list: CmsPage, guest: CmsPage): ResponseRow {
     name: guest.name || localized(guest.lect, 'name'),
     contact: attr(guest.lect, 'email') || attr(guest.lect, 'phone'),
     status: (attr(guest.lect, 'status') || '').trim().toLowerCase(),
-    checkedIn: items(guest.lect, 'checkin').length > 0,
+    checkedIn: checkins(guest.lect).length > 0,
     href: `${ADMIN_BASE}/rsvp/${list.id}/guests/${guest.id}`,
   };
 }
