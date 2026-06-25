@@ -813,7 +813,7 @@ export async function eventGuestImport(cms: CmsClient, views: Fetcher, eventId: 
  * to a named list — the flat equivalent of the legacy multi-sheet workbook.
  * Missing lists are created under the event before their guests are added.
  */
-export async function importEventGuests(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+export async function previewEventGuestImport(request: Request, cms: CmsClient, views: Fetcher, eventId: number): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
@@ -823,66 +823,149 @@ export async function importEventGuests(request: Request, cms: CmsClient, eventI
     return redirect(`${ADMIN_BASE}/events/${eventId}/import`);
   }
 
-  const [headers = [], ...dataRows] = parseCsv(await (file as { text(): Promise<string> }).text());
-  const columns = new Map(headers.map((header, index) => [header.trim().toLowerCase().replaceAll(' ', '_'), index]));
-  const value = (row: string[], ...names: string[]): string => {
-    for (const name of names) {
-      const index = columns.get(name);
-      if (index !== undefined) return row[index]?.trim() ?? '';
-    }
-    return '';
-  };
+  const csv = await (file as { text(): Promise<string> }).text();
+  const groups = parseEventImportGroups(csv);
+  if (!groups.length) {
+    return adminView(views, `Import guests — ${event.name}`, 'event-import', {
+      eventName: event.name,
+      backHref: `${ADMIN_BASE}/events/${eventId}`,
+      action: `${ADMIN_BASE}/events/${eventId}/import`,
+      error: 'No guests with a name were found in that file.',
+    });
+  }
+
+  const preview = await eventImportPreview(cms, eventId, groups);
+
+  return adminView(views, `Preview import — ${event.name}`, 'event-import-preview', {
+    eventName: event.name,
+    backHref: `${ADMIN_BASE}/events/${eventId}`,
+    importHref: `${ADMIN_BASE}/events/${eventId}/import`,
+    confirmAction: `${ADMIN_BASE}/events/${eventId}/import/confirm`,
+    total: preview.total,
+    newCount: preview.newCount,
+    updateCount: preview.updateCount,
+    unchangedCount: preview.unchangedCount,
+    newListCount: preview.newListCount,
+    groups: preview.groups,
+    csv,
+  });
+}
+
+export async function confirmEventGuestImport(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+
+  const form = await request.formData();
+  const mode = formText(form, 'mode') || 'new_and_update';
+  const groups = parseEventImportGroups(formText(form, 'csv'));
+  if (!groups.length) return redirect(`${ADMIN_BASE}/events/${eventId}/import`);
 
   // Existing lists, keyed by lower-cased name, so repeated rows reuse one list.
   const existing = await listByEvent(cms, 'mail_list', eventId);
   const listByName = new Map(existing.map((list) => [list.name.trim().toLowerCase(), list]));
 
-  // Group inbound rows by destination list name.
-  const grouped = new Map<string, string[][]>();
-  for (const row of dataRows) {
-    const listName = value(row, 'list', 'mail_list', 'guest_list', 'guest_list_name') || 'Imported';
-    const key = listName.trim().toLowerCase();
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(row);
-  }
-
-  for (const [key, group] of grouped) {
-    let list = listByName.get(key);
+  for (const group of groups) {
+    let list = listByName.get(eventImportListKey(group.listName));
+    let existingGuests: CmsPage[] = [];
     if (!list) {
-      const listName = value(group[0], 'list', 'mail_list', 'guest_list') || 'Imported';
+      if (mode === 'update_only') continue;
+      const listName = group.listName;
       list = await cms.create({
         page_type: 'mail_list',
         name: listName,
         lect: { _type: 'mail_list', name: { en: listName }, _pointers: { event: String(eventId) } },
       });
-      listByName.set(key, list);
+      listByName.set(eventImportListKey(group.listName), list);
+    } else {
+      existingGuests = (await cms.list('guest', { parentId: list.id, limit: 500 })).pages;
     }
 
-    const inputs: CmsPageInput[] = [];
-    for (const row of group) {
-      const name = value(row, 'name', 'first_name') || [value(row, 'first_name'), value(row, 'last_name')].filter(Boolean).join(' ');
-      if (!name) continue;
-      const fields = new Map<string, string>([
-        ['last_name', value(row, 'last_name')],
-        ['email', value(row, 'email')],
-        ['phone', value(row, 'phone', 'mobile')],
-        ['organization', value(row, 'organization', 'company')],
-        ['job_title', value(row, 'job_title', 'title')],
-        ['plus_guests', value(row, 'plus_guests') || '0'],
-        ['status', normalizeStatus(value(row, 'status')) ?? 'to be invited'],
-        ['prefer_language', value(row, 'prefer_language', 'language')],
-        ['cc', value(row, 'cc')],
-        ['remarks', value(row, 'remarks', 'notes')],
-      ]);
-      const input = guestPageInput(name, fields, eventId, list.id);
-      const checkin = importedCheckin(value(row, 'checkin_status'), value(row, 'checkin_date'), value(row, 'checkin_message'));
-      if (checkin) input.lect = { ...input.lect, checkin };
-      inputs.push(input);
+    const plan = classifyImport(group.guests, existingGuests, eventId, list.id);
+    if (mode !== 'update_only') await createImportedGuests(cms, plan.create);
+    if (mode !== 'new_only') {
+      for (const entry of plan.update) await cms.update(entry.id, { lect: entry.lect });
     }
-    await createImportedGuests(cms, inputs);
   }
 
   return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
+}
+
+interface EventImportGroup {
+  listName: string;
+  guests: IncomingGuest[];
+}
+
+interface EventImportPreview {
+  total: number;
+  newCount: number;
+  updateCount: number;
+  unchangedCount: number;
+  newListCount: number;
+  groups: Array<{
+    listName: string;
+    listState: 'new' | 'existing';
+    total: number;
+    newCount: number;
+    updateCount: number;
+    unchangedCount: number;
+  }>;
+}
+
+function eventImportListKey(listName: string): string {
+  return listName.trim().toLowerCase();
+}
+
+function parseEventImportGroups(text: string): EventImportGroup[] {
+  const [headers = [], ...rows] = parseCsv(text);
+  const columns = csvColumns(headers);
+  const groups = new Map<string, EventImportGroup>();
+  for (const row of rows) {
+    const value = (...names: string[]) => csvCell(columns, row, ...names);
+    const guest = importGuestFromValue(value);
+    if (!guest) continue;
+    const listName = value('list', 'mail_list', 'guest_list', 'guest_list_name') || 'Imported';
+    const key = eventImportListKey(listName);
+    const group = groups.get(key) ?? { listName, guests: [] };
+    group.guests.push(guest);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+async function eventImportPreview(cms: CmsClient, eventId: number, groups: EventImportGroup[]): Promise<EventImportPreview> {
+  const existing = await listByEvent(cms, 'mail_list', eventId);
+  const listByName = new Map(existing.map((list) => [eventImportListKey(list.name), list]));
+  const preview: EventImportPreview = { total: 0, newCount: 0, updateCount: 0, unchangedCount: 0, newListCount: 0, groups: [] };
+
+  for (const group of groups) {
+    const list = listByName.get(eventImportListKey(group.listName));
+    let rows: ImportRow[];
+    if (list) {
+      const { pages: existingGuests } = await cms.list('guest', { parentId: list.id, limit: 500 });
+      rows = classifyImport(group.guests, existingGuests, eventId, list.id).rows;
+    } else {
+      preview.newListCount += 1;
+      rows = group.guests.map((guest) => ({ name: guest.name, email: guest.values.email, state: 'new', changes: [] }));
+    }
+
+    const newCount = rows.filter((row) => row.state === 'new').length;
+    const updateCount = rows.filter((row) => row.state === 'update').length;
+    const unchangedCount = rows.filter((row) => row.state === 'unchanged').length;
+    preview.total += rows.length;
+    preview.newCount += newCount;
+    preview.updateCount += updateCount;
+    preview.unchangedCount += unchangedCount;
+    preview.groups.push({
+      listName: group.listName,
+      listState: list ? 'existing' : 'new',
+      total: rows.length,
+      newCount,
+      updateCount,
+      unchangedCount,
+    });
+  }
+
+  return preview;
 }
 
 async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Promise<Response> {
@@ -910,38 +993,56 @@ interface IncomingGuest {
  */
 function parseImportRows(text: string): IncomingGuest[] {
   const [headers = [], ...rows] = parseCsv(text);
-  const columns = new Map(headers.map((header, index) => [header.trim().toLowerCase().replaceAll(' ', '_'), index]));
-  const value = (row: string[], ...names: string[]): string => {
-    for (const name of names) {
-      const index = columns.get(name);
-      if (index !== undefined) return row[index]?.trim() ?? '';
-    }
-    return '';
-  };
-
+  const columns = csvColumns(headers);
   const out: IncomingGuest[] = [];
   for (const row of rows) {
-    const name = value(row, 'name', 'first_name') || [value(row, 'first_name'), value(row, 'last_name')].filter(Boolean).join(' ');
-    if (!name) continue;
-    // Raw values only — an absent/blank column must stay blank so it never
-    // counts as a change against an existing guest. Defaults (status, plus_guests)
-    // are applied only when creating a new guest (incomingToCreateInput).
-    const values: Record<string, string> = {
-      last_name: value(row, 'last_name'),
-      email: value(row, 'email'),
-      phone: value(row, 'phone', 'mobile'),
-      organization: value(row, 'organization', 'company'),
-      job_title: value(row, 'job_title', 'title'),
-      plus_guests: value(row, 'plus_guests'),
-      status: normalizeStatus(value(row, 'status')) ?? '',
-      prefer_language: value(row, 'prefer_language', 'language'),
-      cc: value(row, 'cc'),
-      remarks: value(row, 'remarks', 'notes'),
-    };
-    const checkin = importedCheckin(value(row, 'checkin_status'), value(row, 'checkin_date'), value(row, 'checkin_message'));
-    out.push({ name, values, checkin: checkin ?? undefined });
+    const value = (...names: string[]) => csvCell(columns, row, ...names);
+    const guest = importGuestFromValue(value);
+    if (guest) out.push(guest);
   }
   return out;
+}
+
+function headerKey(header: string): string {
+  return header.replace(/^\uFEFF/, '').trim().toLowerCase().replaceAll(' ', '_');
+}
+
+function csvColumns(headers: string[]): Map<string, number> {
+  return new Map(headers.map((header, index) => [headerKey(header), index]));
+}
+
+function csvCell(columns: Map<string, number>, row: string[], ...names: string[]): string {
+  for (const name of names) {
+    const index = columns.get(headerKey(name));
+    if (index !== undefined) return row[index]?.trim() ?? '';
+  }
+  return '';
+}
+
+function importGuestFromValue(value: (...names: string[]) => string): IncomingGuest | null {
+  const name = value('name', 'full_name')
+    || [value('first_name', 'rsvp_custom_first_name'), value('last_name', 'rsvp_custom_last_name')].filter(Boolean).join(' ');
+  if (!name) return null;
+  // Raw values only — an absent/blank column must stay blank so it never counts
+  // as a change against an existing guest. Defaults are applied on create.
+  const values: Record<string, string> = {
+    last_name: value('last_name', 'rsvp_custom_last_name'),
+    email: value('email', 'primary_email'),
+    phone: value('phone', 'mobile'),
+    organization: value('organization', 'company', 'rsvp_custom_referral_organization'),
+    job_title: value('job_title', 'title'),
+    plus_guests: value('plus_guests'),
+    status: normalizeStatus(value('status', 'rsvp_status')) ?? '',
+    prefer_language: value('prefer_language', 'language'),
+    cc: value('cc', 'cc_email'),
+    remarks: value('remarks', 'notes'),
+  };
+  const checkin = importedCheckin(
+    value('checkin_status', 'rsvp_custom_checkin_status'),
+    value('checkin_date', 'rsvp_custom_checkin_date'),
+    value('checkin_message', 'rsvp_custom_checkin_message'),
+  );
+  return { name, values, checkin: checkin ?? undefined };
 }
 
 /** Identity key for matching a guest to an existing one: email if present, else name. */

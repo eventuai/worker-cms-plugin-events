@@ -37,7 +37,8 @@ import {
   exportEventGuests,
   flatAllGuests,
   handleRsvpAdmin,
-  importEventGuests,
+  confirmEventGuestImport,
+  previewEventGuestImport,
   reorderGuestLists,
   reorderSessions,
 } from './rsvp';
@@ -204,7 +205,8 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url);
     if (eventId && sub === 'export') return exportEventGuests(cms, eventId);
     if (eventId && sub === 'import') {
-      if (request.method === 'POST') return importEventGuests(request, cms, eventId);
+      if (segments[3] === 'confirm' && request.method === 'POST') return confirmEventGuestImport(request, cms, eventId);
+      if (request.method === 'POST') return previewEventGuestImport(request, cms, env.VIEWS, eventId);
       return eventGuestImport(cms, env.VIEWS, eventId);
     }
     if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') return reorderGuestLists(request, cms, eventId);

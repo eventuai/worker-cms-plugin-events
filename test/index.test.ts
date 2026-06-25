@@ -1081,6 +1081,9 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
       }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
         if (body.page_type === 'mail_list') listCreates.push(body);
@@ -1091,14 +1094,29 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const csv = 'list,name,email\nVIP,Ada,ada@x.io\nGeneral,Grace,grace@x.io\n';
+    const csv = '\uFEFFguest_list_name,name,primary_email,cc_email,company,job_title\nVIP,Ada,ada@x.io,pa@x.io,Analytical Engines,Engineer\nGeneral,Grace,grace@x.io,,Compiler Co,Admiral\n';
     const file = new File([csv], 'guests.csv', { type: 'text/csv' });
     const form = new FormData();
     form.set('file', file);
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/import', {
+    const preview = await plugin.fetch(request('/__plugin/admin/events/7/import', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret' },
       body: form,
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(preview.status).toBe(200);
+    const html = await preview.text();
+    expect(html).toContain('Preview import');
+    expect(html).toContain('VIP');
+    expect(html).toContain('General');
+    expect(html).toContain('Will create');
+    expect(listCreates).toHaveLength(0);
+    expect(guestCreates).toHaveLength(0);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', csv }),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
@@ -1108,6 +1126,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(listCreates[0]).toMatchObject({ page_type: 'mail_list', name: 'General', lect: { _pointers: { event: '7' } } });
     expect(guestCreates).toHaveLength(2);
     expect(guestCreates.map((guest) => guest.name)).toEqual(['Ada', 'Grace']);
+    expect(guestCreates[0].lect).toMatchObject({ email: 'ada@x.io', cc: 'pa@x.io', organization: 'Analytical Engines', job_title: 'Engineer' });
   });
 
   it('renders a flat all-guests view filtered by status', async () => {
@@ -1403,12 +1422,10 @@ describe('legacy guest import', () => {
       'VIP,Dre,dre@x.io,undo-main-attendee,,',
       '',
     ].join('\n');
-    const form = new FormData();
-    form.set('file', new File([csv], 'guests.csv', { type: 'text/csv' }));
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/import', {
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/import/confirm', {
       method: 'POST',
-      headers: { 'x-plugin-secret': 'shared-secret' },
-      body: form,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', csv }),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
