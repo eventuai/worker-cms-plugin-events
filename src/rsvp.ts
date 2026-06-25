@@ -74,7 +74,10 @@ export async function handleRsvpAdmin(
   }
 
   if (segments[1] === 'delete' && request.method === 'POST') return deleteGuestList(cms, listId);
-  if (segments[1] === 'edm' && request.method === 'POST') return setListEdm(request, cms, listId);
+  if (segments[1] === 'edm') {
+    if (request.method === 'POST') return setListEdm(request, cms, listId);
+    return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+  }
   if (segments[1] === 'send-edm' && request.method === 'POST') return autoSendEdm(request, cms, views, env, listId);
   if (segments[1] === 'update-from-contacts' && request.method === 'POST') return updateAllGuestsFromContacts(cms, listId);
   if (segments[1] === 'export') return exportGuests(cms, listId);

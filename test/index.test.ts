@@ -1276,6 +1276,16 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(JSON.parse(String(captured.put?.body))).toMatchObject({ lect: { sent_edm: ['50'] } });
   });
 
+  it('redirects GET /rsvp/:id/edm back to the guest list detail', async () => {
+    vi.stubGlobal('fetch', rsvpEdmFetch());
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/edm', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+  });
+
   it('auto-sends to good-quality guests and skips others', async () => {
     const EMAIL = { send: vi.fn(async () => {}) };
     vi.stubGlobal('fetch', rsvpEdmFetch());
