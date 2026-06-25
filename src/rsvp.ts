@@ -923,6 +923,7 @@ function parseEventImportGroups(text: string): EventImportGroup[] {
     const value = (...names: string[]) => csvCell(columns, row, ...names);
     const guest = importGuestFromValue(value);
     if (!guest) continue;
+    guest.custom = customGuestAttrs(columns, row);
     const listName = value('list', 'mail_list', 'guest_list', 'guest_list_name') || 'Imported';
     const key = eventImportListKey(listName);
     const group = groups.get(key) ?? { listName, guests: [] };
@@ -983,6 +984,7 @@ async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Prom
 interface IncomingGuest {
   name: string;
   values: Record<string, string>;
+  custom: Record<string, string>; // rsvp-custom-* / rsvp_custom_* attrs stored flat in lect
   checkin?: Array<Record<string, string>>;
 }
 
@@ -998,7 +1000,9 @@ function parseImportRows(text: string): IncomingGuest[] {
   for (const row of rows) {
     const value = (...names: string[]) => csvCell(columns, row, ...names);
     const guest = importGuestFromValue(value);
-    if (guest) out.push(guest);
+    if (!guest) continue;
+    guest.custom = customGuestAttrs(columns, row);
+    out.push(guest);
   }
   return out;
 }
@@ -1017,6 +1021,22 @@ function csvCell(columns: Map<string, number>, row: string[], ...names: string[]
     if (index !== undefined) return row[index]?.trim() ?? '';
   }
   return '';
+}
+
+/** True for any rsvp-custom-* / rsvp_custom_* column that carries event-specific form data. */
+function isCustomKey(key: string): boolean {
+  return key.startsWith('rsvp-custom-') || key.startsWith('rsvp_custom_');
+}
+
+/** Collects all rsvp-custom-* columns for one CSV row into a flat key→value map. */
+function customGuestAttrs(columns: Map<string, number>, row: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, index] of columns) {
+    if (!isCustomKey(key)) continue;
+    const val = (row[index] ?? '').trim().replace(/\s+/g, ' ');
+    if (val) out[key] = val;
+  }
+  return out;
 }
 
 function importGuestFromValue(value: (...names: string[]) => string): IncomingGuest | null {
@@ -1042,13 +1062,16 @@ function importGuestFromValue(value: (...names: string[]) => string): IncomingGu
     value('checkin_date', 'rsvp_custom_checkin_date'),
     value('checkin_message', 'rsvp_custom_checkin_message'),
   );
-  return { name, values, checkin: checkin ?? undefined };
+  return { name, values, custom: {}, checkin: checkin ?? undefined };
 }
 
 /** Identity key for matching a guest to an existing one: email if present, else name. */
 function guestMatchKey(name: string, email: string): string {
   const normalizedEmail = email.trim().toLowerCase();
-  return normalizedEmail ? `email:${normalizedEmail}` : `name:${name.trim().toLowerCase()}`;
+  // Collapse internal whitespace (including newlines from multi-line CSV cells) so
+  // the key is stable regardless of how the CMS normalises the stored page name.
+  const normalizedName = name.trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalizedEmail ? `email:${normalizedEmail}` : `name:${normalizedName}`;
 }
 
 function incomingToCreateInput(guest: IncomingGuest, eventId: number | null, listId: number): CmsPageInput {
@@ -1057,6 +1080,7 @@ function incomingToCreateInput(guest: IncomingGuest, eventId: number | null, lis
   if (!fields.get('status')) fields.set('status', 'to be invited');
   const input = guestPageInput(guest.name, fields, eventId, listId);
   if (guest.checkin) input.lect = { ...input.lect, checkin: guest.checkin };
+  if (Object.keys(guest.custom).length) input.lect = { ...input.lect, ...guest.custom };
   return input;
 }
 
@@ -1084,12 +1108,23 @@ function diffGuest(guest: IncomingGuest, existing: CmsPage): { lect: Record<stri
   const lect: Record<string, unknown> = {};
   const changes: ImportRow['changes'] = [];
   for (const field of IMPORT_FIELDS) {
-    const next = guest.values[field] ?? '';
-    if (!next) continue; // never blank out an existing value
-    const prev = current[field] ?? '';
+    const raw = guest.values[field] ?? '';
+    if (!raw) continue; // never blank out an existing value
+    // Collapse internal whitespace from multi-line CSV cells before comparing and
+    // storing, so re-importing the same file never surfaces a phantom change.
+    const next = raw.trim().replace(/\s+/g, ' ');
+    const prev = (current[field] ?? '').trim().replace(/\s+/g, ' ');
     if (next === prev) continue;
     Object.assign(lect, updateLectFragment(field, next));
     changes.push({ label: IMPORT_FIELD_LABELS[field], from: prev, to: next, add: prev === '' });
+  }
+  for (const [key, next] of Object.entries(guest.custom)) {
+    if (!next) continue;
+    const prev = attr(existing.lect, key).trim().replace(/\s+/g, ' ');
+    if (next === prev) continue;
+    lect[key] = next;
+    const label = key.replace(/^(rsvp-custom-|rsvp_custom_)/, '').replace(/[-_]/g, ' ');
+    changes.push({ label, from: prev, to: next, add: prev === '' });
   }
   if (guest.checkin && checkins(existing.lect).length === 0) {
     lect.checkin = guest.checkin;
