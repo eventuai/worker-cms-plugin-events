@@ -17,6 +17,9 @@
 /** Manifest id — must equal MANIFEST.id and the CMS-registered plugin id. */
 export const PLUGIN_ID = 'events';
 
+/** Native CMS admin endpoint used by drag-sort tables to persist page weights in one request. */
+export const CMS_BATCH_WEIGHT_ACTION = '/admin/pages/batch-weight';
+
 /** Max ids per DELETE /pages/batch call — must not exceed the CMS server's MAX_BATCH. */
 const BATCH_DELETE_SIZE = 100;
 

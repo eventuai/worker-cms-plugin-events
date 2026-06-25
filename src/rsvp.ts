@@ -1,6 +1,7 @@
 import {
   CmsClient,
   CmsApiError,
+  CMS_BATCH_WEIGHT_ACTION,
   attr,
   blocks,
   checkins,
@@ -224,7 +225,7 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
     subtitle: 'Drag a list to reorder it; the order is shared across the event.',
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     newHref: `${ADMIN_BASE}/rsvp/new?event_id=${eventId}`,
-    reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-guest-lists`,
+    reorderAction: CMS_BATCH_WEIGHT_ACTION,
     reorderEventId: eventId,
     lists: sortByWeight(pages).map((list) => ({ ...guestListRow(list, event), id: list.id })),
   });
@@ -356,7 +357,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     edmEditHref: hasEdm ? `/admin/pages/${selectedEdm!.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
     autoSendGoodAction: `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=good`,
     autoSendRiskyAction: `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=risky`,
-    reorderAction: noFilter ? `${ADMIN_BASE}/rsvp/${listId}/reorder-guests` : '',
+    reorderAction: noFilter ? CMS_BATCH_WEIGHT_ACTION : '',
     q,
     selectedStatus: selectedStatus ?? '',
     statuses: GUEST_STATUSES,

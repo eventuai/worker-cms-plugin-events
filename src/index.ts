@@ -14,6 +14,7 @@ import {
   CmsClient,
   CmsApiError,
   CmsNotConfiguredError,
+  CMS_BATCH_WEIGHT_ACTION,
   PLUGIN_ID,
   attr,
   checkins,
@@ -321,7 +322,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     exportAllHref: `${ADMIN_BASE}/events/${eventId}/export`,
     labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
     editHref: editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`),
-    reorderAction: `${ADMIN_BASE}/events/${eventId}/reorder-guest-lists`,
+    reorderAction: CMS_BATCH_WEIGHT_ACTION,
     reorderEventId: eventId,
     stats: statTiles(r),
     guestLists: orderedLists.map((list) => ({

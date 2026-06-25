@@ -206,6 +206,7 @@ describe('events admin', () => {
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         return Response.json({
           pages: [
+            { id: 10, page_type: 'mail_list', name: 'Adhoc', weight: 0, lect: { _pointers: { event: '7' } } },
             { id: 8, page_type: 'mail_list', name: 'VIP', weight: 2, lect: { _pointers: { event: '7' } } },
             { id: 9, page_type: 'mail_list', name: 'General', weight: 1, lect: { _pointers: { event: '7' } } },
           ],
@@ -229,7 +230,8 @@ describe('events admin', () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html.indexOf('General')).toBeLessThan(html.indexOf('VIP'));
-    expect(html).toContain('data-reorder="/admin/plugins/events/events/7/reorder-guest-lists"');
+    expect(html).toContain('data-reorder="/admin/pages/batch-weight"');
+    expect(html).toContain('data-reorder-key="updates"');
     expect(html).toContain('data-reorder-event-id="7"');
     expect(html).toContain('data-reorder-handle-only');
     expect(html).toContain('data-reorder-handle');
