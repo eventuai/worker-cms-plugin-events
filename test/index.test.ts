@@ -1361,3 +1361,116 @@ describe('legacy guest import', () => {
     expect(guests.get('Dre')!.checkin).toBeUndefined(); // undo-* is not a check-in
   });
 });
+
+describe('per-list import preview', () => {
+  // Existing guest in list 8: Ada (ada@x.io) with no phone.
+  const existingGuests = [
+    { id: 100, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'ada@x.io', status: 'invited' } },
+  ];
+  const listFetch = (sink?: { batches?: unknown[]; updates?: Array<{ id: number; body: unknown }> }, guests = existingGuests) =>
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') return Response.json({ pages: guests, total: guests.length });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') return Response.json({ pages: [], total: 0 });
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
+        sink?.batches?.push(JSON.parse(String(init.body)));
+        return Response.json({ created: [], errors: [] });
+      }
+      const updateMatch = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
+      if (updateMatch && init?.method === 'PUT') {
+        sink?.updates?.push({ id: Number(updateMatch[1]), body: JSON.parse(String(init.body)) });
+        return Response.json({ page: { id: Number(updateMatch[1]) } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+  const importCsv = (path: string, csv: string) => {
+    const form = new FormData();
+    form.set('file', new File([csv], 'g.csv', { type: 'text/csv' }));
+    return plugin.fetch(request(path, {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+      body: form,
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+  };
+
+  it('classifies rows as new vs existing (with a diff) without writing', async () => {
+    const sink = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    vi.stubGlobal('fetch', listFetch(sink));
+
+    // Ada already exists (gets phone added); Bob is new.
+    const csv = 'name,email,phone\nAda,ada@x.io,555-1234\nBob,bob@x.io,555-9999\n';
+    const response = await importCsv('/__plugin/admin/rsvp/8/import', csv);
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Preview import');
+    expect(html).toContain('1 new');
+    expect(html).toContain('1 to update');
+    expect(html).toContain('555-1234'); // the value being added to Ada
+    expect(sink.batches).toHaveLength(0); // preview is read-only
+    expect(sink.updates).toHaveLength(0);
+  });
+
+  it('on confirm with the default mode, creates new and updates existing', async () => {
+    const sink = { batches: [] as Array<{ pages: Array<Record<string, unknown>> }>, updates: [] as Array<{ id: number; body: unknown }> };
+    vi.stubGlobal('fetch', listFetch(sink));
+
+    const payload = JSON.stringify({
+      create: [{ page_type: 'guest', page_id: 8, name: 'Bob', lect: { email: 'bob@x.io' } }],
+      update: [{ id: 100, lect: { phone: '555-1234' } }],
+    });
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', payload }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+    expect(sink.batches).toHaveLength(1);
+    expect(sink.batches[0].pages[0]).toMatchObject({ page_type: 'guest', page_id: 8, name: 'Bob' });
+    expect(sink.updates).toEqual([{ id: 100, body: { lect: { phone: '555-1234' } } }]);
+  });
+
+  it('mode new_only skips updates; update_only skips creates', async () => {
+    const payload = JSON.stringify({
+      create: [{ page_type: 'guest', page_id: 8, name: 'Bob', lect: {} }],
+      update: [{ id: 100, lect: { phone: '555-1234' } }],
+    });
+    const confirm = (mode: string, sink: { batches: unknown[]; updates: Array<{ id: number; body: unknown }> }) => {
+      vi.stubGlobal('fetch', listFetch(sink));
+      return plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+        body: new URLSearchParams({ mode, payload }),
+      }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    };
+
+    const newOnly = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    await confirm('new_only', newOnly);
+    expect(newOnly.batches).toHaveLength(1);
+    expect(newOnly.updates).toHaveLength(0);
+
+    const updateOnly = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    await confirm('update_only', updateOnly);
+    expect(updateOnly.batches).toHaveLength(0);
+    expect(updateOnly.updates).toHaveLength(1);
+  });
+
+  it('ignores updates for ids that do not belong to the list', async () => {
+    const sink = { batches: [] as unknown[], updates: [] as Array<{ id: number; body: unknown }> };
+    vi.stubGlobal('fetch', listFetch(sink)); // list only contains guest id 100
+    const payload = JSON.stringify({ create: [], update: [{ id: 999, lect: { phone: 'x' } }] });
+    await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'update_only', payload }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    expect(sink.updates).toHaveLength(0); // id 999 is not in the list
+  });
+});

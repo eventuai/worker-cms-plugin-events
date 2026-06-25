@@ -1,0 +1,4 @@
+{
+  "sections": { "main": { "type": "guest-import-preview" } },
+  "order": ["main"]
+}

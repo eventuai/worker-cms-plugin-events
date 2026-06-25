@@ -39,6 +39,18 @@ type GuestStatus = typeof GUEST_STATUSES[number];
  */
 const IMPORT_CHUNK = 50;
 
+/** Guest value fields the import compares and can add/update on an existing guest. */
+const IMPORT_FIELDS = [
+  'last_name', 'email', 'phone', 'organization', 'job_title',
+  'plus_guests', 'status', 'prefer_language', 'cc', 'remarks',
+] as const;
+
+const IMPORT_FIELD_LABELS: Record<string, string> = {
+  last_name: 'Last name', email: 'Email', phone: 'Phone', organization: 'Organisation',
+  job_title: 'Job title', plus_guests: 'Plus guests', status: 'Status',
+  prefer_language: 'Language', cc: 'CC', remarks: 'Remarks', checked_in: 'Check-in',
+};
+
 interface GuestListContext {
   list: CmsPage;
   event: CmsPage | null;
@@ -235,7 +247,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     eventHref: context.event ? `${ADMIN_BASE}/events/${context.event.id}` : `${ADMIN_BASE}/rsvp`,
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
-    listsHref: context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`,
+    listsHref: context.event ? `${ADMIN_BASE}/events/${context.event.id}` : `${ADMIN_BASE}/rsvp`,
     newGuestHref: `${ADMIN_BASE}/rsvp/${listId}/guests/new`,
     editHref: `/admin/pages/${listId}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}`,
     importHref: `${ADMIN_BASE}/rsvp/${listId}/import`,
@@ -876,12 +888,19 @@ async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Prom
   });
 }
 
+/** A guest parsed from the uploaded CSV, before matching against the list. */
+interface IncomingGuest {
+  name: string;
+  values: Record<string, string>;
+  checkin?: Array<Record<string, string>>;
+}
+
 /**
- * Parses an uploaded CSV into guest page inputs (no writes). Header lookup is
+ * Parses an uploaded CSV into incoming guests (no writes). Header lookup is
  * case-insensitive and space/underscore-insensitive, with the same column
  * aliases the legacy export uses. Rows with no name are skipped.
  */
-function csvToGuestInputs(text: string, eventId: number | null, listId: number): CmsPageInput[] {
+function parseImportRows(text: string): IncomingGuest[] {
   const [headers = [], ...rows] = parseCsv(text);
   const columns = new Map(headers.map((header, index) => [header.trim().toLowerCase().replaceAll(' ', '_'), index]));
   const value = (row: string[], ...names: string[]): string => {
@@ -892,34 +911,50 @@ function csvToGuestInputs(text: string, eventId: number | null, listId: number):
     return '';
   };
 
-  const inputs: CmsPageInput[] = [];
+  const out: IncomingGuest[] = [];
   for (const row of rows) {
     const name = value(row, 'name', 'first_name') || [value(row, 'first_name'), value(row, 'last_name')].filter(Boolean).join(' ');
     if (!name) continue;
-    const fields = new Map<string, string>([
-      ['last_name', value(row, 'last_name')],
-      ['email', value(row, 'email')],
-      ['phone', value(row, 'phone', 'mobile')],
-      ['organization', value(row, 'organization', 'company')],
-      ['job_title', value(row, 'job_title', 'title')],
-      ['plus_guests', value(row, 'plus_guests') || '0'],
-      ['status', normalizeStatus(value(row, 'status')) ?? 'to be invited'],
-      ['prefer_language', value(row, 'prefer_language', 'language')],
-      ['cc', value(row, 'cc')],
-      ['remarks', value(row, 'remarks', 'notes')],
-    ]);
-    const input = guestPageInput(name, fields, eventId, listId);
+    const values: Record<string, string> = {
+      last_name: value(row, 'last_name'),
+      email: value(row, 'email'),
+      phone: value(row, 'phone', 'mobile'),
+      organization: value(row, 'organization', 'company'),
+      job_title: value(row, 'job_title', 'title'),
+      plus_guests: value(row, 'plus_guests') || '0',
+      status: normalizeStatus(value(row, 'status')) ?? 'to be invited',
+      prefer_language: value(row, 'prefer_language', 'language'),
+      cc: value(row, 'cc'),
+      remarks: value(row, 'remarks', 'notes'),
+    };
     const checkin = importedCheckin(value(row, 'checkin_status'), value(row, 'checkin_date'), value(row, 'checkin_message'));
-    if (checkin) input.lect = { ...input.lect, checkin };
-    inputs.push(input);
+    out.push({ name, values, checkin: checkin ?? undefined });
   }
-  return inputs;
+  return out;
+}
+
+/** Identity key for matching a guest to an existing one: email if present, else name. */
+function guestMatchKey(name: string, email: string): string {
+  const normalizedEmail = email.trim().toLowerCase();
+  return normalizedEmail ? `email:${normalizedEmail}` : `name:${name.trim().toLowerCase()}`;
+}
+
+function incomingToCreateInput(guest: IncomingGuest, eventId: number | null, listId: number): CmsPageInput {
+  const input = guestPageInput(guest.name, new Map(Object.entries(guest.values)), eventId, listId);
+  if (guest.checkin) input.lect = { ...input.lect, checkin: guest.checkin };
+  return input;
+}
+
+/** Lect fragment to PUT for one changed field (host partial-merges it). */
+function updateLectFragment(field: string, value: string): Record<string, unknown> {
+  return field === 'last_name' ? { last_name: { en: value } } : { [field]: value };
 }
 
 /**
- * Step 1 of import: parse the uploaded CSV and render a preview (no writes) so
- * the admin can confirm what will be created. The parsed guests ride along in a
- * hidden field to the confirm step, mirroring the legacy admin's import preview.
+ * Step 1 of import: parse the CSV, match each guest against the list (by email,
+ * else name), and render a preview that classifies every row as new, an update
+ * (with the exact fields to add/change), or unchanged — no writes. The records
+ * to create and the per-guest update fragments ride to confirm in a hidden field.
  */
 async function previewImportGuests(request: Request, cms: CmsClient, views: Fetcher, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
@@ -930,8 +965,8 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
     return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
   }
 
-  const inputs = csvToGuestInputs(await (file as { text(): Promise<string> }).text(), context.eventId, listId);
-  if (!inputs.length) {
+  const incoming = parseImportRows(await (file as { text(): Promise<string> }).text());
+  if (!incoming.length) {
     return adminView(views, `Import guests — ${context.list.name}`, 'guest-import', {
       eventName: context.event?.name ?? 'Event',
       listName: context.list.name,
@@ -941,59 +976,108 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
     });
   }
 
-  const guests = inputs.map((input) => {
-    const lect = input.lect as Record<string, unknown>;
-    return {
-      name: input.name,
-      email: String(lect.email ?? ''),
-      phone: String(lect.phone ?? ''),
-      organization: String(lect.organization ?? ''),
-      status: String(lect.status ?? ''),
-      checkedIn: Array.isArray(lect.checkin),
-    };
+  // Index the list's current guests so each incoming row can be matched. First
+  // existing guest wins on a duplicate key.
+  const { pages: existingGuests } = await cms.list('guest', { parentId: listId, limit: 500 });
+  const existingByKey = new Map<string, CmsPage>();
+  for (const guest of existingGuests) {
+    const values = guestValues(guest);
+    const key = guestMatchKey(values.name, values.email);
+    if (!existingByKey.has(key)) existingByKey.set(key, guest);
+  }
+
+  const create: CmsPageInput[] = [];
+  const update: Array<{ id: number; lect: Record<string, unknown> }> = [];
+  const rows = incoming.map((guest) => {
+    const match = existingByKey.get(guestMatchKey(guest.name, guest.values.email));
+    if (!match) {
+      create.push(incomingToCreateInput(guest, context.eventId, listId));
+      return { name: guest.name, email: guest.values.email, state: 'new', changes: [] as Array<{ label: string; from: string; to: string; add: boolean }> };
+    }
+
+    const current = guestValues(match);
+    const lect: Record<string, unknown> = {};
+    const changes: Array<{ label: string; from: string; to: string; add: boolean }> = [];
+    for (const field of IMPORT_FIELDS) {
+      const next = guest.values[field] ?? '';
+      if (!next) continue; // never blank out an existing value
+      const prev = current[field] ?? '';
+      if (next === prev) continue;
+      Object.assign(lect, updateLectFragment(field, next));
+      changes.push({ label: IMPORT_FIELD_LABELS[field], from: prev, to: next, add: prev === '' });
+    }
+    if (guest.checkin && checkins(match.lect).length === 0) {
+      lect.checkin = guest.checkin;
+      changes.push({ label: IMPORT_FIELD_LABELS.checked_in, from: '', to: 'checked in', add: true });
+    }
+    if (changes.length) update.push({ id: match.id, lect });
+    return { name: guest.name, email: guest.values.email, state: changes.length ? 'update' : 'unchanged', changes };
   });
+
   return adminView(views, `Preview import — ${context.list.name}`, 'guest-import-preview', {
     eventName: context.event?.name ?? 'Event',
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     importHref: `${ADMIN_BASE}/rsvp/${listId}/import`,
     confirmAction: `${ADMIN_BASE}/rsvp/${listId}/import/confirm`,
-    total: guests.length,
-    checkedInCount: guests.filter((guest) => guest.checkedIn).length,
-    guests,
-    payload: JSON.stringify(inputs),
+    total: rows.length,
+    newCount: create.length,
+    updateCount: update.length,
+    unchangedCount: rows.filter((row) => row.state === 'unchanged').length,
+    guests: rows,
+    payload: JSON.stringify({ create, update }),
   });
 }
 
 /**
- * Step 2 of import: create the previewed guests. Writes run in small chunks so a
- * large list never exhausts one CMS request's subrequest budget, then returns to
- * the list. `page_type`/`page_id`/`name` are re-asserted server-side; only the
- * lect content rides through from the preview.
+ * Step 2 of import: apply the previewed changes per the chosen mode —
+ * `new_only`, `update_only`, or `new_and_update`. Creates run in small chunks so
+ * a large list never exhausts one CMS request's subrequest budget; updates are
+ * applied per guest and restricted to ids that really belong to this list.
  */
 async function confirmImportGuests(request: Request, cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const form = await request.formData();
+  const mode = formText(form, 'mode') || 'new_and_update';
 
-  let parsed: unknown;
+  let parsed: { create?: unknown; update?: unknown };
   try {
-    parsed = JSON.parse(formText(form, 'payload'));
+    parsed = JSON.parse(formText(form, 'payload')) as { create?: unknown; update?: unknown };
   } catch {
     return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
   }
-  const inputs: CmsPageInput[] = (Array.isArray(parsed) ? parsed : [])
-    .map((guest) => guest as { name?: unknown; lect?: unknown })
-    .filter((guest) => typeof guest.name === 'string' && guest.name.trim())
-    .map((guest) => ({
-      page_type: 'guest',
-      page_id: listId,
-      name: String(guest.name),
-      lect: (guest.lect && typeof guest.lect === 'object' ? guest.lect : {}) as Record<string, unknown>,
-    }));
-  if (!inputs.length) return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 
-  for (const chunk of chunks(inputs, IMPORT_CHUNK)) await cms.batchCreate(chunk);
+  if (mode !== 'update_only') {
+    const create: CmsPageInput[] = (Array.isArray(parsed.create) ? parsed.create : [])
+      .map((guest) => guest as { name?: unknown; lect?: unknown })
+      .filter((guest) => typeof guest.name === 'string' && guest.name.trim())
+      .map((guest) => ({
+        page_type: 'guest',
+        page_id: listId,
+        name: String(guest.name),
+        lect: (guest.lect && typeof guest.lect === 'object' ? guest.lect : {}) as Record<string, unknown>,
+      }));
+    for (const chunk of chunks(create, IMPORT_CHUNK)) await cms.batchCreate(chunk);
+  }
+
+  if (mode !== 'new_only') {
+    const updates = (Array.isArray(parsed.update) ? parsed.update : [])
+      .map((entry) => entry as { id?: unknown; lect?: unknown })
+      .filter((entry) => entry.lect && typeof entry.lect === 'object');
+    if (updates.length) {
+      // Only touch guests that actually belong to this list (the payload is client-supplied).
+      const { pages } = await cms.list('guest', { parentId: listId, limit: 500 });
+      const listGuestIds = new Set(pages.map((guest) => guest.id));
+      for (const entry of updates) {
+        const id = typeof entry.id === 'number' ? entry.id : Number(entry.id);
+        if (Number.isInteger(id) && listGuestIds.has(id)) {
+          await cms.update(id, { lect: entry.lect as Record<string, unknown> });
+        }
+      }
+    }
+  }
+
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
 
