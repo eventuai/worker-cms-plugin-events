@@ -81,6 +81,7 @@ interface EditViewContext {
 
 interface AdminCustomField {
   key: string;
+  legacyKey: string;
   name: string;
   label: string;
   type: string;
@@ -162,10 +163,10 @@ export async function handleRsvpAdmin(
     if (!guestId) return new Response('not found', { status: 404 });
     if (segments[3] === 'delete' && request.method === 'POST') return deleteGuest(cms, listId, guestId);
     if (segments[3] === 'status' && request.method === 'POST') return updateGuestStatus(request, cms, listId, guestId);
-    if (segments[3] === 'checkin' && request.method === 'POST') return checkInGuest(cms, listId, guestId);
+    if (segments[3] === 'checkin' && request.method === 'POST') return checkInGuest(request, cms, listId, guestId);
     if (segments[3] === 'move' && request.method === 'POST') return moveGuest(request, cms, listId, guestId);
     if (segments[3] === 'update-from-contact' && request.method === 'POST') return updateGuestFromContact(cms, listId, guestId);
-    if (segments[3] === 'send' && request.method === 'POST') return sendGuestEdm(cms, views, env, listId, guestId);
+    if (segments[3] === 'send' && request.method === 'POST') return sendGuestEdm(request, cms, views, env, listId, guestId);
     if (segments[3] === 'preview') return previewGuestEdm(cms, views, env, listId, guestId);
     if (segments[3] === 'qrcode') return guestQr(cms, views, listId, guestId, qr);
     return new Response('not found', { status: 404 });
@@ -345,6 +346,9 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const selectedEdm = eventEdms.find((edm) => edm.id === selectedEdmId)
     ?? (selectedEdmId ? await cms.get(selectedEdmId).catch(() => null) : null);
   const hasEdm = !!selectedEdm && selectedEdm.page_type === 'edm';
+  const customFields = adminCustomFieldsForGuest(context.event, context.list);
+  const selectedCustomFieldParam = url.searchParams.get('cf')?.trim() ?? '';
+  const selectedCustomField = customFields.find((field) => field.key === selectedCustomFieldParam || field.legacyKey === selectedCustomFieldParam) ?? null;
 
   return adminView(views, `${context.list.name} — RSVP`, 'guest-list', {
     eventName: context.event?.name ?? 'Event',
@@ -374,8 +378,16 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     selectedColor,
     colorOptions: colorTagOptions(selectedColor),
     statuses: GUEST_STATUSES,
+    customFieldOptions: customFields.map((field) => ({
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      selected: selectedCustomField?.key === field.key,
+    })),
+    hasCustomFields: customFields.length > 0,
+    selectedCustomFieldKey: selectedCustomField?.key ?? '',
     total: noFilter ? total : filteredGuests.length,
-    guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null)),
+    guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null, selectedCustomField)),
   });
 }
 
@@ -514,8 +526,10 @@ async function recordSentEdm(cms: CmsClient, guest: CmsPage, edmId: number): Pro
   await cms.update(guest.id, { lect: { ...guest.lect, sent_edm: sent } });
 }
 
-function listFlash(listId: number, message: string): Response {
-  return redirect(`${ADMIN_BASE}/rsvp/${listId}?flash=${encodeURIComponent(message)}`);
+function listFlash(listId: number, message: string, returnTo = ''): Response {
+  const target = safeAdminReturn(returnTo) || `${ADMIN_BASE}/rsvp/${listId}`;
+  const separator = target.includes('?') ? '&' : '?';
+  return redirect(`${target}${separator}flash=${encodeURIComponent(message)}`);
 }
 
 /** Links (or clears) the guest list's EDM from the dropdown. */
@@ -532,20 +546,22 @@ async function setListEdm(request: Request, cms: CmsClient, listId: number): Pro
 }
 
 /** Sends one guest the list's EDM (per-guest "Send" / "Re-send" button). */
-async function sendGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, listId: number, guestId: number): Promise<Response> {
+async function sendGuestEdm(request: Request, cms: CmsClient, views: Fetcher, env: EdmEnv, listId: number, guestId: number): Promise<Response> {
+  const form = await request.formData().catch(() => new FormData());
+  const returnTo = formText(form, 'return_to');
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const edm = await resolveListEdm(cms, context.list);
-  if (!edm) return listFlash(listId, 'Select an EDM for this list first');
+  if (!edm) return listFlash(listId, 'Select an EDM for this list first', returnTo);
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   try {
     await sendEdmToGuest(views, env, edm, context.eventId, listId, guest);
     await recordSentEdm(cms, guest, edm.id);
   } catch (error) {
-    return listFlash(listId, error instanceof Error ? error.message : 'Unable to send email');
+    return listFlash(listId, error instanceof Error ? error.message : 'Unable to send email', returnTo);
   }
-  return listFlash(listId, `Email sent to ${attr(guest.lect, 'email')}`);
+  return listFlash(listId, `Email sent to ${attr(guest.lect, 'email')}`, returnTo);
 }
 
 /** Batch-sends the list's EDM to every guest of a given email quality that hasn't
@@ -602,8 +618,9 @@ async function updateGuestStatus(request: Request, cms: CmsClient, listId: numbe
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   const form = await request.formData();
+  const returnTo = safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`;
   const status = normalizeStatus(formText(form, 'status'));
-  if (!status) return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+  if (!status) return redirect(returnTo);
 
   await cms.update(guestId, {
     lect: {
@@ -615,12 +632,14 @@ async function updateGuestStatus(request: Request, cms: CmsClient, listId: numbe
       }],
     },
   });
-  return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+  return redirect(returnTo);
 }
 
-async function checkInGuest(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
+async function checkInGuest(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const returnTo = safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`;
   if (!checkins(guest.lect).length) {
     await cms.update(guestId, {
       lect: {
@@ -628,7 +647,7 @@ async function checkInGuest(cms: CmsClient, listId: number, guestId: number): Pr
       },
     });
   }
-  return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+  return redirect(returnTo);
 }
 
 /**
@@ -920,17 +939,21 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedColor = normalizeColor(url.searchParams.get('color'));
   const colorOptions = colorTagOptions(selectedColor);
+  const customFields = uniqueAdminCustomFields(ordered.flatMap((list) => adminCustomFieldsForGuest(event, list)));
+  const selectedCustomFieldParam = url.searchParams.get('cf')?.trim() ?? '';
+  const selectedCustomField = customFields.find((field) => field.key === selectedCustomFieldParam || field.legacyKey === selectedCustomFieldParam) ?? null;
+  const returnTo = `${ADMIN_BASE}/events/${eventId}/all-guests${url.search}`;
   const rows: Array<Record<string, unknown>> = [];
+  let hasEdm = false;
   ordered.forEach((list, index) => {
+    const listEdmId = pageId(pointer(list.lect, 'edm'));
+    if (listEdmId) hasEdm = true;
     for (const guest of guestsByList[index] ?? []) {
       if (!guestMatchesFilters(guest, q, selectedStatus ?? undefined, selectedColor)) continue;
-      const values = guestValues(guest);
       rows.push({
-        ...values,
-        id: guest.id,
+        ...guestRow(guest, list.id, listEdmId, selectedCustomField, returnTo),
         listName: list.name,
-        editHref: guestEditHref(guest.id, list.id, `${ADMIN_BASE}/events/${eventId}/all-guests`),
-        checkedIn: checkins(guest.lect).length > 0,
+        editHref: guestEditHref(guest.id, list.id, returnTo),
       });
     }
   });
@@ -941,11 +964,21 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     exportHref: `${ADMIN_BASE}/events/${eventId}/export`,
     listHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    flash: url.searchParams.get('flash') ?? '',
     statuses: GUEST_STATUSES,
     selectedStatus: selectedStatus ?? '',
     q,
     selectedColor,
     colorOptions,
+    hasEdm,
+    customFieldOptions: customFields.map((field) => ({
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      selected: selectedCustomField?.key === field.key,
+    })),
+    hasCustomFields: customFields.length > 0,
+    selectedCustomFieldKey: selectedCustomField?.key ?? '',
     totalCount,
     filteredCount: rows.length,
     guests: rows,
@@ -1533,15 +1566,20 @@ function guestEditHref(guestId: number, listId: number, returnTo = `${ADMIN_BASE
   return `/admin/pages/${guestId}/edit?return_to=${encodeURIComponent(returnTo)}`;
 }
 
-function guestRow(guest: CmsPage, listId: number, edmId: number | null): Record<string, unknown> {
+function guestRow(guest: CmsPage, listId: number, edmId: number | null, customField?: AdminCustomField | null, returnTo = ''): Record<string, unknown> {
   const values = guestValues(guest);
   const quality = emailQuality(values.email);
   return {
     ...values,
     id: guest.id,
+    hasEdm: edmId !== null,
+    returnTo,
     editHref: guestEditHref(guest.id, listId),
     qrHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode`,
     statusAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/status`,
+    statusClass: statusClass(values.status),
+    statusColor: statusColor(values.status),
+    customFieldValue: customField ? guestCustomFieldValue(guest, customField) : '',
     checkinAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin`,
     checkedIn: checkins(guest.lect).length > 0,
     // EDM send/preview controls (only meaningful when the list has an EDM).
@@ -1720,12 +1758,15 @@ function adminCustomFieldsForGuest(event: CmsPage | null, list: CmsPage, guest?:
       const label = localized(input, 'label') || attr(input, 'label') || attr(input, 'name');
       if (!label) continue;
       const labelKey = adminFieldSlug(label);
+      const legacyLabelKey = adminLegacyFieldSlug(label);
       const key = `rsvp_custom_${includeBlockId ? `${adminFieldSlug(blockKey)}_` : ''}${labelKey}`;
+      const legacyKey = `rsvp-custom-${includeBlockId ? `${source.id}-` : ''}${legacyLabelKey}`;
       const value = attr(guest?.lect ?? {}, key);
       const type = adminInputType(attr(input, 'type'));
       const defaultValue = attr(input, 'default_value');
       fields.push({
         key,
+        legacyKey,
         name: `@${key}`,
         label,
         type,
@@ -1740,6 +1781,15 @@ function adminCustomFieldsForGuest(event: CmsPage | null, list: CmsPage, guest?:
     }
   }
   return fields;
+}
+
+function uniqueAdminCustomFields(fields: AdminCustomField[]): AdminCustomField[] {
+  const seen = new Set<string>();
+  return fields.filter((field) => {
+    if (seen.has(field.key)) return false;
+    seen.add(field.key);
+    return true;
+  });
 }
 
 function adminCustomBlocks(page: CmsPage, source: string): Array<{ type: string; id: string; source: string; block: Record<string, unknown> }> {
@@ -1759,6 +1809,37 @@ function applyAdminCustomResponse(lect: Record<string, unknown>, form: FormData,
 
 function adminFieldSlug(label: string): string {
   return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function adminLegacyFieldSlug(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, '-').replace(/[\/()]/g, '');
+}
+
+function guestCustomFieldValue(guest: CmsPage, field: AdminCustomField): string {
+  const direct = attr(guest.lect, field.key) || attr(guest.lect, field.legacyKey);
+  if (direct) return direct;
+  const latest = guest.lect.latest_response;
+  if (!latest || typeof latest !== 'object' || Array.isArray(latest)) return '';
+  const admin = (latest as Record<string, unknown>).admin;
+  if (!admin || typeof admin !== 'object' || Array.isArray(admin)) return '';
+  const values = admin as Record<string, unknown>;
+  return String(values[field.key] ?? values[field.legacyKey] ?? '').trim();
+}
+
+function statusClass(status: string): string {
+  return `response-state-${status.trim().toLowerCase().replace(/\s+/g, '-')}`;
+}
+
+function statusColor(status: string): string {
+  switch (normalizeStatus(status)) {
+    case 'confirmed': return '#22c55e';
+    case 'invited': return '#fdba74';
+    case 'to be invited': return '#facc15';
+    case 'declined': return '#ef4444';
+    case 'onhold': return '#111827';
+    case 'unconfirmed': return '#6b7280';
+    default: return '#374151';
+  }
 }
 
 function adminInputType(type: string): string {

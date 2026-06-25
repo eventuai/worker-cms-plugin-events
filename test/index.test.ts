@@ -413,6 +413,60 @@ describe('events admin', () => {
     expect(html).toContain('1 guest');
   });
 
+  it('renders the selected RSVP custom field column on a guest list', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: {
+          id: 7,
+          page_type: 'event',
+          name: 'Launch',
+          lect: {
+            _blocks: [
+              {
+                _type: 'rsvp-custom',
+                _id: 'diet-block',
+                custom_input: [
+                  { type: 'select', label: { mis: 'Diet' }, default_value: 'vegan:Vegan|meat:Meat' },
+                ],
+              },
+            ],
+          },
+        } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({
+          pages: [
+            { id: 55, page_type: 'guest', name: 'Ada', weight: 1, lect: { email: 'ada@example.com', status: 'confirmed', rsvp_custom_diet: 'vegan', _pointers: { mail_list: '8' } } },
+            { id: 56, page_type: 'guest', name: 'Grace', weight: 2, lect: { email: 'grace@example.com', status: 'invited', latest_response: { admin: { 'rsvp-custom-diet': 'meat' } }, _pointers: { mail_list: '8' } } },
+          ],
+          total: 2,
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8?cf=rsvp-custom-diet', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('id="custom-field-selector"');
+    expect(html).toContain('<option value="rsvp_custom_diet" selected>Diet</option>');
+    expect(html).toContain('vegan');
+    expect(html).toContain('meat');
+    expect(html).toContain('response-state-confirmed');
+    expect(html).toContain('style="color:#22c55e"');
+  });
+
   it('deletes a guest list and returns to its event lists', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -1331,10 +1385,19 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
   it('renders a flat all-guests view filtered by search, status and color tag', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: {
+        id: 7,
+        page_type: 'event',
+        name: 'Launch',
+        lect: {
+          _blocks: [
+            { _type: 'rsvp-custom', custom_input: [{ type: 'select', label: { mis: 'Diet' }, default_value: 'vegan:Vegan|meat:Meat' }] },
+          ],
+        },
+      } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         return Response.json({ pages: [
-          { id: 8, name: 'VIP', weight: 0, lect: { _pointers: { event: '7' } } },
+          { id: 8, name: 'VIP', weight: 0, lect: { _pointers: { event: '7', edm: '50' } } },
           { id: 9, name: 'General', weight: 1, lect: { _pointers: { event: '7' } } },
         ], total: 2 });
       }
@@ -1342,7 +1405,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         const listId = url.searchParams.get('page_id') ?? url.searchParams.get('pointer_value');
         if (listId === '8') {
           return Response.json({ pages: [
-            { id: 1, name: 'Ada', lect: { email: 'ada@x.io', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue' } },
+            { id: 1, name: 'Ada', lect: { email: 'ada@x.io', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue', rsvp_custom_diet: 'vegan' } },
             { id: 3, name: 'Lin', lect: { email: 'lin@x.io', phone: '+852 5555 1111', status: 'confirmed', color_tag: 'red' } },
           ], total: 2 });
         }
@@ -1352,7 +1415,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/all-guests?q=5555&status=confirmed&color=blue', {
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/all-guests?q=5555&status=confirmed&color=blue&cf=rsvp-custom-diet', {
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
@@ -1366,6 +1429,16 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('<option value="yellow"');
     expect(html).toContain('<option value="purple"');
+    expect(html).toContain('<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">List</th>');
+    expect(html).toContain('Email&nbsp;send');
+    expect(html).toContain('id="custom-field-selector"');
+    expect(html).toContain('<option value="rsvp_custom_diet" selected>Diet</option>');
+    expect(html).toContain('vegan');
+    expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/status"');
+    expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/checkin"');
+    expect(html).toContain('name="return_to" value="/admin/plugins/events/events/7/all-guests?q=5555&amp;status=confirmed&amp;color=blue&amp;cf=rsvp-custom-diet"');
+    expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/1/qrcode"');
+    expect(html).toContain('style="color:#22c55e"');
     expect(html).toContain('1 of 3 guests');
   });
 
