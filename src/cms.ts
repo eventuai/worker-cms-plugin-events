@@ -59,6 +59,7 @@ export interface GuestListSummary {
 }
 
 export interface CmsPageInput {
+  id?: number;
   page_type?: string;
   name?: string;
   slug?: string;

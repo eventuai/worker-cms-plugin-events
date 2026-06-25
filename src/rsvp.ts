@@ -354,11 +354,12 @@ async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response
   // Fetch guests while they are still in draft_pages (queryable by pointer).
   const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
 
-  // Trash the list first so it exists in trash_pages when the guests are trashed
-  // — trashDraftPage will then set the correct parent_id in trash for each guest,
-  // keeping the list↔guest hierarchy intact and making them all restorable.
-  await cms.remove(listId);
+  // Trash guests BEFORE the list. The schema has ON DELETE CASCADE on page_id,
+  // so removing the list row would instantly wipe all guest rows — nothing left
+  // to copy into trash_pages. Trashing guests first removes them from draft_pages
+  // cleanly, then trashing the list has no children left to cascade-delete.
   await Promise.all(guests.map((guest) => cms.remove(guest.id)));
+  await cms.remove(listId);
 
   return redirect(context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`);
 }
@@ -992,6 +993,7 @@ async function guestImport(cms: CmsClient, views: Fetcher, listId: number): Prom
 
 /** A guest parsed from the uploaded CSV, before matching against the list. */
 interface IncomingGuest {
+  id: number | null; // preserved from csv `id` column when present
   name: string;
   values: Record<string, string>;
   custom: Record<string, string>; // rsvp-custom-* / rsvp_custom_* attrs stored flat in lect
@@ -1072,7 +1074,8 @@ function importGuestFromValue(value: (...names: string[]) => string): IncomingGu
     value('checkin_date', 'rsvp_custom_checkin_date'),
     value('checkin_message', 'rsvp_custom_checkin_message'),
   );
-  return { name, values, custom: {}, checkin: checkin ?? undefined };
+  const rawId = pageId(value('id')) ?? null;
+  return { id: rawId, name, values, custom: {}, checkin: checkin ?? undefined };
 }
 
 /** Identity key for matching a guest to an existing one: email if present, else name. */
@@ -1089,6 +1092,7 @@ function incomingToCreateInput(guest: IncomingGuest, eventId: number | null, lis
   if (!fields.get('plus_guests')) fields.set('plus_guests', '0');
   if (!fields.get('status')) fields.set('status', 'to be invited');
   const input = guestPageInput(guest.name, fields, eventId, listId);
+  if (guest.id) input.id = guest.id;
   if (guest.checkin) input.lect = { ...input.lect, checkin: guest.checkin };
   if (Object.keys(guest.custom).length) input.lect = { ...input.lect, ...guest.custom };
   return input;
@@ -1295,10 +1299,11 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
-  const headers = ['name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
+  const headers = ['id', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
   const rows = pages.map((guest) => {
     const values = guestValues(guest);
     return [
+      String(guest.id),
       values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
       values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks,
       checkins(guest.lect).length ? 'yes' : 'no',
@@ -1327,12 +1332,13 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
     lists.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 }).then((res) => res.pages)),
   );
 
-  const headers = ['mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
+  const headers = ['id', 'mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
   const rows: string[][] = [];
   lists.forEach((list, index) => {
     for (const guest of guestsByList[index] ?? []) {
       const values = guestValues(guest);
       rows.push([
+        String(guest.id),
         list.name, values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
         values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks,
         checkins(guest.lect).length ? 'yes' : 'no',
