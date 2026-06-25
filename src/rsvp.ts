@@ -187,21 +187,28 @@ async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL): Promise<Resp
 }
 
 async function guestListForm(cms: CmsClient, views: Fetcher, url: URL): Promise<Response> {
-  const { pages: events } = await cms.list('event', { limit: 500 });
+  const { pages } = await cms.list('event', { limit: 500 });
   const selectedEventId = pageId(url.searchParams.get('event_id'));
+  const selectedEvent = selectedEventId && !pages.some((event) => event.id === selectedEventId)
+    ? await cms.get(selectedEventId).catch(() => null)
+    : null;
+  const events = selectedEvent?.page_type === 'event' ? [selectedEvent, ...pages] : pages;
   return adminView(views, 'New guest list', 'guest-list-form', {
-    action: `${ADMIN_BASE}/rsvp/new`,
+    action: selectedEventId ? `${ADMIN_BASE}/rsvp/new?event_id=${selectedEventId}` : `${ADMIN_BASE}/rsvp/new`,
     backHref: selectedEventId ? `${ADMIN_BASE}/events/${selectedEventId}` : `${ADMIN_BASE}/rsvp`,
     selectedEventId,
-    events: events.map((event) => ({ id: event.id, name: event.name })),
+    events: events.map((event) => ({ id: event.id, name: event.name, selected: event.id === selectedEventId })),
   });
 }
 
 async function createGuestList(request: Request, cms: CmsClient): Promise<Response> {
   const form = await request.formData();
-  const eventId = pageId(form.get('event_id'));
+  const url = new URL(request.url);
+  const eventId = pageId(form.get('event_id')) ?? pageId(url.searchParams.get('event_id'));
   const name = formText(form, 'name');
-  if (!eventId || !name) return redirect(`${ADMIN_BASE}/rsvp/new`);
+  if (!eventId || !name) {
+    return redirect(eventId ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : `${ADMIN_BASE}/rsvp/new`);
+  }
 
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });

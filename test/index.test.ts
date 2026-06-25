@@ -259,10 +259,10 @@ describe('events admin', () => {
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/rsvp/new', {
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/new?event_id=7', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
-      body: new URLSearchParams({ event_id: '7', name: 'VIP guests', allow_checkin: 'yes' }),
+      body: new URLSearchParams({ name: 'VIP guests', allow_checkin: 'yes' }),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
@@ -274,6 +274,31 @@ describe('events admin', () => {
       page_type: 'mail_list', name: 'VIP guests',
       lect: { _pointers: { event: '7' }, allow_checkin: 'yes' },
     });
+  });
+
+  it('keeps the selected event in the new guest list form', async () => {
+    const eventId = 21862006647168;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'event') {
+        return Response.json({ pages: [{ id: 7, page_type: 'event', name: 'Other event', lect: {} }], total: 1 });
+      }
+      if (url.pathname === `/__cms/pages/${eventId}`) {
+        return Response.json({ page: { id: eventId, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request(`/__plugin/admin/rsvp/new?event_id=${eventId}`, {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain(`action="/admin/plugins/events/rsvp/new?event_id=${eventId}"`);
+    expect(html).toContain(`<option value="${eventId}" selected>Launch</option>`);
+    expect(html).toContain(`/admin/plugins/events/events/${eventId}`);
   });
 
   it('groups a guest list under its event by the `event` pointer, not its parent page', async () => {
@@ -1363,8 +1388,16 @@ describe('legacy guest import', () => {
 });
 
 describe('per-list import preview', () => {
+  type ImportTestGuest = {
+    id: number;
+    page_type: string;
+    page_id: number;
+    name: string;
+    lect: Record<string, unknown>;
+  };
+
   // Existing guest in list 8: Ada (ada@x.io) with no phone.
-  const existingGuests = [
+  const existingGuests: ImportTestGuest[] = [
     { id: 100, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'ada@x.io', status: 'invited' } },
   ];
   const listFetch = (sink?: { batches?: unknown[]; updates?: Array<{ id: number; body: unknown }> }, guests = existingGuests) =>

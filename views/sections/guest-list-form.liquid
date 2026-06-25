@@ -7,7 +7,7 @@
       <select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="event_id" required>
         <option value="">Select an event</option>
         {% for event in events %}
-          <option value="{{ event.id }}"{% if event.id == selectedEventId %} selected{% endif %}>{{ event.name | escape }}</option>
+          <option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name | escape }}</option>
         {% endfor %}
       </select>
     </label>
