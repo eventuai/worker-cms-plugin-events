@@ -173,8 +173,8 @@ function redirect(to: string): Response {
 }
 
 /** Renders an error panel when the CMS link is unconfigured or returns an error. */
-function errorPanel(views: Fetcher, message: string, showConfig = false): Promise<Response> {
-  return adminView(views, 'Error', 'error', { message, showConfig });
+function errorPanel(views: Fetcher, message: string, showConfig = false, jsonOnly = false): Promise<Response> {
+  return adminView(views, 'Error', 'error', { message, showConfig }, jsonOnly);
 }
 
 // ── Admin router ──────────────────────────────────────────────────────────────
@@ -183,21 +183,22 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   const rest = url.pathname.replace(/^\/__plugin\/admin\/?/, '');
   const segments = rest.split('/').filter(Boolean);
   const section = segments[0] || 'events';
+  const jsonOnly = url.searchParams.get('json') === '1';
 
   let cms: CmsClient;
   try {
     cms = new CmsClient(env);
   } catch (error) {
-    if (error instanceof CmsNotConfiguredError) return errorPanel(env.VIEWS, error.message, true);
+    if (error instanceof CmsNotConfiguredError) return errorPanel(env.VIEWS, error.message, true, jsonOnly);
     throw error;
   }
 
   try {
     if (section === 'rsvp') {
       const qr = { secret: env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL };
-      return handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr);
+      return handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr, jsonOnly);
     }
-    if (section === 'edm') return handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url);
+    if (section === 'edm') return handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, jsonOnly);
 
     // section === 'events'
     // /events/:id/...
@@ -206,26 +207,26 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
 
     if (eventId && sub === 'adhoc-checkin') {
       if (request.method === 'POST') return adhocCheckinSubmit(cms, eventId, request);
-      return adhocCheckinForm(cms, env.VIEWS, eventId);
+      return adhocCheckinForm(cms, env.VIEWS, eventId, jsonOnly);
     }
-    if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url);
+    if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url, jsonOnly);
     if (eventId && sub === 'export') return exportEventGuests(cms, eventId);
     if (eventId && sub === 'import') {
       if (segments[3] === 'confirm' && request.method === 'POST') return confirmEventGuestImport(request, cms, eventId);
       if (request.method === 'POST') return previewEventGuestImport(request, cms, env.VIEWS, eventId);
-      return eventGuestImport(cms, env.VIEWS, eventId);
+      return eventGuestImport(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') return reorderGuestLists(request, cms, eventId);
     if (eventId && sub === 'reorder-sessions' && request.method === 'POST') return reorderSessions(request, cms, eventId);
-    if (eventId && sub === 'sessions') return eventSessions(cms, env.VIEWS, eventId);
-    if (eventId && sub === 'lists') return eventGuestLists(cms, env.VIEWS, eventId);
-    if (eventId && sub === 'all-guests') return flatAllGuests(cms, env.VIEWS, eventId, url);
-    if (eventId) return eventDashboard(cms, env.VIEWS, eventId);
-    return eventsList(cms, env.VIEWS);
+    if (eventId && sub === 'sessions') return eventSessions(cms, env.VIEWS, eventId, jsonOnly);
+    if (eventId && sub === 'lists') return eventGuestLists(cms, env.VIEWS, eventId, jsonOnly);
+    if (eventId && sub === 'all-guests') return flatAllGuests(cms, env.VIEWS, eventId, url, jsonOnly);
+    if (eventId) return eventDashboard(cms, env.VIEWS, eventId, jsonOnly);
+    return eventsList(cms, env.VIEWS, jsonOnly);
   } catch (error) {
     if (error instanceof CmsApiError) {
       const target = error.method && error.path ? ` ${error.method} ${error.path}` : '';
-      return errorPanel(env.VIEWS, `CMS responded${target} ${error.status} (${error.code}).`);
+      return errorPanel(env.VIEWS, `CMS responded${target} ${error.status} (${error.code}).`, false, jsonOnly);
     }
     throw error;
   }

@@ -5,7 +5,11 @@ export async function adminView(
   title: string,
   template: string,
   data: Record<string, unknown> = {},
+  jsonOnly = false,
 ): Promise<Response> {
+  if (jsonOnly) {
+    return Response.json({ title, template, data });
+  }
   const content = await renderView(views, `/templates/${template}.json`, data);
   const body = await renderLiquid(views, '/layout/default.liquid', { content });
 
