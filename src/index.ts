@@ -31,6 +31,7 @@ import { handleLabelsAdmin } from './labels';
 import { handlePublicRsvp } from './public-rsvp';
 import {
   ensureAdhocGuestList,
+  isAdhocList,
   eventGuestImport,
   eventGuestLists,
   eventSessions,
@@ -288,13 +289,14 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number): 
     listByEvent(cms, 'mail_list', eventId),
     listByEvent(cms, 'edm', eventId),
   ]);
+  if (!guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId));
   // The CMS page API is generic, so the plugin tallies each list's guests itself
   // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
   // The same fetch also yields the guests who have responded, so the dashboard's
   // response feed costs no extra subrequests.
   const responsesByList = await Promise.all(
     guestLists.map(async (list) => {
-      const { pages: guests } = await cms.list('guest', { parentId: list.id, limit: 500 });
+      const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
       list.guest_summary = computeGuestListSummary(guests);
       return guests.filter(hasResponded).map((guest) => responseRow(list, guest));
     }),
@@ -375,9 +377,12 @@ function responseRow(list: CmsPage, guest: CmsPage): ResponseRow {
   };
 }
 
-/** Most recent `response` item date for a guest, falling back to when the page changed. */
+/** Most recent activity date for a guest: latest of checkin or response item dates, falling back to page updated_at. */
 function latestResponseDate(guest: CmsPage): string {
-  const dates = items(guest.lect, 'response')
+  const dates = [
+    ...checkins(guest.lect),
+    ...items(guest.lect, 'response'),
+  ]
     .map((entry) => String(entry.date ?? ''))
     .filter(Boolean)
     .sort();

@@ -140,13 +140,17 @@ export class CmsClient {
     return res.json() as Promise<T>;
   }
 
-  /** List pages of a type, optionally filtered by parent page id (e.g. guests of an event). */
+  /** List pages of a type, optionally filtered by parent page id or a lect pointer. */
   async list(
     pageType: string,
-    opts: { parentId?: number; q?: string; limit?: number; offset?: number } = {},
+    opts: { parentId?: number; pointer?: { key: string; value: number }; q?: string; limit?: number; offset?: number } = {},
   ): Promise<{ pages: CmsPage[]; total: number }> {
     const params = new URLSearchParams({ page_type: pageType });
     if (opts.parentId != null) params.set('page_id', String(opts.parentId));
+    if (opts.pointer) {
+      params.set('pointer_key', opts.pointer.key);
+      params.set('pointer_value', String(opts.pointer.value));
+    }
     if (opts.q) params.set('q', opts.q);
     if (opts.limit != null) params.set('limit', String(opts.limit));
     if (opts.offset != null) params.set('offset', String(opts.offset));

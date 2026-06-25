@@ -4,9 +4,7 @@
   "version": "0.1.0",
   "hooks": ["publish", "unpublish", "delete"],
   "nav": [
-    { "label": "Events", "href": "events", "roles": ["admin", "editor"] },
-    { "label": "RSVP", "href": "rsvp", "roles": ["admin", "editor"] },
-    { "label": "EDM", "href": "edm", "roles": ["admin", "editor"] }
+    { "label": "Events", "href": "events", "roles": ["admin", "editor"] }
   ],
   "editViews": ["edm"],
   "contentTypes": {

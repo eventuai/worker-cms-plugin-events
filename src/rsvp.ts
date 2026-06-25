@@ -136,6 +136,7 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   const pages = await listByEvent(cms, 'mail_list', eventId);
+  if (!pages.some(isAdhocList)) pages.push(await createAdhocGuestList(cms, eventId));
   return adminView(views, `Guest lists — ${event.name}`, 'guest-lists', {
     title: `Guest lists — ${event.name}`,
     subtitle: 'Drag a list to reorder it; the order is shared across the event.',
@@ -147,25 +148,24 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
   });
 }
 
-/** Used by adhoc check-in so every guest is part of a first-class list. */
-export async function ensureAdhocGuestList(cms: CmsClient, eventId: number): Promise<CmsPage> {
-  const event = await cms.get(eventId);
-  if (event.page_type !== 'event') throw new Error('Event not found');
+export function isAdhocList(list: CmsPage): boolean {
+  return list.name.trim().toLowerCase() === 'adhoc';
+}
 
-  const pages = await listByEvent(cms, 'mail_list', eventId);
-  const existing = pages.find((list) => list.name.trim().toLowerCase() === 'adhoc');
-  if (existing) return existing;
-
-  // Grouped to its event by the `event` pointer (not parent page).
+function createAdhocGuestList(cms: CmsClient, eventId: number): Promise<CmsPage> {
   return cms.create({
     page_type: 'mail_list',
     name: 'Adhoc',
-    lect: {
-      _type: 'mail_list',
-      name: { en: 'Adhoc' },
-      _pointers: { event: String(eventId) },
-    },
+    lect: { _type: 'mail_list', name: { en: 'Adhoc' }, _pointers: { event: String(eventId) } },
   });
+}
+
+/** Ensures the event's Adhoc list exists, creating it if needed. */
+export async function ensureAdhocGuestList(cms: CmsClient, eventId: number): Promise<CmsPage> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') throw new Error('Event not found');
+  const pages = await listByEvent(cms, 'mail_list', eventId);
+  return pages.find(isAdhocList) ?? createAdhocGuestList(cms, eventId);
 }
 
 async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL): Promise<Response> {
@@ -236,7 +236,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
 
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
-  const { pages, total } = await cms.list('guest', { parentId: listId, q, limit: 500 });
+  const { pages, total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, q, limit: 500 });
   const guests = selectedStatus ? pages.filter((guest) => guestStatus(guest) === selectedStatus) : pages;
 
   // EDMs of this list's event populate the "select EDM" dropdown; the list's own
@@ -261,7 +261,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     importHref: `${ADMIN_BASE}/rsvp/${listId}/import`,
     exportHref: `${ADMIN_BASE}/rsvp/${listId}/export`,
     updateFromContactsAction: `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts`,
-    deleteAction: `${ADMIN_BASE}/rsvp/${listId}/delete`,
+    deleteAction: isAdhocList(context.list) ? '' : `${ADMIN_BASE}/rsvp/${listId}/delete`,
     flash: url.searchParams.get('flash') ?? '',
     // EDM controls.
     setEdmAction: `${ADMIN_BASE}/rsvp/${listId}/edm`,
@@ -285,7 +285,7 @@ async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId
   if (!context) return new Response('not found', { status: 404 });
 
   const guest = guestId ? await cms.get(guestId) : undefined;
-  if (guest && (guest.page_type !== 'guest' || guest.page_id !== listId)) return new Response('not found', { status: 404 });
+  if (guest && (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId))) return new Response('not found', { status: 404 });
   const values = guest ? guestValues(guest) : emptyGuestValues();
   const action = guest
     ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}`
@@ -330,7 +330,7 @@ async function createGuest(request: Request, cms: CmsClient, listId: number): Pr
 async function updateGuest(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   const guest = await cms.get(guestId);
-  if (!context || guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
 
   const form = await request.formData();
   const input = guestInput(form, context.eventId, listId, guest);
@@ -341,7 +341,7 @@ async function updateGuest(request: Request, cms: CmsClient, listId: number, gue
 
 async function deleteGuest(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
-  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   await cms.remove(guestId);
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
@@ -349,7 +349,17 @@ async function deleteGuest(cms: CmsClient, listId: number, guestId: number): Pro
 async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
+  if (isAdhocList(context.list)) return new Response('cannot delete the default Adhoc list', { status: 403 });
+
+  // Fetch guests while they are still in draft_pages (queryable by pointer).
+  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+
+  // Trash the list first so it exists in trash_pages when the guests are trashed
+  // — trashDraftPage will then set the correct parent_id in trash for each guest,
+  // keeping the list↔guest hierarchy intact and making them all restorable.
   await cms.remove(listId);
+  await Promise.all(guests.map((guest) => cms.remove(guest.id)));
+
   return redirect(context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`);
 }
 
@@ -405,7 +415,7 @@ async function sendGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, listId:
   const edm = await resolveListEdm(cms, context.list);
   if (!edm) return listFlash(listId, 'Select an EDM for this list first');
   const guest = await cms.get(guestId);
-  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   try {
     await sendEdmToGuest(views, env, edm, context.eventId, listId, guest);
     await recordSentEdm(cms, guest, edm.id);
@@ -424,7 +434,7 @@ async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env
   if (!edm) return listFlash(listId, 'Select an EDM for this list first');
 
   const quality = new URL(request.url).searchParams.get('quality') === 'risky' ? 'risky' : 'good';
-  const { pages: guests } = await cms.list('guest', { parentId: listId, limit: 500 });
+  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
 
   let sent = 0;
   let skipped = 0;
@@ -458,7 +468,7 @@ async function previewGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, list
   const edm = await resolveListEdm(cms, context.list);
   if (!edm) return new Response('No EDM is linked to this guest list.', { status: 404 });
   const guest = await cms.get(guestId);
-  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   const html = await previewEdmForGuest(views, env, edm, context.eventId, listId, guest);
   return new Response(html, {
     headers: { 'content-type': 'text/html; charset=utf-8', 'x-cms-frame': '1' },
@@ -467,7 +477,7 @@ async function previewGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, list
 
 async function updateGuestStatus(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
-  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   const form = await request.formData();
   const status = normalizeStatus(formText(form, 'status'));
   if (!status) return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
@@ -487,7 +497,7 @@ async function updateGuestStatus(request: Request, cms: CmsClient, listId: numbe
 
 async function checkInGuest(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
-  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   if (!checkins(guest.lect).length) {
     await cms.update(guestId, {
       lect: {
@@ -506,7 +516,7 @@ async function checkInGuest(cms: CmsClient, listId: number, guestId: number): Pr
 async function moveGuest(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   const guest = await cms.get(guestId);
-  if (!context || guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
 
   const form = await request.formData();
   const targetId = pageId(form.get('target_mail_list'));
@@ -631,7 +641,7 @@ async function applyContactToGuest(cms: CmsClient, guest: CmsPage): Promise<bool
 /** POST handler: refresh one guest from its linked contact. */
 async function updateGuestFromContact(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
-  if (guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   await applyContactToGuest(cms, guest);
   return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}`);
 }
@@ -640,7 +650,7 @@ async function updateGuestFromContact(cms: CmsClient, listId: number, guestId: n
 async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
-  const { pages } = await cms.list('guest', { parentId: listId, limit: 500 });
+  const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
   for (const guest of pages) await applyContactToGuest(cms, guest);
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
@@ -653,7 +663,7 @@ async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Prom
 async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, qr: QrOptions): Promise<Response> {
   const context = await guestListContext(cms, listId);
   const guest = await cms.get(guestId);
-  if (!context || guest.page_type !== 'guest' || guest.page_id !== listId) return new Response('not found', { status: 404 });
+  if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
 
   const token = `${listId}.${guestId}`;
   const sig = qr.secret ? await signPayload(qr.secret, token) : '';
@@ -765,7 +775,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const ordered = sortByWeight(lists);
   const guestsByList = await Promise.all(
-    ordered.map((list) => cms.list('guest', { parentId: list.id, limit: 500 }).then((res) => res.pages)),
+    ordered.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 }).then((res) => res.pages)),
   );
 
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
@@ -877,7 +887,7 @@ export async function confirmEventGuestImport(request: Request, cms: CmsClient, 
       });
       listByName.set(eventImportListKey(group.listName), list);
     } else {
-      existingGuests = (await cms.list('guest', { parentId: list.id, limit: 500 })).pages;
+      existingGuests = (await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 })).pages;
     }
 
     const plan = classifyImport(group.guests, existingGuests, eventId, list.id);
@@ -942,7 +952,7 @@ async function eventImportPreview(cms: CmsClient, eventId: number, groups: Event
     const list = listByName.get(eventImportListKey(group.listName));
     let rows: ImportRow[];
     if (list) {
-      const { pages: existingGuests } = await cms.list('guest', { parentId: list.id, limit: 500 });
+      const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
       rows = classifyImport(group.guests, existingGuests, eventId, list.id).rows;
     } else {
       preview.newListCount += 1;
@@ -1233,7 +1243,7 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
     });
   }
 
-  const { pages: existingGuests } = await cms.list('guest', { parentId: listId, limit: 500 });
+  const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
   const plan = classifyImport(incoming, existingGuests, context.eventId, listId);
 
   return adminView(views, `Preview import — ${context.list.name}`, 'guest-import-preview', {
@@ -1268,7 +1278,7 @@ async function confirmImportGuests(request: Request, cms: CmsClient, listId: num
   const incoming = parseImportRows(formText(form, 'csv'));
   if (!incoming.length) return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
 
-  const { pages: existingGuests } = await cms.list('guest', { parentId: listId, limit: 500 });
+  const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
   const plan = classifyImport(incoming, existingGuests, context.eventId, listId);
 
   if (mode !== 'update_only') {
@@ -1284,7 +1294,7 @@ async function confirmImportGuests(request: Request, cms: CmsClient, listId: num
 async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
-  const { pages } = await cms.list('guest', { parentId: listId, limit: 500 });
+  const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
   const headers = ['name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
   const rows = pages.map((guest) => {
     const values = guestValues(guest);
@@ -1314,7 +1324,7 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
 
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const guestsByList = await Promise.all(
-    lists.map((list) => cms.list('guest', { parentId: list.id, limit: 500 }).then((res) => res.pages)),
+    lists.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 }).then((res) => res.pages)),
   );
 
   const headers = ['mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
@@ -1360,7 +1370,7 @@ function guestListRow(list: CmsPage, event?: CmsPage): Record<string, unknown> {
     eventName: event?.name ?? 'Unknown event',
     eventHref: event ? `${ADMIN_BASE}/events/${event.id}` : '',
     href: `${ADMIN_BASE}/rsvp/${list.id}`,
-    deleteAction: `${ADMIN_BASE}/rsvp/${list.id}/delete`,
+    deleteAction: isAdhocList(list) ? '' : `${ADMIN_BASE}/rsvp/${list.id}/delete`,
     allowCheckin: attr(list.lect, 'allow_checkin') !== 'no',
   };
 }
