@@ -61,7 +61,10 @@ describe('plugin contract', () => {
     const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const manifest = await response.json() as {
+      contentTypes: { blueprint: { guest: string[] } };
+    };
+    expect(manifest).toMatchObject({
       id: 'events',
       nav: [
         { label: 'Events', href: 'events' },
@@ -72,6 +75,7 @@ describe('plugin contract', () => {
         blueprint: { event: expect.any(Array), guest: expect.any(Array) },
       },
     });
+    expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');
   });
 
   it('requires the shared secret for admin routes and renders RSVP guest lists when authorized', async () => {
@@ -1138,6 +1142,8 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
             email: 'ada@example.com',
             phone: '+85290001000',
             status: 'confirmed',
+            qrcode: 'ticket-qr-123',
+            barcode: 'BAR-456',
             _pointers: { event: '7', mail_list: '8' },
             rsvp_custom_diet: 'vegan',
           }),
@@ -1155,6 +1161,10 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('name="return_to" value="/admin/plugins/events/rsvp/8"');
     expect(html).toContain('Town &amp; Country');
     expect(html).toContain('name="@phone"');
+    expect(html).toContain('name="@qrcode"');
+    expect(html).toContain('value="ticket-qr-123"');
+    expect(html).toContain('name="@barcode"');
+    expect(html).toContain('value="BAR-456"');
     expect(html).toContain('name=".last_name|mis"');
     expect(html).toContain('Additional information');
     expect(html).toContain('name="@rsvp_custom_diet"');
@@ -1605,21 +1615,34 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { _pointers: { mail_list: '8' } } } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { plus_guests: '2', _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode', {
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode?json=1', {
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
-    expect(html).toContain('<svg');
-    expect(html).toContain('<rect'); // QR modules rendered
+    const view = await response.json() as {
+      data: {
+        payload: string;
+        qrSvg: string;
+        plusGuestQrs: Array<{ label: string; payload: string; qrSvg: string }>;
+      };
+    };
+    expect(view.data.qrSvg).toContain('<svg');
+    expect(view.data.qrSvg).toContain('<rect'); // QR modules rendered
     const sig = await signPayload('shared-secret', '8.55');
-    expect(html).toContain(`8.55.${sig}`);
+    expect(view.data.payload).toBe(`8.55.${sig}`);
+    const firstPlusSig = await signPayload('shared-secret', '8.55.0');
+    const secondPlusSig = await signPayload('shared-secret', '8.55.1');
+    expect(view.data.plusGuestQrs).toMatchObject([
+      { label: 'Plus guest 1', payload: `8.55.0.${firstPlusSig}` },
+      { label: 'Plus guest 2', payload: `8.55.1.${secondPlusSig}` },
+    ]);
+    expect(view.data.plusGuestQrs[0].qrSvg).toContain('<svg');
   });
 });
 
@@ -1629,21 +1652,30 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       const p = url.pathname;
+      if (p === '/__cms/pages/8' && init?.method === 'PUT') {
+        if (captured) captured.put = init;
+        return Response.json({ page: { id: 8 } });
+      }
       if (p === '/__cms/pages/8') {
         return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: { _pointers: { event: '7', edm: '50' } } } });
       }
       if (p === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (p === '/__cms/pages/50') {
-        return Response.json({ page: { id: 50, page_type: 'edm', name: 'Invite', page_id: 7, lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' }, sender: 'events@example.com' } } });
+        return Response.json({ page: { id: 50, page_type: 'edm', name: 'Invite', page_id: 7, lect: {
+          subject: { en: 'Hi' },
+          heading: { en: 'Join us' },
+          body: { en: '<p>Hello {{name}}, {{company||organization}}.</p>' },
+          sender: 'events@example.com',
+        } } });
       }
       if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
         return Response.json({ pages: [{ id: 50, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
       }
       if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        return Response.json({ pages: [{ id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', _pointers: { mail_list: '8' } } }], total: 1 });
+        return Response.json({ pages: [{ id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', organization: 'Analytical Engines', _pointers: { mail_list: '8' } } }], total: 1 });
       }
       if (p === '/__cms/pages/55' && init?.method === 'PUT') { if (captured) captured.put = init; return Response.json({ page: { id: 55 } }); }
-      if (p === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', _pointers: { mail_list: '8' } } } });
+      if (p === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', organization: 'Analytical Engines', _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
   }
@@ -1694,6 +1726,23 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
   });
 
+  it('clears the linked EDM when the No EDM option is selected', async () => {
+    const captured: { put?: RequestInit } = {};
+    vi.stubGlobal('fetch', rsvpEdmFetch(captured));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/edm', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ edm_id: '' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+    expect(JSON.parse(String(captured.put?.body))).toMatchObject({
+      lect: { _pointers: { event: '7', edm: '' } },
+    });
+  });
+
   it('auto-sends to good-quality guests and skips others', async () => {
     const EMAIL = { send: vi.fn(async () => {}) };
     vi.stubGlobal('fetch', rsvpEdmFetch());
@@ -1705,6 +1754,26 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toContain('/admin/plugins/events/rsvp/8?flash=');
     expect(EMAIL.send).toHaveBeenCalledTimes(1); // the one good guest
+  });
+
+  it('previews a guest EDM by compiling MJML before replacing legacy placeholders', async () => {
+    vi.stubGlobal('fetch', rsvpEdmFetch());
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({
+      CMS_URL: 'https://cms.test',
+      PLUGIN_SECRET: 'shared-secret',
+      PUBLIC_BASE_URL: 'https://cms.eventuai.com',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    const html = await response.text();
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('Hello Ada, Analytical Engines.');
+    expect(html).not.toContain('{{name}}');
+    expect(html).not.toContain('{{company||organization}}');
   });
 });
 

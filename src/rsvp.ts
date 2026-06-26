@@ -542,7 +542,7 @@ async function setListEdm(request: Request, cms: CmsClient, listId: number): Pro
   const edmId = pageId(form.get('edm_id'));
   const pointers = lectPointers(list);
   if (edmId) pointers.edm = String(edmId);
-  else delete pointers.edm;
+  else pointers.edm = '';
   await cms.update(listId, { lect: { ...list.lect, _pointers: pointers } });
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
@@ -815,6 +815,7 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${sig}`
     : `${token}.${sig}`;
   const values = guestValues(guest);
+  const plusGuestQrs = await plusGuestQrCodes(listId, guestId, values.plus_guests, qr);
 
   return adminView(views, `QR — ${values.name}`, 'guest-qr', {
     guestName: values.name,
@@ -825,7 +826,32 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     checkedIn: checkins(guest.lect).length > 0,
     payload,
     qrSvg: qrSvg(payload, { size: 240 }),
+    plusGuestQrs,
+    hasPlusGuestQrs: plusGuestQrs.length > 0,
   }, jsonOnly);
+}
+
+async function plusGuestQrCodes(
+  listId: number,
+  guestId: number,
+  rawCount: string,
+  qr: QrOptions,
+): Promise<Array<{ label: string; payload: string; qrSvg: string }>> {
+  const count = Math.max(0, Number.parseInt(rawCount, 10) || 0);
+  const rows: Array<{ label: string; payload: string; qrSvg: string }> = [];
+  for (let index = 0; index < count; index += 1) {
+    const token = `${listId}.${guestId}.${index}`;
+    const sig = qr.secret ? await signPayload(qr.secret, token) : '';
+    const payload = qr.publicBase && sig
+      ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${index}/${sig}`
+      : `${token}.${sig}`;
+    rows.push({
+      label: `Plus guest ${index + 1}`,
+      payload,
+      qrSvg: qrSvg(payload, { size: 180 }),
+    });
+  }
+  return rows;
 }
 
 /**
@@ -1600,6 +1626,7 @@ function emptyGuestValues(): Record<string, string> {
   return {
     name: '', last_name: '', email: '', phone: '', organization: '', job_title: '', plus_guests: '0',
     status: 'to be invited', prefer_language: '', cc: '', remarks: '', color_tag: '',
+    qrcode: '', barcode: '',
   };
 }
 
@@ -1617,6 +1644,8 @@ function guestValues(guest: CmsPage): Record<string, string> {
     cc: attr(guest.lect, 'cc'),
     remarks: attr(guest.lect, 'remarks'),
     color_tag: guestColorTag(guest),
+    qrcode: attr(guest.lect, 'qrcode'),
+    barcode: attr(guest.lect, 'barcode'),
   };
 }
 
@@ -1878,6 +1907,8 @@ function guestInput(
     ['prefer_language', formText(form, 'prefer_language') || formText(form, '@prefer_language')],
     ['cc', formText(form, 'cc') || formText(form, '@cc')],
     ['remarks', formText(form, 'remarks') || formText(form, '@remarks')],
+    ['qrcode', formText(form, 'qrcode') || formText(form, '@qrcode')],
+    ['barcode', formText(form, 'barcode') || formText(form, '@barcode')],
   ]);
   const input = guestPageInput(name, fields, eventId, listId);
   return { name, lect: { ...(existing?.lect ?? {}), ...input.lect, ...nativeCustomGuestFields(form) } };
@@ -1901,6 +1932,8 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
       prefer_language: fields.get('prefer_language') ?? '',
       cc: fields.get('cc') ?? '',
       remarks: fields.get('remarks') ?? '',
+      qrcode: fields.get('qrcode') ?? '',
+      barcode: fields.get('barcode') ?? '',
       _pointers: { ...(eventId ? { event: String(eventId) } : {}), mail_list: String(listId) },
     },
   };

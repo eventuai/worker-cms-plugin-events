@@ -544,9 +544,11 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   for (const guest of guests) {
     const recipient = attr(guest.lect, 'email');
     if (!recipient || !isEmail(recipient) || attr(guest.lect, 'not_send') === 'true') continue;
-    const html = rsvpEnabled
-      ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, await guestRsvpUrl(env, eventId!, listId, guest.id))
-      : htmlTemplate;
+    const rsvpUrl = rsvpEnabled ? await guestRsvpUrl(env, eventId!, listId, guest.id) : '';
+    const html = applyTemplateTokens(
+      rsvpEnabled ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, rsvpUrl) : htmlTemplate,
+      await guestEmailTokens(env, eventId, listId, guest, rsvpUrl),
+    );
     deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id, ...headers });
   }
   for (const chunk of chunks(deliveries, 100)) await env.MAIL_QUEUE.sendBatch(chunk.map((body) => ({ body })));
@@ -558,7 +560,7 @@ async function emailFor(
   edm: CmsPage,
   recipient: string,
   env: EdmEnv,
-  options: { rsvpUrl?: string; server?: string; language?: string } = {},
+  options: { rsvpUrl?: string; server?: string; language?: string; tokenValues?: Record<string, string> } = {},
 ): Promise<OutboundEmail> {
   const values = edmValues(edm);
   return {
@@ -619,7 +621,12 @@ export async function sendEdmToGuest(
   const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest.id) : '';
   const language = attr(guest.lect, 'prefer_language') || undefined;
   const delivery = {
-    ...await emailFor(views, edm, recipient, env, { rsvpUrl, server: env.PUBLIC_BASE_URL, language }),
+    ...await emailFor(views, edm, recipient, env, {
+      rsvpUrl,
+      server: env.PUBLIC_BASE_URL,
+      language,
+      tokenValues: await guestEmailTokens(env, eventId, listId, guest, rsvpUrl),
+    }),
     edmId: edm.id,
     guestId: guest.id,
   };
@@ -639,7 +646,12 @@ export function previewEdmForGuest(
   const language = attr(guest.lect, 'prefer_language') || undefined;
   return (async () => {
     const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest.id) : '';
-    return renderEmail(views, edm, env, { rsvpUrl, server: env.PUBLIC_BASE_URL, language });
+    return renderEmail(views, edm, env, {
+      rsvpUrl,
+      server: env.PUBLIC_BASE_URL,
+      language,
+      tokenValues: await guestEmailTokens(env, eventId, listId, guest, rsvpUrl),
+    });
   })();
 }
 
@@ -653,7 +665,7 @@ async function renderEmail(
   views: Fetcher,
   edm: CmsPage,
   env: EdmEnv,
-  options: { rsvpUrl?: string; server?: string; language?: string } = {},
+  options: { rsvpUrl?: string; server?: string; language?: string; tokenValues?: Record<string, string> } = {},
 ): Promise<string> {
   const tokens = edmTokens(edm, options.language);
   const server = options.server ?? '';
@@ -666,7 +678,8 @@ async function renderEmail(
   });
   // Stage 2 — wrap in the MJML document (head attributes from tokens), then compile.
   const mjml = await renderLiquid(views, '/layout/mjml.liquid', { tokens, main });
-  return compileMjml(mjml, env);
+  const html = await compileMjml(mjml, env);
+  return options.tokenValues ? applyTemplateTokens(html, options.tokenValues) : html;
 }
 
 /**
@@ -726,6 +739,77 @@ async function mjmlCacheKey(mjml: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(mjml));
   const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
   return `mjml:v1:${hex}`;
+}
+
+async function guestEmailTokens(
+  env: EdmEnv,
+  eventId: number | null,
+  listId: number,
+  guest: CmsPage,
+  rsvpUrl = '',
+): Promise<Record<string, string>> {
+  const language = attr(guest.lect, 'prefer_language');
+  const email = attr(guest.lect, 'email');
+  const enName = guest.name || localized(guest.lect, 'name', language);
+  const zhHantName = attr(guest.lect, 'zh_hant_name') || attr(guest.lect, 'zh_hans_name') || enName;
+  const zhHansName = attr(guest.lect, 'zh_hans_name') || attr(guest.lect, 'zh_hant_name') || enName;
+  const preferName = language.toLowerCase().startsWith('zh-hant')
+    ? zhHantName
+    : language.toLowerCase().startsWith('zh-hans')
+      ? zhHansName
+      : enName || zhHantName;
+  const signature = eventId && env.PLUGIN_SECRET
+    ? await signPayload(env.PLUGIN_SECRET, `rsvp:${eventId}:${listId}:${guest.id}`)
+    : '';
+  const publicBase = (env.PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
+  const tokens: Record<string, string> = {
+    domain: publicBase.replace(/^https?:\/\//, ''),
+    landing: publicBase.replace(/^https?:\/\//, ''),
+    language,
+    view_id: String(guest.id),
+    sign: signature,
+    rsvp_url: rsvpUrl,
+    rsvpUrl,
+    contact: email,
+    email: email.replaceAll('.', '<span>.</span>'),
+    email_url: encodeURIComponent(email),
+    name: enName,
+    en_name: enName,
+    zh_hant_name: zhHantName,
+    zh_hans_name: zhHansName,
+    prefer_name: preferName,
+    salutation: attr(guest.lect, 'prefix'),
+    zh_hant_salutation: attr(guest.lect, 'prefix'),
+    zh_hans_salutation: attr(guest.lect, 'prefix'),
+    company: attr(guest.lect, 'organization'),
+    organization: attr(guest.lect, 'organization'),
+    title: attr(guest.lect, 'job_title'),
+    job_title: attr(guest.lect, 'job_title'),
+  };
+  for (const [key, value] of Object.entries(guest.lect)) {
+    if ((typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') && tokens[key] === undefined) {
+      tokens[key] = String(value);
+    }
+  }
+  return tokens;
+}
+
+function applyTemplateTokens(html: string, tokens: Record<string, string>): string {
+  let result = html;
+  for (const [key, value] of Object.entries(tokens)) {
+    result = result.replace(new RegExp(`{{@?${escapeRegExp(key)}}}`, 'gi'), () => value);
+  }
+  return result.replace(/{{@?([\w]+(?:\|\|[\w]+)+)}}/gi, (_match, keys: string) => {
+    for (const key of keys.split('||').map((value) => value.trim())) {
+      const value = tokens[key];
+      if (value !== undefined && value !== '') return value;
+    }
+    return '';
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** Flat token map the MJML layout reads (content + styling), each a string. */

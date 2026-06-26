@@ -14,3 +14,17 @@
   <div style="width:240px;height:240px;margin:0 auto">{{ qrSvg }}</div>
   <p class="text-sm text-gray-500" style="margin-top:1rem;word-break:break-all">{{ payload | escape }}</p>
 </div>
+{% if hasPlusGuestQrs %}
+<div class="mt-6">
+  <h2 class="text-lg font-bold text-gray-900">Plus guest QR codes</h2>
+  <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for plus in plusGuestQrs %}
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 text-center">
+        <h3 class="text-sm font-semibold text-gray-900">{{ plus.label | escape }}</h3>
+        <div style="width:180px;height:180px;margin:0.75rem auto 0">{{ plus.qrSvg }}</div>
+        <p class="text-xs text-gray-500" style="margin-top:0.75rem;word-break:break-all">{{ plus.payload | escape }}</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

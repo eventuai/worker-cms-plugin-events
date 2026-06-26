@@ -29,7 +29,7 @@
         "@cc", "@organization", "@contact_id", "@plus_guests", "@phone", "@parent",
         "@rsvp_code", "@status", "@checkin_remark", "@qrcode_remark", "@not_send", "@no",
         "@prefix", "@prefer_language", "@zh_hant_name", "@zh_hans_name", "name", "last_name",
-        "@job_title", "@wechat", "@remarks", "@total_guests", "@color_tag", "@qrcode",
+        "@job_title", "@wechat", "@remarks", "@total_guests", "@color_tag", "@qrcode", "@barcode",
         {
           "response": ["@status", "@date", "@message"],
           "checkin": ["@status", "@date", "@message"]
