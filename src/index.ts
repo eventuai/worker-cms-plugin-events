@@ -82,7 +82,7 @@ export default {
     // `richtext/md` pagefield — resolve inside the native CMS page editor.
     if (path.startsWith('/__plugin/views/')) {
       const assetPath = path.slice('/__plugin/views'.length) || '/';
-      return env.VIEWS.fetch(new URL(assetPath, 'https://views.local'));
+      return serveViewAsset(env.VIEWS, assetPath);
     }
 
     if (path.startsWith('/__plugin/hooks/')) {
@@ -258,7 +258,13 @@ async function serveViewAsset(views: Fetcher, assetPath: string): Promise<Respon
   } else if (assetPath.endsWith('.liquid')) {
     headers.set('content-type', 'text/plain; charset=utf-8');
   }
-  headers.set('cache-control', assetPath.startsWith('/assets/') ? 'public, max-age=86400' : 'no-store');
+  if (assetPath.startsWith('/assets/')) {
+    headers.set('cache-control', 'public, max-age=86400');
+  } else if (assetPath.endsWith('.json') || assetPath.endsWith('.liquid')) {
+    headers.set('cache-control', 'private, max-age=86400');
+  } else {
+    headers.set('cache-control', 'no-store');
+  }
   return new Response(response.body, { status: response.status, headers });
 }
 
