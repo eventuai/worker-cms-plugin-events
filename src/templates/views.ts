@@ -1,3 +1,9 @@
+let currentViewRevision = 'dev';
+
+export function setViewRevision(revision: string): void {
+  currentViewRevision = revision || 'dev';
+}
+
 export async function adminView(
   views: Fetcher,
   title: string,
@@ -36,9 +42,12 @@ export function clientRenderFragment(opts: {
   templatePath: string;
   data: Record<string, unknown>;
   wrapLayout?: boolean;
+  viewRevision?: string;
 }): string {
+  const revision = opts.viewRevision || currentViewRevision;
   const payload = {
     title: opts.title,
+    viewRevision: revision,
     layoutPath: '/layout/default.liquid',
     templatePath: opts.templatePath,
     viewBasePath: '/admin/plugins/events/views',
@@ -47,7 +56,7 @@ export function clientRenderFragment(opts: {
   };
   return `<div data-events-client-root class="min-w-0">${clientLoadingMarkup()}</div>
 <script type="application/json" data-events-render-payload>${jsonScript(payload)}</script>
-<script src="/admin/plugins/events/assets/client-render.js"></script>`;
+<script src="/admin/plugins/events/assets/client-render.js?r=${encodeURIComponent(revision)}"></script>`;
 }
 
 function jsonScript(value: unknown): string {

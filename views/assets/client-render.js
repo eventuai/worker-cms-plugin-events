@@ -7,19 +7,26 @@
   var root = document.querySelector('[data-events-client-root]');
   if (!payloadEl || !root) return;
 
+  var payload = JSON.parse(payloadEl.textContent || '{}');
+
+  function withRevision(url) {
+    var revision = payload.viewRevision;
+    if (!revision) return url;
+    return url + (url.indexOf('?') === -1 ? '?' : '&') + 'r=' + encodeURIComponent(revision);
+  }
+
   if (!window.liquidjs) {
     var liquidScript = document.createElement('script');
-    liquidScript.src = '/admin/plugins/events/assets/liquid.browser.min.js';
+    liquidScript.src = withRevision('/admin/plugins/events/assets/liquid.browser.min.js');
     liquidScript.onload = function () {
       var renderScript = document.createElement('script');
-      renderScript.src = '/admin/plugins/events/assets/client-render.js';
+      renderScript.src = withRevision('/admin/plugins/events/assets/client-render.js');
       document.body.appendChild(renderScript);
     };
     document.body.appendChild(liquidScript);
     return;
   }
 
-  var payload = JSON.parse(payloadEl.textContent || '{}');
   var templateCache = new Map();
   var engine = new liquidjs.Liquid({
     cache: true,
@@ -64,7 +71,7 @@
     var normalized = normalizePath(path);
     if (templateCache.has(normalized)) return templateCache.get(normalized);
 
-    var promise = fetch((payload.viewBasePath || '/admin/plugins/events/views') + normalized, {
+    var promise = fetch(withRevision((payload.viewBasePath || '/admin/plugins/events/views') + normalized), {
       credentials: 'same-origin',
       headers: { Accept: normalized.endsWith('.json') ? 'application/json' : 'text/plain' },
     }).then(function (response) {
