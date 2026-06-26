@@ -191,6 +191,13 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   const section = segments[0] || 'events';
   const jsonOnly = wantsJson(url);
 
+  if (section === 'assets') {
+    return serveViewAsset(env.VIEWS, `/assets/${segments.slice(1).join('/')}`);
+  }
+  if (section === 'views') {
+    return serveViewAsset(env.VIEWS, `/${segments.slice(1).join('/')}`);
+  }
+
   let cms: CmsClient;
   try {
     cms = new CmsClient(env);
@@ -236,6 +243,23 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     }
     throw error;
   }
+}
+
+async function serveViewAsset(views: Fetcher, assetPath: string): Promise<Response> {
+  if (!assetPath.startsWith('/') || assetPath.includes('..')) return new Response('not found', { status: 404 });
+  const response = await views.fetch(new URL(assetPath, 'https://views.local'));
+  if (!response.ok) return new Response('not found', { status: 404 });
+
+  const headers = new Headers(response.headers);
+  if (assetPath.endsWith('.js')) {
+    headers.set('content-type', 'text/javascript; charset=utf-8');
+  } else if (assetPath.endsWith('.json')) {
+    headers.set('content-type', 'application/json; charset=utf-8');
+  } else if (assetPath.endsWith('.liquid')) {
+    headers.set('content-type', 'text/plain; charset=utf-8');
+  }
+  headers.set('cache-control', assetPath.startsWith('/assets/') ? 'public, max-age=86400' : 'no-store');
+  return new Response(response.body, { status: response.status, headers });
 }
 
 // ── Guest rollups (mirrors the legacy event dashboard tallies) ────────────────

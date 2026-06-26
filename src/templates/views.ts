@@ -1,5 +1,3 @@
-import { renderLiquid, renderView } from './liquid';
-
 export async function adminView(
   views: Fetcher,
   title: string,
@@ -10,8 +8,13 @@ export async function adminView(
   if (jsonOnly) {
     return Response.json({ title, template, data });
   }
-  const content = await renderView(views, `/templates/${template}.json`, data);
-  const body = await renderLiquid(views, '/layout/default.liquid', { content });
+  void views;
+  const body = clientRenderFragment({
+    title,
+    templatePath: `/templates/${template}.json`,
+    data,
+    wrapLayout: true,
+  });
 
   return new Response(body, {
     headers: {
@@ -26,4 +29,32 @@ export async function adminView(
 /** Returns a proper admin-chrome 404 page instead of bare "not found" text. */
 export function notFoundView(views: Fetcher, message = 'Page not found.', jsonOnly = false): Promise<Response> {
   return adminView(views, 'Not found', 'error', { heading: 'Not found', message }, jsonOnly);
+}
+
+export function clientRenderFragment(opts: {
+  title: string;
+  templatePath: string;
+  data: Record<string, unknown>;
+  wrapLayout?: boolean;
+}): string {
+  const payload = {
+    title: opts.title,
+    layoutPath: '/layout/default.liquid',
+    templatePath: opts.templatePath,
+    viewBasePath: '/admin/plugins/events/views',
+    wrapLayout: opts.wrapLayout ?? true,
+    data: opts.data,
+  };
+  return `<div data-events-client-root class="min-w-0">Loading...</div>
+<script type="application/json" data-events-render-payload>${jsonScript(payload)}</script>
+<script src="/admin/plugins/events/assets/client-render.js"></script>`;
+}
+
+function jsonScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }

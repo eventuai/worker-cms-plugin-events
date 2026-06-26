@@ -2,7 +2,7 @@ import { CmsApiError, CmsClient, attr, blocks, items, localized, pointer, type C
 import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { renderLiquid } from './templates/liquid';
-import { adminView, notFoundView } from './templates/views';
+import { adminView, clientRenderFragment, notFoundView } from './templates/views';
 
 const ADMIN_BASE = '/admin/plugins/events';
 
@@ -243,6 +243,7 @@ export async function handleEdmEditView(
   views: Fetcher,
   env: EdmEnv,
 ): Promise<Response> {
+  void views;
   const ctx = (await request.json().catch(() => null)) as EditViewContext | null;
   if (!ctx || ctx.pageType !== 'edm') return new Response('not found', { status: 404 });
 
@@ -268,69 +269,75 @@ export async function handleEdmEditView(
   const valueField = (key: string) => ({ name: `.${key}|${lang}`, value: locExact(lect, key, lang), placeholder: lang !== defaultLang ? locExact(lect, key, defaultLang) : '' });
   const selfHref = isEdit ? `${ADMIN_BASE}/edm/${ctx.page.id}` : '';
 
-  const body = await renderLiquid(views, '/sections/edm-edit.liquid', {
-    title: isEdit ? `Edit ${ctx.page.name}` : 'New EDM',
-    action: ctx.action,
-    backHref: ctx.backHref || `${ADMIN_BASE}/edm`,
-    isEdit,
-    language: lang,
-    languageOptions: EDM_LANGUAGES.map((option) => ({ ...option, selected: option.value === lang })),
-    name: ctx.page.name,
-    slug: ctx.page.slug,
-    weight: ctx.page.weight,
-    eventName,
-    eventId: eventId ?? '',
-    hasEvent: !!eventId,
-    events: events.map((event) => ({ id: event.id, name: event.name })),
-    flash: ctx.flash ?? '',
-    errors: ctx.errors ?? [],
-    // Attributes (sender / styling) — `@field` names.
-    sender: attr(lect, 'sender'),
-    reply_to: attr(lect, 'reply_to'),
-    bcc: attr(lect, 'bcc'),
-    text_color: attr(lect, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
-    button_color: attr(lect, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
-    button_text_color: attr(lect, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
-    line_height: attr(lect, 'line_height') || EDM_STYLE_DEFAULTS.line_height,
-    cc_enable: attr(lect, 'cc_enable') || 'no',
-    quick_confirm: attr(lect, 'quick_confirm') || 'no',
-    thankyou_picture: attr(lect, 'thankyou_picture'),
-    // Localized content — `.field|<lang>` names.
-    subject: valueField('subject'),
-    heading: valueField('heading'),
-    body_field: valueField('body'),
-    rsvp_button: valueField('rsvp_button'),
-    rsvp_form_button: valueField('rsvp_form_button'),
-    rsvp_form_decline_button: valueField('rsvp_form_decline_button'),
-    thankyou_heading: valueField('thankyou_heading'),
-    thankyou_body: valueField('thankyou_body'),
-    decline_heading: valueField('decline_heading'),
-    decline_body: valueField('decline_body'),
-    // Content blocks.
-    blocks: editBlocks(lect, lang, defaultLang),
-    hasBlocks: Array.isArray(lect._blocks) && (lect._blocks as unknown[]).length > 0,
-    blockOptions: EDM_BLOCK_OPTIONS,
-    // EDM-specific actions (edit mode only).
-    previewHref: isEdit ? `${selfHref}/preview?language=${encodeURIComponent(lang)}` : '',
-    // Language tabs for the preview pane — each loads the iframe in that language
-    // (anchors targeting the iframe by name, so no client JS is needed).
-    previewLangs: isEdit
-      ? EDM_LANGUAGES.map((option) => ({
-          label: option.label,
-          href: `${selfHref}/preview?language=${encodeURIComponent(option.value)}`,
-          active: option.value === lang,
-        }))
-      : [],
-    testAction: isEdit ? `${selfHref}/send-test` : '',
-    deleteAction: isEdit ? `/admin/pages/${ctx.page.id}/delete` : '',
-    senderSet: attr(lect, 'sender') !== '',
+  const title = isEdit ? `Edit ${ctx.page.name}` : 'New EDM';
+  const body = clientRenderFragment({
+    title,
+    templatePath: '/sections/edm-edit.liquid',
+    wrapLayout: false,
+    data: {
+      title,
+      action: ctx.action,
+      backHref: ctx.backHref || `${ADMIN_BASE}/edm`,
+      isEdit,
+      language: lang,
+      languageOptions: EDM_LANGUAGES.map((option) => ({ ...option, selected: option.value === lang })),
+      name: ctx.page.name,
+      slug: ctx.page.slug,
+      weight: ctx.page.weight,
+      eventName,
+      eventId: eventId ?? '',
+      hasEvent: !!eventId,
+      events: events.map((event) => ({ id: event.id, name: event.name })),
+      flash: ctx.flash ?? '',
+      errors: ctx.errors ?? [],
+      // Attributes (sender / styling) — `@field` names.
+      sender: attr(lect, 'sender'),
+      reply_to: attr(lect, 'reply_to'),
+      bcc: attr(lect, 'bcc'),
+      text_color: attr(lect, 'text_color') || EDM_STYLE_DEFAULTS.text_color,
+      button_color: attr(lect, 'button_color') || EDM_STYLE_DEFAULTS.button_color,
+      button_text_color: attr(lect, 'button_text_color') || EDM_STYLE_DEFAULTS.button_text_color,
+      line_height: attr(lect, 'line_height') || EDM_STYLE_DEFAULTS.line_height,
+      cc_enable: attr(lect, 'cc_enable') || 'no',
+      quick_confirm: attr(lect, 'quick_confirm') || 'no',
+      thankyou_picture: attr(lect, 'thankyou_picture'),
+      // Localized content — `.field|<lang>` names.
+      subject: valueField('subject'),
+      heading: valueField('heading'),
+      body_field: valueField('body'),
+      rsvp_button: valueField('rsvp_button'),
+      rsvp_form_button: valueField('rsvp_form_button'),
+      rsvp_form_decline_button: valueField('rsvp_form_decline_button'),
+      thankyou_heading: valueField('thankyou_heading'),
+      thankyou_body: valueField('thankyou_body'),
+      decline_heading: valueField('decline_heading'),
+      decline_body: valueField('decline_body'),
+      // Content blocks.
+      blocks: editBlocks(lect, lang, defaultLang),
+      hasBlocks: Array.isArray(lect._blocks) && (lect._blocks as unknown[]).length > 0,
+      blockOptions: EDM_BLOCK_OPTIONS,
+      // EDM-specific actions (edit mode only).
+      previewHref: isEdit ? `${selfHref}/preview?language=${encodeURIComponent(lang)}` : '',
+      // Language tabs for the preview pane — each loads the iframe in that language
+      // (anchors targeting the iframe by name, so no client JS is needed).
+      previewLangs: isEdit
+        ? EDM_LANGUAGES.map((option) => ({
+            label: option.label,
+            href: `${selfHref}/preview?language=${encodeURIComponent(option.value)}`,
+            active: option.value === lang,
+          }))
+        : [],
+      testAction: isEdit ? `${selfHref}/send-test` : '',
+      deleteAction: isEdit ? `/admin/pages/${ctx.page.id}/delete` : '',
+      senderSet: attr(lect, 'sender') !== '',
+    },
   });
 
   return new Response(body, {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       'x-cms-chrome': '1',
-      'x-cms-title': encodeURIComponent(isEdit ? `Edit ${ctx.page.name}` : 'New EDM'),
+      'x-cms-title': encodeURIComponent(title),
     },
   });
 }
