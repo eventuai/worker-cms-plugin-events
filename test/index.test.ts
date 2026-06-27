@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkins } from '../src/cms';
 import { signPayload } from '../src/crypto';
 import worker from '../src/index';
+import { renderView } from '../src/templates/liquid';
 
 interface PluginEnv {
   CMS_URL?: string;
@@ -36,6 +37,14 @@ function views(): Fetcher {
   } as Fetcher;
 }
 
+async function renderedText(response: Response): Promise<string> {
+  if (response.headers.get('x-cms-client-view') !== '1') return response.text();
+  const viewPath = response.headers.get('x-cms-view-path');
+  if (!viewPath) throw new Error('Missing x-cms-view-path');
+  const data = await response.clone().json() as Record<string, unknown>;
+  return renderView(views(), viewPath, data);
+}
+
 function env(overrides: Partial<PluginEnv> = {}): PluginEnv {
   return { VIEWS: views(), ...overrides };
 }
@@ -50,6 +59,15 @@ function throwingViews(): Fetcher {
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://events.test${path}`, init);
+}
+
+function adhocList(id: number, eventId: number) {
+  return {
+    id,
+    page_type: 'mail_list',
+    name: 'Adhoc',
+    lect: { _type: 'mail_list', name: { en: 'Adhoc' }, _pointers: { event: String(eventId) } },
+  };
 }
 
 afterEach(() => {
@@ -67,9 +85,7 @@ describe('plugin contract', () => {
     expect(manifest).toMatchObject({
       id: 'events',
       nav: [
-        { label: 'Events', href: 'events' },
-        { label: 'RSVP', href: 'rsvp' },
-        { label: 'EDM', href: 'edm' },
+        { label: 'Events', href: 'events', roles: ['admin', 'editor'] },
       ],
       contentTypes: {
         blueprint: { event: expect.any(Array), guest: expect.any(Array) },
@@ -79,7 +95,7 @@ describe('plugin contract', () => {
   });
 
   it('requires the shared secret for admin routes and renders RSVP guest lists when authorized', async () => {
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       const pageType = url.searchParams.get('page_type');
       if (url.pathname === '/__cms/pages' && pageType === 'event') {
@@ -103,7 +119,7 @@ describe('plugin contract', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-cms-chrome')).toBe('1');
     expect(response.headers.get('x-cms-title')).toBe('RSVP%20guest%20lists');
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('RSVP guest lists');
     expect(html).toContain('VIP');
   });
@@ -127,7 +143,7 @@ describe('plugin contract', () => {
 
 describe('events admin', () => {
   it('returns admin view data as JSON without fetching Liquid templates when requested', async () => {
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       expect(url.pathname).toBe('/__cms/pages');
       expect(url.searchParams.get('page_type')).toBe('event');
@@ -160,7 +176,7 @@ describe('events admin', () => {
     });
   });
 
-  it('renders CMS event data through the Liquid view', async () => {
+  it('returns CMS event data as a client-rendered Liquid view', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       expect(url.pathname).toBe('/__cms/pages');
@@ -177,18 +193,26 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
-    expect(html).toContain('Town &amp; Country');
-    expect(html).toContain('/admin/plugins/events/events/12');
-    expect(html).toContain('2026-10-12 09:00 +0800');
+    expect(response.headers.get('x-cms-chrome')).toBe('1');
+    expect(response.headers.get('x-cms-client-view')).toBe('1');
+    expect(response.headers.get('x-cms-view-path')).toBe('/templates/events.json');
+    const payload = await response.json() as { events: Array<{ name: string; start: string; dashboardHref: string }> };
+    expect(payload.events[0]).toMatchObject({
+      name: 'Town & Country',
+      start: '2026-10-12 09:00 +0800',
+      dashboardHref: '/admin/plugins/events/events/12',
+    });
     expect(cmsFetch).toHaveBeenCalledTimes(1);
   });
 
   it('shows every event guest list with its RSVP summary', async () => {
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/12') {
         return Response.json({ page: { id: 12, page_type: 'event', name: 'Town & Country', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        return Response.json({ page: adhocList(35, 12) });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         // mail_list / edm group under their event by the `event` pointer, so the
@@ -205,7 +229,7 @@ describe('events admin', () => {
         });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        expect(url.searchParams.get('page_id')).toBe('34');
+        if (url.searchParams.get('pointer_value') !== '34') return Response.json({ pages: [], total: 0 });
         // 4 groups → 6 people; one confirmed+checked-in (2 people), one invited,
         // one on hold, one unknown status (counted "to be invited").
         return Response.json({
@@ -227,7 +251,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('Guest lists');
     expect(html).toContain('VIP');
     expect(html).toContain('6 people');
@@ -274,7 +298,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html.indexOf('General')).toBeLessThan(html.indexOf('VIP'));
     expect(html).toContain('data-reorder="/admin/pages/batch-weight"');
     expect(html).toContain('data-reorder-key="updates"');
@@ -381,16 +405,19 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain(`action="/admin/plugins/events/rsvp/new?event_id=${eventId}"`);
     expect(html).toContain(`<option value="${eventId}" selected>Launch</option>`);
     expect(html).toContain(`/admin/plugins/events/events/${eventId}`);
   });
 
   it('groups a guest list under its event by the `event` pointer, not its parent page', async () => {
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        return Response.json({ page: adhocList(9, 7) });
+      }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         // The list's parent page (page_id 555) is a *different* page type; its
         // event is carried only by `_pointers.event`. It must still be listed.
@@ -408,7 +435,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('VIP'); // grouped by pointer despite the foreign parent page
     // The plugin never filters the list call by parent page id.
     const listCall = cmsFetch.mock.calls.find(([input]) => {
@@ -448,7 +475,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('Ada');
     expect(html).not.toContain('Grace');
     expect(html).not.toContain('Lin');
@@ -504,7 +531,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('id="custom-field-selector"');
     expect(html).toContain('<option value="rsvp_custom_diet" selected>Diet</option>');
     expect(html).toContain('vegan');
@@ -522,6 +549,11 @@ describe('events admin', () => {
       }
       if (url.pathname === '/__cms/pages/7') {
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        expect(url.searchParams.get('pointer_key')).toBe('mail_list');
+        expect(url.searchParams.get('pointer_value')).toBe('8');
+        return Response.json({ pages: [], total: 0 });
       }
       return new Response('not found', { status: 404 });
     });
@@ -568,7 +600,7 @@ describe('events admin', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(response.headers.get('content-disposition')).toContain('launch-all-guests.csv');
-    const csv = await response.text();
+    const csv = await renderedText(response);
     expect(csv).toContain('"mail_list","name"');
     expect(csv).toContain('"VIP","Ada"');
     expect(csv).toContain('"General","Grace"');
@@ -661,7 +693,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('New guest');
+    expect(await renderedText(response)).toContain('New guest');
   });
 
   it('redirects legacy event-based guest URLs to the event Adhoc list', async () => {
@@ -784,7 +816,7 @@ describe('EDM and labels', () => {
     expect(response.headers.get('content-type')).toContain('text/html');
     // Opts into same-origin framing so the editor's preview pane can embed it.
     expect(response.headers.get('x-cms-frame')).toBe('1');
-    const html = await response.text();
+    const html = await renderedText(response);
     // Compiled to real HTML — no MJML tags survive.
     expect(html).toContain('<!doctype html>');
     expect(html).not.toContain('<mjml');
@@ -823,7 +855,7 @@ describe('EDM and labels', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('誠摯邀請');     // zh-hant heading
     expect(html).toContain('中文內容');     // zh-hant body
     expect(html).not.toContain('Join us');  // not the English heading
@@ -851,7 +883,7 @@ describe('EDM and labels', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', MJML_APP_ID: 'app-1', MJML_SECRET_KEY: 'secret-2' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     // The API's HTML is returned verbatim — the built-in compiler was bypassed.
     expect(html).toBe('<html><body>FROM_MJML_API</body></html>');
     // Basic auth uses APP_ID:SECRET_KEY and the body carries the rendered MJML.
@@ -941,7 +973,7 @@ describe('EDM and labels', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', MJML_APP_ID: 'app-1', MJML_SECRET_KEY: 'secret-2' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     // Built-in compiler output: real HTML, no MJML tags, with the heading.
     expect(html).toContain('<!doctype html>');
     expect(html).not.toContain('<mj-');
@@ -971,7 +1003,7 @@ describe('EDM and labels', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('image/svg+xml');
-    const svg = await response.text();
+    const svg = await renderedText(response);
     expect(svg).toContain('Ada &amp; Co');
     expect(svg).toContain('&lt;Launch&gt;');
   });
@@ -1001,7 +1033,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('href="/admin/pages/50/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Fedm"');
     // The old standalone landing page (/edm/50 with no sub-route) is not linked.
     expect(html).not.toContain('href="/admin/plugins/events/edm/50"');
@@ -1066,29 +1098,36 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-cms-chrome')).toBe('1');
-    const html = await response.text();
+    expect(response.headers.get('x-cms-client-view')).toBe('1');
+    expect(response.headers.get('x-cms-view-path')).toBe('/sections/edm-edit.liquid');
+    const payload = await response.json() as {
+      action: string;
+      name: string;
+      eventId: number;
+      eventName: string;
+      sender: string;
+      subject: { name: string; value: string };
+      blocks: Array<{ fields: Array<{ name: string; value: string }>; deleteAction: string }>;
+      previewHref: string;
+      previewLangs: Array<{ href: string }>;
+    };
     // Form posts back to the CMS save handler.
-    expect(html).toContain('action="/admin/pages/50"');
+    expect(payload.action).toBe('/admin/pages/50');
     // Page-basics carried as hidden fields + the event pointer.
-    expect(html).toContain('name="page_type" value="edm"');
-    expect(html).toContain('name="*event" value="12"');
+    expect(payload.eventId).toBe(12);
     // Template name, sender attribute (@field) and subject value (.field|lang).
-    expect(html).toContain('value="Save the date"');
-    expect(html).toContain('name="@sender"');
-    expect(html).toContain('name=".subject|mis"');
-    expect(html).toContain('You are invited');
-    // Language selector lives in the form and auto-reloads on change (CSP-safe
-    // via the CMS layout's data-autosubmit handler).
-    expect(html).toContain('name="_language" form="main-form" data-autosubmit');
+    expect(payload.name).toBe('Save the date');
+    expect(payload.sender).toBe('events@example.com');
+    expect(payload.subject).toMatchObject({ name: '.subject|mis', value: 'You are invited' });
     // The paragraph block is rendered with #<index> field names + a delete action.
-    expect(html).toContain('name="#0.subject|mis"');
-    expect(html).toContain('value="block-delete:0"');
+    expect(payload.blocks[0].fields[0]).toMatchObject({ name: '#0.subject|mis', value: 'Welcome' });
+    expect(payload.blocks[0].deleteAction).toBe('block-delete:0');
     // The parent event name appears in the header.
-    expect(html).toContain('Town &amp; Country');
+    expect(payload.eventName).toBe('Town & Country');
     // The preview pane is embedded as a same-origin iframe, scoped to the language,
     // with per-language tabs that retarget it.
-    expect(html).toContain('name="edm-preview" src="/admin/plugins/events/edm/50/preview?language=mis"');
-    expect(html).toContain('href="/admin/plugins/events/edm/50/preview?language=en" target="edm-preview"');
+    expect(payload.previewHref).toBe('/admin/plugins/events/edm/50/preview?language=mis');
+    expect(payload.previewLangs.some((lang) => lang.href === '/admin/plugins/events/edm/50/preview?language=en')).toBe(true);
   });
 
   it('renders the bespoke guest editor with RSVP custom fields from the event', async () => {
@@ -1153,7 +1192,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-cms-chrome')).toBe('1');
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('action="/admin/pages/9"');
     expect(html).toContain('name="page_type" value="guest"');
     expect(html).toContain('name="page_id" value="8"');
@@ -1218,7 +1257,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('Activity');
     expect(html).toContain('Response');
     expect(html).toContain('Confirmed');
@@ -1410,7 +1449,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(preview.status).toBe(200);
-    const html = await preview.text();
+    const html = await renderedText(preview);
     expect(html).toContain('Preview import');
     expect(html).toContain('VIP');
     expect(html).toContain('General');
@@ -1472,7 +1511,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('All guests');
     expect(html).toContain('Ada');
     expect(html).not.toContain('Lin');
@@ -1509,7 +1548,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('Sessions');
     expect(html).toContain('Keynote');
     expect(html).toContain('data-reorder-mode="order"');
@@ -1529,7 +1568,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('Import guests');
     expect(html).toContain('type="file"');
   });
@@ -1687,7 +1726,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('Auto Send (Good)');
     expect(html).toContain('Auto Send (Risky)');
     expect(html).toContain('/admin/plugins/events/rsvp/8/send-edm?quality=good');
@@ -1769,7 +1808,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/html');
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('Hello Ada, Analytical Engines.');
     expect(html).not.toContain('{{name}}');
@@ -1903,7 +1942,7 @@ describe('per-list import preview', () => {
     const response = await importCsv('/__plugin/admin/rsvp/8/import', csv);
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('Preview import');
     expect(html).toContain('1 new');
     expect(html).toContain('1 to update');
@@ -1937,7 +1976,7 @@ describe('per-list import preview', () => {
     const response = await importCsv('/__plugin/admin/rsvp/8/import', csv);
 
     expect(response.status).toBe(200);
-    const html = await response.text();
+    const html = await renderedText(response);
     expect(html).toContain('0 new');
     expect(html).toContain('0 to update');
   });

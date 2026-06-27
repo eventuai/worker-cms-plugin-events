@@ -1,12 +1,10 @@
 import { Liquid } from 'liquidjs';
-import expand from 'emmet';
 
 const templateCache = new Map<string, Promise<string>>();
 
 interface JsonTemplate {
   sections?: Record<string, JsonSection>;
   order?: string[];
-  wrapper?: string;
 }
 
 interface JsonSection {
@@ -104,13 +102,5 @@ export async function renderView(
     sections.push(await renderLiquid(views, `/sections/${section.type}.liquid`, { ...data, section }));
   }
 
-  const content = sections.join('\n');
-  if (!template.wrapper) return content;
-
-  const wrapper = String(await engine.parseAndRender(template.wrapper, data));
-  const escapedWrapper = wrapper.replaceAll('\\[', '--sbrk--').replaceAll('\\]', '--ebrk--');
-  const expanded = expand(`${escapedWrapper}>span.internal_content`)
-    .replaceAll('--sbrk--', '[')
-    .replaceAll('--ebrk--', ']');
-  return expanded.replace('<span class="internal_content"></span>', content);
+  return sections.join('\n');
 }

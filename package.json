@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "emmet": "^2.4.11",
     "liquidjs": "^10.27.0"
   },
   "devDependencies": {

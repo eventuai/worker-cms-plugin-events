@@ -46,7 +46,7 @@ import {
   reorderSessions,
 } from './rsvp';
 import { renderLiquid } from './templates/liquid';
-import { adminView, setViewRevision } from './templates/views';
+import { adminView } from './templates/views';
 // The plugin manifest (content types, blocks, nav, hooks, editViews) is plain
 // data, so it lives as a static JSON file served verbatim at /__plugin/manifest
 // rather than being assembled from constants here.
@@ -54,10 +54,6 @@ import MANIFEST from './manifest.json';
 
 interface PluginEnv extends EdmEnv {
   PLUGIN_SECRET?: string;
-  /** Cloudflare Worker version metadata; changes on every deploy. */
-  CF_VERSION_METADATA?: WorkerVersionMetadata;
-  /** Optional manual fallback for local/dev environments without version metadata. */
-  VIEW_REVISION?: string;
   /** Base URL of the CMS Worker (for the F1 write-back API), e.g. https://cms.eventuai.com */
   CMS_URL?: string;
   /** Plugin-owned Liquid templates and other view assets. */
@@ -66,7 +62,6 @@ interface PluginEnv extends EdmEnv {
 
 export default {
   async fetch(request: Request, env: PluginEnv): Promise<Response> {
-    setViewRevision(viewRevision(env));
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -271,15 +266,6 @@ async function serveViewAsset(views: Fetcher, assetPath: string): Promise<Respon
     headers.set('cache-control', 'no-store');
   }
   return new Response(response.body, { status: response.status, headers });
-}
-
-function viewRevision(env: Pick<PluginEnv, 'CF_VERSION_METADATA' | 'VIEW_REVISION'>): string {
-  const value = env.CF_VERSION_METADATA?.id
-    || env.CF_VERSION_METADATA?.tag
-    || env.CF_VERSION_METADATA?.timestamp
-    || env.VIEW_REVISION
-    || 'dev';
-  return String(value).replace(/[^A-Za-z0-9._:-]/g, '-');
 }
 
 // ── Guest rollups (mirrors the legacy event dashboard tallies) ────────────────
