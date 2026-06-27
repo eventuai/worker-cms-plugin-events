@@ -5,12 +5,12 @@
     <p class="mt-1 text-sm text-gray-500">{{ total }} guest{% if total != 1 %}s{% endif %}</p>
   </div>
   <div class="flex flex-wrap gap-2">
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700" href="{{ newGuestHref | escape }}">New guest</a>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ importHref | escape }}">Import CSV</a>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ exportHref | escape }}">Export CSV</a>
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ editHref | escape }}">Edit guest list ↗</a>
-    <form method="post" action="{{ updateFromContactsAction | escape }}" data-confirm="Refresh every linked guest from its contact record?"><button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Update from contacts</button></form>
-    <form method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest list and its guests?"><button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer" type="submit">Delete list</button></form>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="New guest" aria-label="New guest" href="{{ newGuestHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New guest</span></a>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import CSV" aria-label="Import CSV" href="{{ importHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import CSV</span></a>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export CSV" aria-label="Export CSV" href="{{ exportHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export CSV</span></a>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit guest list" aria-label="Edit guest list" href="{{ editHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg><span class="hidden lg:inline">Edit guest list</span></a>
+    <form method="post" action="{{ updateFromContactsAction | escape }}" data-confirm="Refresh every linked guest from its contact record?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Update from contacts" aria-label="Update from contacts"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Update from contacts</span></button></form>
+    <form method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest list and its guests?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="Delete list" aria-label="Delete list"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">Delete list</span></button></form>
   </div>
 </div>
 
@@ -28,7 +28,10 @@
           {% for edm in edmOptions %}<option value="{{ edm.id }}"{% if edm.selected %} selected{% endif %}>{{ edm.name | escape }}</option>{% endfor %}
         </select>
       </label>
-      <button type="submit" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer">Set</button>
+      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="Set EDM" aria-label="Set EDM">
+        <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
+        <span class="hidden lg:inline">Set</span>
+      </button>
       {% unless hasEdmOptions %}<span class="text-xs text-gray-400 py-2">No EDMs for this event yet.</span>{% endunless %}
     </form>
 
@@ -36,10 +39,16 @@
       <div class="flex flex-wrap items-center gap-2">
         <a class="inline-block px-3 py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:text-indigo-800" href="{{ edmEditHref | escape }}">Edit “{{ edmName | escape }}” ↗</a>
         <form method="post" action="{{ autoSendGoodAction | escape }}" data-confirm="Send this EDM to all good-quality guests not sent yet?">
-          <button type="submit" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 cursor-pointer">▶ Auto Send (Good)</button>
+          <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white hover:bg-green-700 cursor-pointer" title="Auto Send Good" aria-label="Auto Send Good">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg>
+            <span class="hidden lg:inline">Auto Send (Good)</span>
+          </button>
         </form>
         <form method="post" action="{{ autoSendRiskyAction | escape }}" data-confirm="Send this EDM to all risky-quality guests not sent yet?">
-          <button type="submit" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-300 hover:bg-gray-50 cursor-pointer">▶ Auto Send (Risky)</button>
+          <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-700 hover:bg-gray-50 cursor-pointer" title="Auto Send Risky" aria-label="Auto Send Risky">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg>
+            <span class="hidden lg:inline">Auto Send (Risky)</span>
+          </button>
         </form>
       </div>
     {% endif %}
@@ -60,7 +69,9 @@
       <option value="none"{% if selectedColor == 'none' %} selected{% endif %}>No color tag</option>
       {% for color in colorOptions %}<option value="{{ color.value | escape }}"{% if color.selected %} selected{% endif %}>{{ color.label | escape }}</option>{% endfor %}
     </select>
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" type="submit">Filter</button>
+    <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" type="submit" title="Search" aria-label="Search guests">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
+    </button>
     {% if q != blank or selectedStatus != blank or selectedColor != blank %}<a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref | escape }}">Clear</a>{% endif %}
   </form>
 </div>

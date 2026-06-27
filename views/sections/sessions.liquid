@@ -5,7 +5,13 @@
     <p class="mt-1 text-sm text-gray-500">Drag a session to reorder it. Edit session details on the event page.</p>
   </div>
   <div class="flex flex-wrap gap-2">
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ editHref | escape }}">Edit event ↗</a>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+       title="Edit event"
+       aria-label="Edit event"
+       href="{{ editHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
+      <span class="hidden lg:inline">Edit event</span>
+    </a>
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">

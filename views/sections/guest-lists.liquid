@@ -4,7 +4,13 @@
     <h1 class="text-2xl font-bold text-gray-900">{{ title | escape }}</h1>
     <p class="mt-1 text-sm text-gray-500">{{ subtitle | escape }}</p>
   </div>
-  <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700" href="{{ newHref | escape }}">New guest list</a>
+  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
+     title="New guest list"
+     aria-label="New guest list"
+     href="{{ newHref | escape }}">
+    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>
+    <span class="hidden lg:inline">New guest list</span>
+  </a>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
   <table class="w-full min-w-[560px] text-left"{% if reorderAction %} data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only{% endif %}>

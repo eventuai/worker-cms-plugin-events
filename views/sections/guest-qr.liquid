@@ -6,8 +6,14 @@
   </div>
   <div class="flex flex-wrap items-center gap-2">
     {% if checkedIn %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Checked in</span>{% endif %}
-    <a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ editHref | escape }}">Edit guest</a>
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="button" onclick="window.print()">Print</button>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit guest" aria-label="Edit guest" href="{{ editHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
+      <span class="hidden lg:inline">Edit guest</span>
+    </a>
+    <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="button" onclick="window.print()" title="Print" aria-label="Print">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#document"></use></svg>
+      <span class="hidden lg:inline">Print</span>
+    </button>
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center" style="max-width:22rem">

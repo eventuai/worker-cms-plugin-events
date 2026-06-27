@@ -17,8 +17,8 @@
     {% if eventName != blank %}<p class="mt-1 text-sm text-gray-500">Email template for {{ eventName | escape }}</p>{% endif %}
   </div>
   <div class="flex flex-wrap items-center gap-2">
-    {% if previewHref != blank %}<a class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" href="{{ previewHref | escape }}" target="_blank" rel="noopener">Preview ↗</a>{% endif %}
-    <button form="main-form" type="submit" name="action" value="update" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">Save</button>
+    {% if previewHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Preview" aria-label="Preview" href="{{ previewHref | escape }}" target="_blank" rel="noopener"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#document"></use></svg><span class="hidden lg:inline">Preview</span></a>{% endif %}
+    <button form="main-form" type="submit" name="action" value="update" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Save" aria-label="Save"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span class="hidden lg:inline">Save</span></button>
   </div>
 </div>
 
@@ -227,9 +227,9 @@
 
   <div class="flex items-center justify-between gap-2">
     {% if deleteAction != blank %}
-      <button type="submit" formaction="{{ deleteAction | escape }}" formmethod="post" data-confirm="Move this EDM to trash?" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer">Delete</button>
+      <button type="submit" formaction="{{ deleteAction | escape }}" formmethod="post" data-confirm="Move this EDM to trash?" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" title="Delete" aria-label="Delete"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">Delete</span></button>
     {% else %}<span></span>{% endif %}
-    <button type="submit" name="action" value="update" class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">Save</button>
+    <button type="submit" name="action" value="update" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Save" aria-label="Save"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span class="hidden lg:inline">Save</span></button>
   </div>
 </form>
 
@@ -255,7 +255,7 @@
     {% if senderSet %}
       <form method="post" action="{{ testAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
         <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">
-        <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer" type="submit">Send test email</button>
+        <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Send test email" aria-label="Send test email"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">Send test email</span></button>
       </form>
     {% else %}
       <p class="text-sm text-gray-500" style="margin-top:0.5rem">Set the sender email above and save before sending a test.</p>
