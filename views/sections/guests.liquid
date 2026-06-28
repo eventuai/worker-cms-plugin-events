@@ -2,7 +2,7 @@
   <div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventHref | escape }}">← {{ eventName | escape }}</a><h1 class="text-2xl font-bold text-gray-900">All guests ({{ total }})</h1></div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
-  <table class="w-full min-w-[560px] text-left">
+  <table class="w-full min-w-[560px] text-left relative">
     <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">In</th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for guest in guests %}

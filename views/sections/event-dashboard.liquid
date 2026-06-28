@@ -61,7 +61,7 @@
 
   </div>
   <div class="overflow-x-auto w-full">
-  <table class="w-full min-w-[560px] text-left" data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only>
+  <table class="w-full min-w-[560px] text-left relative" data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only>
     <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-4 py-3 w-10"></th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guests</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invitation</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">RSVP</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for list in guestLists %}
@@ -90,7 +90,7 @@
     </a>
   </div>
   <div class="overflow-x-auto w-full">
-  <table class="w-full min-w-[560px] text-left">
+  <table class="w-full min-w-[560px] text-left relative">
     <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th><th class="px-6 py-3"></th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for edm in edms %}
@@ -112,7 +112,7 @@
     {% if responses.size > 0 %}<span class="text-sm text-gray-500">{{ responses.size }} responses</span>{% endif %}
   </div>
   <div class="overflow-x-auto w-full">
-  <table class="w-full min-w-[560px] text-left">
+  <table class="w-full min-w-[560px] text-left relative">
     <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name / contact</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Response</th>{% if responsesShowCheckin %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Checked-in</th>{% endif %}</tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for row in responses %}
