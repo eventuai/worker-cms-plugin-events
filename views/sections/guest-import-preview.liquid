@@ -55,11 +55,11 @@
       <option value="update_only">Update existing records only</option>
     </select>
   </label>
-  <div class="flex items-center gap-3">
+  <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
     <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Confirm import" aria-label="Confirm import">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>
       <span class="hidden lg:inline">Confirm import</span>
     </button>
-    <a href="{{ listHref | escape }}" class="text-sm text-gray-500 hover:text-gray-700">Cancel</a>
+    <a href="{{ listHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
   </div>
 </form>

@@ -2,7 +2,7 @@
   <div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listHref | escape }}">← {{ listName | escape }}</a><h1 class="text-2xl font-bold text-gray-900">{{ title | escape }}</h1><p class="mt-1 text-sm text-gray-500">{{ eventName | escape }}</p></div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:48rem">
-  <form method="post" action="{{ action | escape }}">
+  <form id="guest-form" method="post" action="{{ action | escape }}">
     {% if nativePageAction %}
       <input type="hidden" name="page_type" value="guest">
       <input type="hidden" name="slug" value="{{ slug | escape }}">
@@ -57,7 +57,6 @@
         </div>
       </div>
     {% endif %}
-    <div class="flex flex-wrap gap-2"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="Save guest" aria-label="Save guest"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span class="hidden lg:inline">Save guest</span></button>{% if qrHref %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="QR code" aria-label="QR code" href="{{ qrHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#key"></use></svg><span class="hidden lg:inline">QR code</span></a>{% endif %}</div>
   </form>
   {% if updateFromContactAction %}<form method="post" action="{{ updateFromContactAction | escape }}" style="margin-top:1rem" onsubmit="return confirm('Overwrite this guest with its linked contact record?')"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Update from contact" aria-label="Update from contact"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user"></use></svg><span class="hidden lg:inline">Update from contact</span></button></form>{% endif %}
   {% if moveLists.size > 0 %}
@@ -66,7 +65,13 @@
       <select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="target_mail_list">
         <option value="">Select a list</option>
         {% for list in moveLists %}<option value="{{ list.id }}">{{ list.name | escape }}</option>{% endfor %}</select></label><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Move guest" aria-label="Move guest"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Move guest</span></button></form>{% endif %}
-  {% if deleteAction %}<form method="post" action="{{ deleteAction | escape }}" style="margin-top:1rem" onsubmit="return confirm('Delete this guest?')"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="Delete guest" aria-label="Delete guest"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">Delete guest</span></button></form>{% endif %}
+  {% if deleteAction %}<form id="guest-delete-form" method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest?"></form>{% endif %}
+  <div class="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+    <button form="guest-form" type="submit" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">Save guest</button>
+    <a href="{{ listHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
+    {% if qrHref %}<a href="{{ qrHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">QR code</a>{% endif %}
+    {% if deleteAction %}<button form="guest-delete-form" type="submit" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">Delete</button>{% endif %}
+  </div>
 </div>
 
 {% if deleteAction %}
