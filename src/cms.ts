@@ -64,7 +64,7 @@ export class CmsClient extends BaseCmsClient {
       cmsUrl: env.CMS_URL,
       pluginSecret: env.PLUGIN_SECRET,
       pluginId: PLUGIN_ID,
-      fetcher: (input, init) => globalThis.fetch.call(globalThis, input, init),
+      fetcher: (input, init) => globalThis.fetch(input, init),
     });
   }
 }

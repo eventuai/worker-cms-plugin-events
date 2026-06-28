@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lionrockjs/worker-cms-plugin": "0.1.0",
+    "@lionrockjs/worker-cms-plugin": "0.1.1",
     "liquidjs": "^10.27.1"
   },
   "devDependencies": {
