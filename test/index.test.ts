@@ -267,6 +267,73 @@ describe('events admin', () => {
     expect(html).toContain('2026-09-01');
   });
 
+  it('paginates event guest responses at 25 rows per page', async () => {
+    const responseGuests = Array.from({ length: 30 }, (_, index) => {
+      const day = String(index + 1).padStart(2, '0');
+      return {
+        id: 100 + index,
+        page_type: 'guest',
+        name: `Guest ${day}`,
+        lect: {
+          email: `guest${day}@example.com`,
+          status: 'confirmed',
+          response: [{ status: 'confirmed', date: `2026-09-${day}T10:00:00Z` }],
+        },
+      };
+    });
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({
+          pages: [
+            { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } },
+            adhocList(9, 7),
+          ],
+          total: 2,
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        if (url.searchParams.get('pointer_value') === '8') return Response.json({ pages: responseGuests, total: responseGuests.length });
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const pageOne = await plugin.fetch(request('/__plugin/admin/events/7', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(pageOne.status).toBe(200);
+    const pageOneHtml = await renderedText(pageOne);
+    expect(pageOneHtml).toContain('30 responses');
+    expect(pageOneHtml).toContain('Showing 1-25 of 30');
+    expect(pageOneHtml).toContain('Page 1 of 2');
+    expect(pageOneHtml).toContain('href="/admin/plugins/events/events/7?responses_page=2#guest-responses"');
+    expect(pageOneHtml).toContain('Guest 30');
+    expect(pageOneHtml).toContain('Guest 06');
+    expect(pageOneHtml).not.toContain('Guest 05');
+
+    const pageTwo = await plugin.fetch(request('/__plugin/admin/events/7?responses_page=2', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(pageTwo.status).toBe(200);
+    const pageTwoHtml = await renderedText(pageTwo);
+    expect(pageTwoHtml).toContain('Showing 26-30 of 30');
+    expect(pageTwoHtml).toContain('Page 2 of 2');
+    expect(pageTwoHtml).toContain('href="/admin/plugins/events/events/7#guest-responses"');
+    expect(pageTwoHtml).toContain('Guest 05');
+    expect(pageTwoHtml).toContain('Guest 01');
+    expect(pageTwoHtml).not.toContain('Guest 06');
+  });
+
   it('renders event guest lists in saved weight order with drag handles', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);

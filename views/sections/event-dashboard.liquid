@@ -8,10 +8,6 @@
       <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
       <span class="hidden lg:inline">Adhoc check-in</span>
     </a>
-    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Sessions" aria-label="Sessions" href="{{ sessionsHref | escape }}">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#calendar"></use></svg>
-      <span class="hidden lg:inline">Sessions</span>
-    </a>
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Labels" aria-label="Labels" href="{{ labelsHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#tag"></use></svg>
       <span class="hidden lg:inline">Labels</span>
@@ -62,16 +58,29 @@
   </div>
   <div class="overflow-x-auto w-full">
   <table class="w-full min-w-[560px] text-left relative" data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only>
-    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-4 py-3 w-10"></th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guests</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invitation</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">RSVP</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
+    <thead class="bg-gray-50 border-b border-gray-200">
+      <tr>
+        <th class="px-4 py-3 w-10"></th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invitation</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">RSVP</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for list in guestLists %}
         <tr data-id="{{ list.id }}">
           <td class="px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>
-          <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">{{ list.name | escape }}</a></td>
-          <td class="px-6 py-3 text-sm text-gray-700"><strong>{{ list.summary.guest_count }}</strong> groups<br><span class="text-sm text-gray-500">{{ list.summary.guest_total }} people</span></td>
+          <td class="px-6 py-3 text-sm text-gray-700">
+            <a class="block text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">{{ list.name | escape }}</a>
+            <div>
+{% if list.summary.guest_count != list.summary.guest_total %}
+<strong>{{ list.summary.guest_count }}</strong> groups {% endif %}
+<span class="text-sm text-gray-500">{{ list.summary.guest_total }} people</span>
+            </div>
+          </td>
+
           <td class="px-6 py-3 text-sm text-gray-700">On hold {{ list.summary.onhold_count }} · To invite {{ list.summary.to_be_invited_count }} · Invited {{ list.summary.invited_count }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">Confirmed {{ list.summary.confirmed_count }} · Declined {{ list.summary.declined_count }}{% if list.summary.unconfirmed_count > 0 %} · Unconfirmed {{ list.summary.unconfirmed_count }}{% endif %}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ list.summary.checked_in_count }} groups<br><span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} people</span></td>
+          <td class="px-6 py-3 text-sm text-gray-700">
+{% if list.summary.checked_in_count != list.summary.checked_in_total %}<strong>{{ list.summary.checked_in_count }}</strong> groups <br>{% endif %}
+<span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} people</span></td>
           <td class="px-6 py-3 text-right"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">→</a></td>
         </tr>
       {% else %}
@@ -106,10 +115,10 @@
   </table>
   </div>
 </div>
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mt-4">
+<div id="guest-responses" class="bg-white rounded-xl shadow-sm border border-gray-200 mt-4">
   <div class="flex items-center justify-between gap-4" style="padding:1rem 1rem 0;margin-bottom:.75rem">
     <div><h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>Guest responses</h2><p class="mt-1 text-sm text-gray-500">Guests who have confirmed or declined, most recent first.</p></div>
-    {% if responses.size > 0 %}<span class="text-sm text-gray-500">{{ responses.size }} responses</span>{% endif %}
+    {% if responsesTotal > 0 %}<span class="text-sm text-gray-500">{{ responsesTotal }} responses</span>{% endif %}
   </div>
   <div class="overflow-x-auto w-full">
   <table class="w-full min-w-[560px] text-left relative">
@@ -128,4 +137,33 @@
     </tbody>
   </table>
   </div>
+  {% if responsesTotal > responsesPerPage %}
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3">
+      <p class="text-sm text-gray-500">Showing {{ responsesRangeStart }}-{{ responsesRangeEnd }} of {{ responsesTotal }}</p>
+      <div class="flex items-center gap-2">
+        {% if responsesPrevHref %}
+          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesPrevHref | escape }}">Previous</a>
+        {% else %}
+          <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">Previous</span>
+        {% endif %}
+        <span class="text-sm text-gray-500">Page {{ responsesPage }} of {{ responsesTotalPages }}</span>
+        {% if responsesNextHref %}
+          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesNextHref | escape }}">Next</a>
+        {% else %}
+          <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">Next</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
 </div>
+
+  <div class="flex flex-wrap gap-2 mt-4">
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref | escape }}">
+      <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
+      <span class="hidden lg:inline">Adhoc check-in</span>
+    </a>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Sessions" aria-label="Sessions" href="{{ sessionsHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#calendar"></use></svg>
+      <span class="hidden lg:inline">Sessions</span>
+    </a>
+  </div>

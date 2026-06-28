@@ -234,7 +234,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     if (eventId && sub === 'sessions') return eventSessions(cms, env.VIEWS, eventId, jsonOnly);
     if (eventId && sub === 'lists') return eventGuestLists(cms, env.VIEWS, eventId, jsonOnly);
     if (eventId && sub === 'all-guests') return flatAllGuests(cms, env.VIEWS, eventId, url, jsonOnly);
-    if (eventId) return eventDashboard(cms, env.VIEWS, eventId, jsonOnly);
+    if (eventId) return eventDashboard(cms, env.VIEWS, eventId, url, jsonOnly);
     return eventsList(cms, env.VIEWS, jsonOnly);
   } catch (error) {
     if (error instanceof CmsApiError) {
@@ -323,7 +323,9 @@ async function eventsList(cms: CmsClient, views: Fetcher, jsonOnly = false): Pro
   }, jsonOnly);
 }
 
-async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
+const RESPONSES_PER_PAGE = 25;
+
+async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, url: URL, jsonOnly = false): Promise<Response> {
   // `mail_list` and `edm` group under their event by the `event` pointer (their
   // parent page may be a different page type), so filter on the pointer.
   const [event, guestLists, edms] = await Promise.all([
@@ -348,6 +350,11 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, j
   );
   // Most recent response first, mirroring the legacy event "Guest Responses" feed.
   const responses = guestListDetails.flatMap((detail) => detail.responses).sort((a, b) => b.date.localeCompare(a.date));
+  const responsesTotal = responses.length;
+  const responsesTotalPages = Math.max(1, Math.ceil(responsesTotal / RESPONSES_PER_PAGE));
+  const responsesPage = Math.min(parsePositiveInt(url.searchParams.get('responses_page')) ?? 1, responsesTotalPages);
+  const responsesStart = (responsesPage - 1) * RESPONSES_PER_PAGE;
+  const pagedResponses = responses.slice(responsesStart, responsesStart + RESPONSES_PER_PAGE);
   const r = rollupGuestListSummaries(guestLists);
   // Admin-controlled display order (list weight, then name).
   const orderedLists = [...guestLists].sort(compareByWeightThenName);
@@ -388,9 +395,34 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, j
     })),
     newEdmHref: `${ADMIN_BASE}/edm/new?event_id=${eventId}`,
     // Guest Responses section.
-    responses,
+    responses: pagedResponses,
+    responsesTotal,
+    responsesPage,
+    responsesTotalPages,
+    responsesPerPage: RESPONSES_PER_PAGE,
+    responsesRangeStart: responsesTotal > 0 ? responsesStart + 1 : 0,
+    responsesRangeEnd: Math.min(responsesStart + RESPONSES_PER_PAGE, responsesTotal),
+    responsesPrevHref: responsesPage > 1 ? responsePageHref(eventId, url, responsesPage - 1) : '',
+    responsesNextHref: responsesPage < responsesTotalPages ? responsePageHref(eventId, url, responsesPage + 1) : '',
     responsesShowCheckin: responses.some((row) => row.checkedIn),
   }, jsonOnly);
+}
+
+function parsePositiveInt(value: string | null): number | null {
+  if (!value) return null;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function responsePageHref(eventId: number, url: URL, page: number): string {
+  const query = new URLSearchParams(url.searchParams);
+  query.delete('json');
+  query.delete('format');
+  if (page <= 1) query.delete('responses_page');
+  else query.set('responses_page', String(page));
+  const qs = query.toString();
+  return `${ADMIN_BASE}/events/${eventId}${qs ? `?${qs}` : ''}#guest-responses`;
 }
 
 function colorTagOptions(): Array<{ value: string; label: string }> {
