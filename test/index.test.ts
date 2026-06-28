@@ -139,6 +139,16 @@ describe('plugin contract', () => {
     expect(qr.headers.get('content-type')).toContain('image/svg+xml');
     await expect(qr.text()).resolves.toContain('&lt;launch&gt;&amp;');
   });
+
+  it('serves client-rendered snippet partials requested by bare Liquid name', async () => {
+    const response = await plugin.fetch(request('/__plugin/admin/views/guest-table.liquid?r=revision', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    await expect(response.text()).resolves.toContain('Name / Email');
+  });
 });
 
 describe('events admin', () => {

@@ -247,7 +247,13 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
 
 async function serveViewAsset(views: Fetcher, assetPath: string): Promise<Response> {
   if (!assetPath.startsWith('/') || assetPath.includes('..')) return new Response('not found', { status: 404 });
-  const response = await views.fetch(new URL(assetPath, 'https://views.local'));
+  const fallbackAssetPath = assetPath.endsWith('.liquid') && assetPath.indexOf('/', 1) === -1
+    ? `/snippets${assetPath}`
+    : '';
+  let response = await views.fetch(new URL(assetPath, 'https://views.local'));
+  if (!response.ok && fallbackAssetPath) {
+    response = await views.fetch(new URL(fallbackAssetPath, 'https://views.local'));
+  }
   if (!response.ok) return new Response('not found', { status: 404 });
 
   const headers = new Headers(response.headers);

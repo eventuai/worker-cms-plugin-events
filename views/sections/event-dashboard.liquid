@@ -3,7 +3,7 @@
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventsHref | escape }}">← Events</a>
     <h1 class="text-2xl font-bold text-gray-900">{{ eventName | escape }}</h1>
   </div>
-  <div class="flex flex-wrap gap-2">
+  <div class="flex flex-wrap gap-2 justify-end">
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref | escape }}">
       <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
       <span class="hidden lg:inline">Adhoc check-in</span>
@@ -23,36 +23,45 @@
     {% for stat in stats %}
       <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900"{% if stat.color %} style="color:{{ stat.color | escape }}"{% endif %}>{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label | escape }}</span></div>
     {% endfor %}
-    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="View all guests" aria-label="View all guests" href="{{ allGuestsHref | escape }}">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
-      <span class="hidden lg:inline">View all guests</span>
-    </a>
   </div>
+  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="View all guests" aria-label="View all guests" href="{{ allGuestsHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
+      <span>View all guests</span>
+    </a>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 mt-4">
-  <div class="flex items-center justify-between gap-4" style="padding:1rem 1rem 0;margin-bottom:.75rem">
-    <div>
+  <div class="p-4 pb-0 mb-3">
+    <div class="flex gap-3 mb-4 justify-between">
+      <div>
       <a class="hover:underline flex items-center gap-2 text-lg font-bold text-gray-900" href="{{ guestListsHref | escape }}"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>Guest lists</a>
-    <p class="mt-1 text-sm text-gray-500">Invitation, RSVP and check-in summary by list.</p></div>
+      <p class="mt-1 text-sm text-gray-500">Invitation, RSVP and check-in summary by list.</p>
+      </div>
+
+      <div>
+        <a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export" aria-label="Export guests" href="{{ exportAllHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export</span></a>
+        <a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import" aria-label="Import guests" href="{{ importHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import</span></a>
+        <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="New guest list" aria-label="New guest list" href="{{ newGuestListHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New Guest List</span></a>
+      </div>
+    </div>
+
     <div class="flex flex-wrap items-center gap-3 justify-center">
-  <form class="flex flex-wrap items-center gap-3" method="get" action="{{ guestSearchHref | escape }}">
-    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" placeholder="Search name, email, phone or guest ID">
-    <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
-      <option value="">All statuses</option>
-      {% for status in statuses %}<option value="{{ status | escape }}">{{ status | escape }}</option>{% endfor %}
-    </select>
-    <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
-      <option value="">All color tags</option>
-      <option value="none">No color tag</option>
-      {% for color in guestSearchColorOptions %}<option value="{{ color.value | escape }}">{{ color.label | escape }}</option>{% endfor %}
-    </select>
-    <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Search" aria-label="Search guests">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
-    </button>
-  </form>
-<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export" aria-label="Export guests" href="{{ exportAllHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export</span></a>
-<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import" aria-label="Import guests" href="{{ importHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import</span></a>
-<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="New guest list" aria-label="New guest list" href="{{ newGuestListHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New</span></a>
+    <form class="flex flex-wrap items-center gap-3 lg:grid lg:grid-cols-2 w-full" method="get" action="{{ guestSearchHref | escape }}">
+    <input class="w-full block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="q" placeholder="Search name, email, phone or guest ID">
+    <div class="flex flex-nowrap gap-3 justify-end">
+      <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
+        <option value="">statuses</option>
+        {% for status in statuses %}<option value="{{ status | escape }}">{{ status | escape }}</option>{% endfor %}
+      </select>
+      <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
+        <option value="">All color tags</option>
+        <option value="none">No color tag</option>
+        {% for color in guestSearchColorOptions %}<option value="{{ color.value | escape }}">{{ color.label | escape }}</option>{% endfor %}
+      </select>
+      <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Search" aria-label="Search guests">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
+      </button>
+    </div>
+    </form>
     </div>
 
   </div>
@@ -60,14 +69,14 @@
   <table class="w-full min-w-[560px] text-left relative" data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only>
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
-        <th class="px-4 py-3 w-10"></th>
-        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th>
+        <th class="ps-4 sm:px-4 py-3 w-10"></th>
+        <th class="ps-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th>
         <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invitation</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">RSVP</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for list in guestLists %}
         <tr data-id="{{ list.id }}">
-          <td class="px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>
-          <td class="px-6 py-3 text-sm text-gray-700">
+          <td class="ps-4 sm:px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>
+          <td class="ps-4 sm:px-6 py-3 text-sm text-gray-700 min-w-[200px]">
             <a class="block text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">{{ list.name | escape }}</a>
             <div>
 {% if list.summary.guest_count != list.summary.guest_total %}
@@ -89,9 +98,13 @@
     </tbody>
   </table>
   </div>
+  <div class="flex flex-wrap justify-end gap-2 p-4">
+<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export" aria-label="Export guests" href="{{ exportAllHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export</span></a>
+<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import" aria-label="Import guests" href="{{ importHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import</span></a>
+  </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 mt-4">
-  <div class="flex items-center justify-between gap-4" style="padding:1rem 1rem 0;margin-bottom:.75rem">
+  <div class="flex justify-between gap-4" style="padding:1rem 1rem 0;margin-bottom:.75rem">
     <div><h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>Email templates</h2><p class="mt-1 text-sm text-gray-500">EDM templates for this event's invitations and blasts.</p></div>
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Add template" aria-label="Add template" href="{{ newEdmHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>
