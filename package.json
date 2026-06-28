@@ -10,13 +10,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "liquidjs": "^10.27.0"
+    "@lionrockjs/worker-cms-plugin": "0.1.0",
+    "liquidjs": "^10.27.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260603.1",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.5.0",
-    "vitest": "^4.1.8",
-    "wrangler": "^4.97.0"
+    "@cloudflare/workers-types": "^4.20260628.1",
+    "@types/node": "^26.0.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9",
+    "wrangler": "^4.105.0"
   }
 }

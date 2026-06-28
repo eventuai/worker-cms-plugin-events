@@ -47,6 +47,7 @@ import {
 } from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
+import { redirect, requirePluginSecret, serveViewAsset } from '@lionrockjs/worker-cms-plugin';
 // The plugin manifest (content types, blocks, nav, hooks, editViews) is plain
 // data, so it lives as a static JSON file served verbatim at /__plugin/manifest
 // rather than being assembled from constants here.
@@ -69,8 +70,9 @@ export default {
       || path.startsWith('/__plugin/publish/')
       || path.startsWith('/__plugin/admin')
       || path === '/__plugin/edit';
-    if (secretRequired && env.PLUGIN_SECRET && request.headers.get('x-plugin-secret') !== env.PLUGIN_SECRET) {
-      return new Response('forbidden', { status: 403 });
+    if (secretRequired) {
+      const forbidden = requirePluginSecret(request, env.PLUGIN_SECRET);
+      if (forbidden) return forbidden;
     }
 
     if (path === '/__plugin/manifest') {
@@ -128,9 +130,8 @@ export default {
       });
     }
     if (path === '/sign') {
-      if (env.PLUGIN_SECRET && request.headers.get('x-plugin-secret') !== env.PLUGIN_SECRET) {
-        return new Response('forbidden', { status: 403 });
-      }
+      const forbidden = requirePluginSecret(request, env.PLUGIN_SECRET);
+      if (forbidden) return forbidden;
       const data = url.searchParams.get('data') ?? '';
       if (!data) return new Response('missing data', { status: 400 });
       const sig = await signPayload(env.PLUGIN_SECRET ?? '', data);
@@ -168,10 +169,6 @@ function editHrefReturningTo(pageId: number | string, returnTo: string): string 
   return `/admin/pages/${pageId}/edit?return_to=${encodeURIComponent(returnTo)}`;
 }
 
-function redirect(to: string): Response {
-  return new Response(null, { status: 302, headers: { Location: to } });
-}
-
 /** Renders an error panel when the CMS link is unconfigured or returns an error. */
 function errorPanel(views: Fetcher, message: string, showConfig = false, jsonOnly = false): Promise<Response> {
   return adminView(views, 'Error', 'error', { message, showConfig }, jsonOnly);
@@ -199,7 +196,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     if (viewPath.startsWith('/snippets/pagefield/')) {
       return redirect(`/admin/views${viewPath}${url.search}`);
     }
-    return serveViewAsset(env.VIEWS, viewPath);
+    return serveViewAsset(env.VIEWS, viewPath, { bareLiquidSnippets: true });
   }
 
   let cms: CmsClient;
@@ -247,35 +244,6 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     }
     throw error;
   }
-}
-
-async function serveViewAsset(views: Fetcher, assetPath: string): Promise<Response> {
-  if (!assetPath.startsWith('/') || assetPath.includes('..')) return new Response('not found', { status: 404 });
-  const fallbackAssetPath = assetPath.endsWith('.liquid') && assetPath.indexOf('/', 1) === -1
-    ? `/snippets${assetPath}`
-    : '';
-  let response = await views.fetch(new URL(assetPath, 'https://views.local'));
-  if (!response.ok && fallbackAssetPath) {
-    response = await views.fetch(new URL(fallbackAssetPath, 'https://views.local'));
-  }
-  if (!response.ok) return new Response('not found', { status: 404 });
-
-  const headers = new Headers(response.headers);
-  if (assetPath.endsWith('.js')) {
-    headers.set('content-type', 'text/javascript; charset=utf-8');
-  } else if (assetPath.endsWith('.json')) {
-    headers.set('content-type', 'application/json; charset=utf-8');
-  } else if (assetPath.endsWith('.liquid')) {
-    headers.set('content-type', 'text/plain; charset=utf-8');
-  }
-  if (assetPath.startsWith('/assets/')) {
-    headers.set('cache-control', 'public, max-age=86400');
-  } else if (assetPath.endsWith('.json') || assetPath.endsWith('.liquid')) {
-    headers.set('cache-control', 'private, max-age=86400');
-  } else {
-    headers.set('cache-control', 'no-store');
-  }
-  return new Response(response.body, { status: response.status, headers });
 }
 
 // ── Guest rollups (mirrors the legacy event dashboard tallies) ────────────────

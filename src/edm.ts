@@ -3,6 +3,7 @@ import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { renderLiquid } from './templates/liquid';
 import { adminView, clientViewResponse, notFoundView } from './templates/views';
+import { redirect } from '@lionrockjs/worker-cms-plugin';
 import MANIFEST from './manifest.json';
 
 const ADMIN_BASE = '/admin/plugins/events';
@@ -1071,10 +1072,6 @@ function chunks<T>(values: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
   return result;
-}
-
-function redirect(to: string): Response {
-  return new Response(null, { status: 302, headers: { Location: to } });
 }
 
 function mailError(views: Fetcher, message: string, jsonOnly = false): Promise<Response> {

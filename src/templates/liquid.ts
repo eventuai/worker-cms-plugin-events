@@ -94,7 +94,6 @@ export async function renderView(
   const template = JSON.parse(rawTemplate) as JsonTemplate;
   if (!template.order?.length) return '';
 
-  const engine = getEngine(views, data);
   const sections: string[] = [];
   for (const key of template.order) {
     const section = template.sections?.[key];

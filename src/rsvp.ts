@@ -23,6 +23,7 @@ import {
   type EdmEnv,
 } from './edm';
 import { adminView } from './templates/views';
+import { redirect } from '@lionrockjs/worker-cms-plugin';
 
 const ADMIN_BASE = '/admin/plugins/events';
 
@@ -1637,6 +1638,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     statusAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/status`,
     statusClass: statusClass(values.status),
     statusColor: statusColor(values.status),
+    searchText: [String(guest.id), values.name, values.last_name, values.email, values.phone].join(' '),
     customFieldValue: customField ? guestCustomFieldValue(guest, customField) : '',
     checkinAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin`,
     checkedIn: checkins(guest.lect).length > 0,
@@ -2128,10 +2130,6 @@ function nativeCustomGuestFields(form: FormData): Record<string, string> {
 
 function safeAdminReturn(value: string): string {
   return value.startsWith('/admin') ? value : '';
-}
-
-function redirect(to: string): Response {
-  return new Response(null, { status: 302, headers: { Location: to } });
 }
 
 function chunks<T>(values: T[], size: number): T[][] {

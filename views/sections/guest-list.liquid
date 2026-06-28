@@ -2,7 +2,7 @@
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listsHref | escape }}">← {{ eventName | escape }}</a>
     <h1 class="text-2xl font-bold text-gray-900">{{ listName | escape }}</h1>
-    <p class="mt-1 text-sm text-gray-500">{{ total }} guest{% if total != 1 %}s{% endif %}</p>
+    <p class="mt-1 text-sm text-gray-500"><span data-table-filter-count="guests">{{ total }}</span> <span data-table-filter-count-label="guests" data-singular="guest" data-plural="guests">guest{% if total != 1 %}s{% endif %}</span></p>
   </div>
   <div class="flex flex-wrap gap-2">
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import CSV" aria-label="Import CSV" href="{{ importHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import CSV</span></a>
@@ -54,7 +54,7 @@
 </div>
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 flex items-center justify-between">
-  <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref | escape }}">
+  <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref | escape }}" data-table-filter-form data-table-filter-target="[data-table-filter='guests']" data-table-filter-count-target="[data-table-filter-count='guests']" data-table-filter-count-label-target="[data-table-filter-count-label='guests']">
     {% if selectedCustomFieldKey != blank %}<input type="hidden" name="cf" value="{{ selectedCustomFieldKey | escape }}">{% endif %}
     <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q | escape }}" placeholder="Search name, email, phone or guest ID">
     <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
@@ -66,10 +66,7 @@
       <option value="none"{% if selectedColor == 'none' %} selected{% endif %}>No color tag</option>
       {% for color in colorOptions %}<option value="{{ color.value | escape }}"{% if color.selected %} selected{% endif %}>{{ color.label | escape }}</option>{% endfor %}
     </select>
-    <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" type="submit" title="Search" aria-label="Search guests">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
-    </button>
-    {% if q != blank or selectedStatus != blank or selectedColor != blank %}<a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref | escape }}">Clear</a>{% endif %}
+    <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref | escape }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>Clear</a>
   </form>
 
 
@@ -95,5 +92,7 @@
   emptyMessage: "No guests match this list."
 %}
 <div class="mt-4">
+  {% if deleteAction != blank %}
     <form method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest list and its guests?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="Delete list" aria-label="Delete list"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">Delete list</span></button></form>
+  {% endif %}
 </div>

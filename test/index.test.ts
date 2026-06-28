@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkins } from '../src/cms';
 import { signPayload } from '../src/crypto';
@@ -29,11 +30,11 @@ function views(): Fetcher {
     async fetch(input: RequestInfo | URL): Promise<Response> {
       const url = typeof input === 'string' ? new URL(input) : input instanceof URL ? input : new URL(input.url);
       try {
-        return new Response(await readFile(new URL(`../views${url.pathname}`, import.meta.url), 'utf8'));
+        return new Response(await readFile(fileURLToPath(new URL(`../views${url.pathname}`, import.meta.url).href), 'utf8'));
       } catch {
         if (url.pathname.startsWith('/snippets/pagefield/')) {
           try {
-            return new Response(await readFile(new URL(`../../cms/views${url.pathname}`, import.meta.url), 'utf8'));
+            return new Response(await readFile(fileURLToPath(new URL(`../../cms/views${url.pathname}`, import.meta.url).href), 'utf8'));
           } catch {
             // Fall through to the normal not-found response.
           }
@@ -154,6 +155,7 @@ describe('plugin contract', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/plain');
+    expect(response.headers.get('cache-control')).toBe('no-store');
     await expect(response.text()).resolves.toContain('Name / Email');
   });
 
@@ -164,6 +166,7 @@ describe('plugin contract', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/views/snippets/pagefield/text/basic.liquid?r=revision');
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 });
 
@@ -576,7 +579,14 @@ describe('events admin', () => {
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('<option value="orange"');
     expect(html).toContain('<option value="purple"');
-    expect(html).toContain('1 guest');
+    expect(html).not.toContain('aria-label="Search guests"');
+    expect(html).toContain('data-table-filter-form');
+    expect(html).toContain('data-table-filter="guests"');
+    expect(html).toContain('data-filter-search="55 Ada  ada@example.com +852 5555 0000"');
+    expect(html).toContain('data-filter-status="confirmed"');
+    expect(html).toContain('data-filter-color="blue"');
+    expect(html).toContain('data-table-filter-count="guests">1</span>');
+    expect(html).toContain('data-table-filter-count-label="guests" data-singular="guest" data-plural="guests">guest</span>');
   });
 
   it('renders the selected RSVP custom field column on a guest list', async () => {
@@ -631,6 +641,33 @@ describe('events admin', () => {
     expect(html).toContain('meat');
     expect(html).toContain('response-state-confirmed');
     expect(html).toContain('style="color:#22c55e"');
+  });
+
+  it('does not render a delete button for the Adhoc guest list', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/35') return Response.json({ page: adhocList(35, 7) });
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/35', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).not.toContain('Delete list');
+    expect(html).not.toContain('/admin/plugins/events/rsvp/35/delete');
   });
 
   it('deletes a guest list and returns to its event lists', async () => {
@@ -1623,6 +1660,11 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('<option value="yellow"');
     expect(html).toContain('<option value="purple"');
+    expect(html).toContain('data-table-filter-form');
+    expect(html).toContain('data-table-filter="guests"');
+    expect(html).toContain('data-filter-search="1 Ada  ada@x.io +852 5555 0000"');
+    expect(html).toContain('data-filter-status="confirmed"');
+    expect(html).toContain('data-filter-color="blue"');
     expect(html).toContain('<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">List</th>');
     expect(html).toContain('Email&nbsp;send');
     expect(html).toContain('id="custom-field-selector"');
@@ -1633,7 +1675,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('name="return_to" value="/admin/plugins/events/events/7/all-guests?q=5555&amp;status=confirmed&amp;color=blue&amp;cf=rsvp-custom-diet"');
     expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/1/qrcode"');
     expect(html).toContain('style="color:#22c55e"');
-    expect(html).toContain('1 of 3 guests');
+    expect(html).toContain('data-table-filter-count="guests">1</span> of 3 guests');
   });
 
   it('renders the sessions view in event order', async () => {

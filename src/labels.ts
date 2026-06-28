@@ -1,5 +1,6 @@
 import { CmsClient, attr, listByEvent, localized, type CmsPage } from './cms';
 import { adminView } from './templates/views';
+import { redirect } from '@lionrockjs/worker-cms-plugin';
 
 const ADMIN_BASE = '/admin/plugins/events';
 
@@ -165,8 +166,4 @@ function pageId(value: unknown): number | null {
 function text(form: FormData, key: string): string {
   const value = form.get(key);
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function redirect(to: string): Response {
-  return new Response(null, { status: 302, headers: { Location: to } });
 }
