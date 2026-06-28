@@ -3,6 +3,7 @@ import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { renderLiquid } from './templates/liquid';
 import { adminView, clientViewResponse, notFoundView } from './templates/views';
+import MANIFEST from './manifest.json';
 
 const ADMIN_BASE = '/admin/plugins/events';
 
@@ -87,63 +88,81 @@ const EDM_LANGUAGES: Array<{ value: string; label: string }> = [
   { value: 'zh-hans', label: '简' },
 ];
 
-/** Content blocks offered in the EDM editor's "add block" picker, with labels. */
-const EDM_BLOCK_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'paragraph', label: 'Paragraph' },
-  { value: 'picture', label: 'Picture' },
-  { value: 'button', label: 'Button' },
-  { value: 'table', label: 'Table' },
-  { value: 'spacer', label: 'Spacer' },
-  { value: 'edm-attachments', label: 'Attachments' },
-  { value: 'edm-unsubscribe', label: 'Unsubscribe footer' },
-];
+type BlueprintEntry = string | Record<string, BlueprintEntry[]>;
+type BlockFieldSpec = { key: string; label: string; kind: 'attr' | 'value'; type: string; control: 'text' | 'textarea' | 'number' };
+type BlockRowSpec = { item: string; label: string; fields: BlockFieldSpec[] };
 
-type BlockFieldSpec = { key: string; label: string; kind: 'attr' | 'value'; control: 'text' | 'textarea' | 'number' };
+interface FieldOptionVM {
+  value: string;
+  label: string;
+  selected: boolean;
+}
 
-/** Per-block-type scalar fields, mirroring the EDM block blueprints in index.ts. */
-const EDM_BLOCK_FIELDS: Record<string, BlockFieldSpec[]> = {
-  paragraph: [
-    { key: 'subject', label: 'Subject', kind: 'value', control: 'text' },
-    { key: 'body', label: 'Body', kind: 'value', control: 'textarea' },
-  ],
-  picture: [
-    { key: 'picture', label: 'Image URL', kind: 'attr', control: 'text' },
-    { key: 'caption', label: 'Caption', kind: 'value', control: 'text' },
-    { key: 'width', label: 'Width', kind: 'attr', control: 'text' },
-    { key: 'align', label: 'Align (left/center/right)', kind: 'attr', control: 'text' },
-  ],
-  button: [
-    { key: 'label', label: 'Label', kind: 'value', control: 'text' },
-    { key: 'url', label: 'URL', kind: 'value', control: 'text' },
-  ],
-  spacer: [
-    { key: 'lines', label: 'Blank lines', kind: 'attr', control: 'number' },
-  ],
-  table: [
-    { key: 'title', label: 'Title', kind: 'value', control: 'textarea' },
-    { key: 'first_column_width', label: 'First column width', kind: 'attr', control: 'text' },
-  ],
-};
+const EDM_BLOCK_DEFINITIONS = manifestBlockDefinitions();
+const EDM_BLOCK_FIELDS: Record<string, BlockFieldSpec[]> = Object.fromEntries(
+  Object.entries(EDM_BLOCK_DEFINITIONS).map(([type, definition]) => [type, definition.fields]),
+);
+const EDM_BLOCK_ROWS: Record<string, BlockRowSpec> = Object.fromEntries(
+  Object.entries(EDM_BLOCK_DEFINITIONS)
+    .filter((entry): entry is [string, { fields: BlockFieldSpec[]; row: BlockRowSpec }] => !!entry[1].row)
+    .map(([type, definition]) => [type, definition.row]),
+);
+const EDM_BLOCK_OPTIONS: Array<{ value: string; label: string }> = ((MANIFEST.contentTypes.blockLists.edm ?? []) as string[])
+  .filter((type) => type in EDM_BLOCK_DEFINITIONS)
+  .map((type) => ({ value: type, label: labelFor(type) }));
 
-/** Per-block-type repeatable item groups (nested items), mirroring the blueprints. */
-const EDM_BLOCK_ROWS: Record<string, { item: string; label: string; fields: BlockFieldSpec[] }> = {
-  table: {
-    item: 'row',
-    label: 'Row',
-    fields: [
-      { key: 'name', label: 'Name', kind: 'value', control: 'textarea' },
-      { key: 'description', label: 'Description', kind: 'value', control: 'textarea' },
-    ],
-  },
-  'edm-attachments': {
-    item: 'attachment',
-    label: 'Attachment',
-    fields: [
-      { key: 'file', label: 'File URL', kind: 'attr', control: 'text' },
-      { key: 'name', label: 'Display name', kind: 'attr', control: 'text' },
-    ],
-  },
-};
+function manifestBlockDefinitions(): Record<string, { fields: BlockFieldSpec[]; row?: BlockRowSpec }> {
+  const blocks = MANIFEST.contentTypes.blocks as Record<string, BlueprintEntry[]>;
+  const result: Record<string, { fields: BlockFieldSpec[]; row?: BlockRowSpec }> = {};
+  for (const [type, entries] of Object.entries(blocks)) {
+    result[type] = blockDefinition(entries);
+  }
+  return result;
+}
+
+function blockDefinition(entries: BlueprintEntry[]): { fields: BlockFieldSpec[]; row?: BlockRowSpec } {
+  const fields: BlockFieldSpec[] = [];
+  let row: BlockRowSpec | undefined;
+
+  for (const entry of entries) {
+    if (typeof entry === 'string') {
+      fields.push(manifestField(entry));
+      continue;
+    }
+    const [itemName, itemEntries] = Object.entries(entry)[0] ?? [];
+    if (itemName && itemEntries) {
+      row = {
+        item: itemName,
+        label: labelFor(itemName),
+        fields: itemEntries.filter((item): item is string => typeof item === 'string').map(manifestField),
+      };
+    }
+  }
+
+  return { fields, row };
+}
+
+function manifestField(raw: string): BlockFieldSpec {
+  const kind = raw.startsWith('@') ? 'attr' : 'value';
+  const keyWithType = raw.replace(/^[@*]/, '');
+  const [key, type = 'text'] = keyWithType.split(':');
+  const normalizedType = pageFieldType(type);
+  return {
+    key,
+    label: labelFor(key),
+    kind,
+    type: normalizedType,
+    control: normalizedType === 'number' ? 'number' : normalizedType === 'textarea' || normalizedType === 'richtext/md' ? 'textarea' : 'text',
+  };
+}
+
+function labelFor(value: string): string {
+  return value
+    .replace(/^edm-/, '')
+    .replace(/^rsvp-/, 'RSVP ')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 /** Parses the stringified lect the CMS sends; tolerant of malformed input. */
 function parseLect(value: string): Record<string, unknown> {
@@ -165,7 +184,24 @@ function locExact(lect: Record<string, unknown>, key: string, lang: string): str
   return value == null ? '' : String(value);
 }
 
-interface EditFieldVM { control: string; label: string; name: string; value: string; placeholder: string; }
+interface EditFieldVM {
+  control: string;
+  label: string;
+  name: string;
+  inputName: string;
+  id: string;
+  type: string;
+  templateName: string;
+  value: string;
+  placeholder: string;
+  required: boolean;
+  options: FieldOptionVM[];
+  checked: boolean;
+  defaultValue: string;
+  blankOption: boolean;
+  blankLabel: string;
+  span: string;
+}
 interface EditRowVM { label: string; deleteAction: string; fields: EditFieldVM[]; }
 interface EditBlockVM {
   index: number;
@@ -173,8 +209,10 @@ interface EditBlockVM {
   title: string;
   nameName: string;
   nameValue: string;
+  nameField: EditFieldVM;
   weightName: string;
   weightValue: number;
+  weightField: EditFieldVM;
   deleteAction: string;
   fields: EditFieldVM[];
   hasRows: boolean;
@@ -194,7 +232,67 @@ function fieldVM(
   const name = spec.kind === 'attr' ? `${prefix}@${spec.key}` : `${prefix}.${spec.key}|${lang}`;
   const value = spec.kind === 'attr' ? attr(lect, spec.key) : locExact(lect, spec.key, lang);
   const placeholder = spec.kind === 'value' && lang !== defaultLang ? locExact(lect, spec.key, defaultLang) : '';
-  return { control: spec.control, label: spec.label, name, value, placeholder };
+  return editField(name, spec.label, value, spec.type, { control: spec.control, placeholder });
+}
+
+function localizedField(key: string, label: string, lect: Record<string, unknown>, lang: string, defaultLang: string, type = 'text', required = false): EditFieldVM {
+  return editField(`.${key}|${lang}`, label, locExact(lect, key, lang), type, {
+    placeholder: lang !== defaultLang ? locExact(lect, key, defaultLang) : '',
+    required,
+  });
+}
+
+function attrField(key: string, label: string, lect: Record<string, unknown>, type = 'text', fallback = ''): EditFieldVM {
+  return editField(`@${key}`, label, attr(lect, key) || fallback, type);
+}
+
+function switchField(key: string, label: string, lect: Record<string, unknown>, fallback = 'no'): EditFieldVM {
+  return editField(`@${key}`, label, attr(lect, key) || fallback, 'switch');
+}
+
+function editField(
+  inputName: string,
+  label: string,
+  value: string,
+  type = 'text',
+  options: Partial<Pick<EditFieldVM, 'control' | 'placeholder' | 'required' | 'options' | 'checked' | 'defaultValue' | 'span' | 'blankOption' | 'blankLabel'>> = {},
+): EditFieldVM {
+  const normalizedType = pageFieldType(type);
+  return {
+    control: options.control ?? (normalizedType === 'richtext/md' ? 'textarea' : normalizedType),
+    label,
+    name: inputName,
+    inputName,
+    id: fieldId(inputName),
+    type: normalizedType,
+    templateName: workerPageFieldTemplate(normalizedType),
+    value,
+    placeholder: options.placeholder ?? '',
+    required: options.required ?? false,
+    options: options.options ?? [],
+    checked: options.checked ?? false,
+    defaultValue: options.defaultValue ?? '',
+    blankOption: options.blankOption ?? false,
+    blankLabel: options.blankLabel ?? '',
+    span: options.span ?? '',
+  };
+}
+
+function pageFieldType(type: string): string {
+  const normalized = type.trim().toLowerCase();
+  if (['text', 'email', 'tel', 'url', 'number', 'date', 'time', 'textarea', 'select', 'radio', 'checkbox', 'switch', 'boolean', 'color', 'picture', 'richtext/md'].includes(normalized)) return normalized;
+  return 'text';
+}
+
+function workerPageFieldTemplate(type: string): string {
+  if (['text', 'email', 'date', 'switch', 'boolean', 'picture'].includes(type)) return `snippets/pagefield/${type}/basic`;
+  return '';
+}
+
+function fieldId(inputName: string): string {
+  return `field_${Array.from(inputName)
+    .map((char) => (/^[A-Za-z0-9_-]$/.test(char) ? char : `_${char.charCodeAt(0).toString(16)}_`))
+    .join('')}`;
 }
 
 /** Projects a page's `_blocks` into editor view-models, preserving array index
@@ -219,8 +317,10 @@ function editBlocks(lect: Record<string, unknown>, lang: string, defaultLang: st
       title: EDM_BLOCK_OPTIONS.find((option) => option.value === type)?.label ?? type,
       nameName: `${prefix}@_name`,
       nameValue: attr(block, '_name'),
+      nameField: editField(`${prefix}@_name`, 'Block label', attr(block, '_name'), 'text', { placeholder: 'optional' }),
       weightName: `${prefix}@_weight`,
       weightValue: Number(block._weight) || index,
+      weightField: editField(`${prefix}@_weight`, 'Order', String(Number(block._weight) || index), 'number'),
       deleteAction: `block-delete:${index}`,
       fields,
       hasRows: !!rowSpec,
@@ -266,7 +366,6 @@ export async function handleEdmEditView(
   // Offer an event picker when the EDM has no event yet (e.g. a bare new page).
   const events = eventId ? [] : (await cms.list('event', { limit: 500 })).pages;
 
-  const valueField = (key: string) => ({ name: `.${key}|${lang}`, value: locExact(lect, key, lang), placeholder: lang !== defaultLang ? locExact(lect, key, defaultLang) : '' });
   const selfHref = isEdit ? `${ADMIN_BASE}/edm/${ctx.page.id}` : '';
 
   const title = isEdit ? `Edit ${ctx.page.name}` : 'New EDM';
@@ -287,6 +386,7 @@ export async function handleEdmEditView(
     events: events.map((event) => ({ id: event.id, name: event.name })),
     flash: ctx.flash ?? '',
     errors: ctx.errors ?? [],
+    nameField: editField('name', 'Template name', ctx.page.name, 'text', { placeholder: 'Invitation email', required: true }),
     // Attributes (sender / styling) — `@field` names.
     sender: attr(lect, 'sender'),
     reply_to: attr(lect, 'reply_to'),
@@ -298,17 +398,38 @@ export async function handleEdmEditView(
     cc_enable: attr(lect, 'cc_enable') || 'no',
     quick_confirm: attr(lect, 'quick_confirm') || 'no',
     thankyou_picture: attr(lect, 'thankyou_picture'),
+    senderFields: [
+      attrField('sender', 'Sender email', lect, 'email'),
+      attrField('reply_to', 'Reply-to', lect, 'email'),
+      attrField('bcc', 'Bcc', lect, 'text'),
+    ],
+    styleFields: [
+      attrField('text_color', 'Text color', lect, 'color', EDM_STYLE_DEFAULTS.text_color),
+      attrField('button_color', 'Button color', lect, 'color', EDM_STYLE_DEFAULTS.button_color),
+      attrField('button_text_color', 'Button text', lect, 'color', EDM_STYLE_DEFAULTS.button_text_color),
+      attrField('line_height', 'Line height', lect, 'text', EDM_STYLE_DEFAULTS.line_height),
+    ],
     // Localized content — `.field|<lang>` names.
-    subject: valueField('subject'),
-    heading: valueField('heading'),
-    body_field: valueField('body'),
-    rsvp_button: valueField('rsvp_button'),
-    rsvp_form_button: valueField('rsvp_form_button'),
-    rsvp_form_decline_button: valueField('rsvp_form_decline_button'),
-    thankyou_heading: valueField('thankyou_heading'),
-    thankyou_body: valueField('thankyou_body'),
-    decline_heading: valueField('decline_heading'),
-    decline_body: valueField('decline_body'),
+    subject: localizedField('subject', 'Subject', lect, lang, defaultLang, 'text', lang === defaultLang),
+    heading: localizedField('heading', 'Headline', lect, lang, defaultLang),
+    body_field: localizedField('body', 'Body', lect, lang, defaultLang, 'richtext/md'),
+    rsvp_button: localizedField('rsvp_button', 'RSVP button text', lect, lang, defaultLang),
+    rsvp_form_button: localizedField('rsvp_form_button', 'RSVP form button', lect, lang, defaultLang),
+    rsvp_form_decline_button: localizedField('rsvp_form_decline_button', 'RSVP form decline button', lect, lang, defaultLang),
+    thankyou_picture_field: attrField('thankyou_picture', 'Thank-you picture URL', lect, 'url'),
+    thankyou_heading: localizedField('thankyou_heading', 'Thank-you heading', lect, lang, defaultLang),
+    thankyou_body: localizedField('thankyou_body', 'Thank-you body', lect, lang, defaultLang, 'richtext/md'),
+    decline_heading: localizedField('decline_heading', 'Decline heading', lect, lang, defaultLang),
+    decline_body: localizedField('decline_body', 'Decline body', lect, lang, defaultLang, 'richtext/md'),
+    rsvpTextFields: [
+      localizedField('rsvp_button', 'RSVP button text', lect, lang, defaultLang),
+      localizedField('rsvp_form_button', 'RSVP form button', lect, lang, defaultLang),
+      localizedField('rsvp_form_decline_button', 'RSVP form decline button', lect, lang, defaultLang),
+    ],
+    responseSwitchFields: [
+      switchField('quick_confirm', 'Quick-confirm RSVP', lect),
+      switchField('cc_enable', 'CC assistants & spouse', lect),
+    ],
     // Content blocks.
     blocks: editBlocks(lect, lang, defaultLang),
     hasBlocks: Array.isArray(lect._blocks) && (lect._blocks as unknown[]).length > 0,

@@ -83,8 +83,14 @@ interface AdminCustomField {
   key: string;
   legacyKey: string;
   name: string;
+  inputName: string;
+  id: string;
   label: string;
   type: string;
+  templateName: string;
+  placeholder: string;
+  blankOption: boolean;
+  blankLabel: string;
   required: boolean;
   value: string;
   defaultValue: string;
@@ -92,6 +98,24 @@ interface AdminCustomField {
   checked: boolean;
   blockTitle: string;
   source: string;
+}
+
+interface GuestEditField {
+  name: string;
+  inputName: string;
+  id: string;
+  label: string;
+  type: string;
+  templateName: string;
+  value: string;
+  placeholder: string;
+  blankOption: boolean;
+  blankLabel: string;
+  required: boolean;
+  options: Array<{ value: string; label: string; selected: boolean }>;
+  checked: boolean;
+  defaultValue: string;
+  span: string;
 }
 
 interface ActivityItem {
@@ -448,6 +472,12 @@ async function guestFormView(
     eventId: context.eventId ?? '',
     language: options.language ?? 'mis',
     guest: values,
+    guestFields: guestEditFields(values, options.language ?? 'mis'),
+    remarkField: guestEditField('@remarks', 'Remarks', values.remarks, 'textarea', { span: 'md:col-span-2' }),
+    ticketFields: [
+      guestEditField('@qrcode', 'Ticket QR code', values.qrcode, 'text', { placeholder: 'Third-party QR code text' }),
+      guestEditField('@barcode', 'Ticket barcode', values.barcode, 'text', { placeholder: 'Third-party Code128 barcode number' }),
+    ],
     statuses: GUEST_STATUSES.map((status) => ({ value: status, selected: values.status === status })),
     adminCustomFields,
     hasAdminCustomFields: adminCustomFields.length > 0,
@@ -1649,6 +1679,74 @@ function guestValues(guest: CmsPage): Record<string, string> {
   };
 }
 
+function guestEditFields(values: Record<string, string>, language: string): GuestEditField[] {
+  return [
+    guestEditField('name', 'First name / display name', values.name, 'text', { required: true }),
+    guestEditField(`.last_name|${language}`, 'Last name', values.last_name),
+    guestEditField('@email', 'Email', values.email, 'email'),
+    guestEditField('@phone', 'Phone', values.phone, 'tel'),
+    guestEditField('@organization', 'Organisation', values.organization),
+    guestEditField('@job_title', 'Job title', values.job_title),
+    guestEditField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),
+    guestEditField('@status', 'Status', values.status, 'select', {
+      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
+    }),
+    guestEditField('@prefer_language', 'Preferred language', values.prefer_language, 'select', {
+      options: [
+        { value: '', label: 'Not set', selected: values.prefer_language === '' },
+        { value: 'en', label: 'English', selected: values.prefer_language === 'en' },
+        { value: 'zh-hant', label: '繁體中文', selected: values.prefer_language === 'zh-hant' },
+        { value: 'zh-hans', label: '简体中文', selected: values.prefer_language === 'zh-hans' },
+      ],
+    }),
+    guestEditField('@cc', 'CC email', values.cc, 'email'),
+  ];
+}
+
+function guestEditField(
+  inputName: string,
+  label: string,
+  value: string,
+  type = 'text',
+  options: Partial<Pick<GuestEditField, 'placeholder' | 'required' | 'options' | 'checked' | 'defaultValue' | 'span'>> = {},
+): GuestEditField {
+  const normalizedType = pageFieldType(type);
+  return {
+    name: inputName.replace(/^[@*.]/, '').split('|')[0],
+    inputName,
+    id: fieldId(inputName),
+    label,
+    type: normalizedType,
+    templateName: workerPageFieldTemplate(normalizedType),
+    value,
+    placeholder: options.placeholder ?? '',
+    blankOption: false,
+    blankLabel: '',
+    required: options.required ?? false,
+    options: options.options ?? [],
+    checked: options.checked ?? false,
+    defaultValue: options.defaultValue ?? '',
+    span: options.span ?? '',
+  };
+}
+
+function pageFieldType(type: string): string {
+  const normalized = type.trim().toLowerCase();
+  if (['checkbox', 'select', 'radio', 'textarea', 'email', 'tel', 'date', 'time', 'number', 'url'].includes(normalized)) return normalized;
+  return 'text';
+}
+
+function workerPageFieldTemplate(type: string): string {
+  if (['text', 'email', 'date', 'switch', 'boolean'].includes(type)) return `snippets/pagefield/${type}/basic`;
+  return '';
+}
+
+function fieldId(inputName: string): string {
+  return `field_${Array.from(inputName)
+    .map((char) => (/^[A-Za-z0-9_-]$/.test(char) ? char : `_${char.charCodeAt(0).toString(16)}_`))
+    .join('')}`;
+}
+
 function filterGuests(guests: CmsPage[], q: string, status?: GuestStatus, color = ''): CmsPage[] {
   return guests.filter((guest) => guestMatchesFilters(guest, q, status, color));
 }
@@ -1799,8 +1897,14 @@ function adminCustomFieldsForGuest(event: CmsPage | null, list: CmsPage, guest?:
         key,
         legacyKey,
         name: `@${key}`,
+        inputName: `@${key}`,
+        id: fieldId(`@${key}`),
         label,
         type,
+        templateName: workerPageFieldTemplate(type),
+        placeholder: '',
+        blankOption: type === 'select',
+        blankLabel: '',
         required: attr(input, 'required') === 'yes' || attr(input, 'required') === 'true',
         value,
         defaultValue,

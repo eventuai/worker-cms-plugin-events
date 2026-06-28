@@ -195,7 +195,11 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     return serveViewAsset(env.VIEWS, `/assets/${segments.slice(1).join('/')}`);
   }
   if (section === 'views') {
-    return serveViewAsset(env.VIEWS, `/${segments.slice(1).join('/')}`);
+    const viewPath = `/${segments.slice(1).join('/')}`;
+    if (viewPath.startsWith('/snippets/pagefield/')) {
+      return redirect(`/admin/views${viewPath}${url.search}`);
+    }
+    return serveViewAsset(env.VIEWS, viewPath);
   }
 
   let cms: CmsClient;

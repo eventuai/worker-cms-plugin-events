@@ -71,7 +71,10 @@
     var normalized = normalizePath(path);
     if (templateCache.has(normalized)) return templateCache.get(normalized);
 
-    var promise = fetch(withRevision((payload.viewBasePath || '/admin/plugins/events/views') + normalized), {
+    var basePath = normalized.indexOf('/snippets/pagefield/') === 0
+      ? (payload.cmsViewBasePath || '/admin/views')
+      : (payload.viewBasePath || '/admin/plugins/events/views');
+    var promise = fetch(withRevision(basePath + normalized), {
       credentials: 'same-origin',
       headers: { Accept: normalized.endsWith('.json') ? 'application/json' : 'text/plain' },
     }).then(function (response) {

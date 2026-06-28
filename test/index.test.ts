@@ -31,6 +31,13 @@ function views(): Fetcher {
       try {
         return new Response(await readFile(new URL(`../views${url.pathname}`, import.meta.url), 'utf8'));
       } catch {
+        if (url.pathname.startsWith('/snippets/pagefield/')) {
+          try {
+            return new Response(await readFile(new URL(`../../cms/views${url.pathname}`, import.meta.url), 'utf8'));
+          } catch {
+            // Fall through to the normal not-found response.
+          }
+        }
         return new Response('not found', { status: 404 });
       }
     },
@@ -148,6 +155,15 @@ describe('plugin contract', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/plain');
     await expect(response.text()).resolves.toContain('Name / Email');
+  });
+
+  it('redirects plugin pagefield view requests to Worker CMS views', async () => {
+    const response = await plugin.fetch(request('/__plugin/admin/views/snippets/pagefield/text/basic.liquid?r=revision', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/views/snippets/pagefield/text/basic.liquid?r=revision');
   });
 });
 
@@ -1149,6 +1165,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
           subject: { mis: 'You are invited' },
           _blocks: [
             { _type: 'paragraph', _weight: 0, subject: { mis: 'Welcome' }, body: { mis: 'See you there' } },
+            { _type: 'picture', _weight: 1, picture: '/media/pictures/invite.jpg', caption: { mis: 'Hero' } },
           ],
         }),
       },
@@ -1177,7 +1194,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(response.headers.get('x-cms-chrome')).toBe('1');
     expect(response.headers.get('x-cms-client-view')).toBe('1');
     expect(response.headers.get('x-cms-view-path')).toBe('/sections/edm-edit.liquid');
-    const payload = await response.json() as {
+    const payload = await response.clone().json() as {
       action: string;
       name: string;
       eventId: number;
@@ -1199,12 +1216,21 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     // The paragraph block is rendered with #<index> field names + a delete action.
     expect(payload.blocks[0].fields[0]).toMatchObject({ name: '#0.subject|mis', value: 'Welcome' });
     expect(payload.blocks[0].deleteAction).toBe('block-delete:0');
+    expect(payload.blocks[1].fields[0]).toMatchObject({ name: '#1@picture', value: '/media/pictures/invite.jpg' });
     // The parent event name appears in the header.
     expect(payload.eventName).toBe('Town & Country');
     // The preview pane is embedded as a same-origin iframe, scoped to the language,
     // with per-language tabs that retarget it.
     expect(payload.previewHref).toBe('/admin/plugins/events/edm/50/preview?language=mis');
     expect(payload.previewLangs.some((lang) => lang.href === '/admin/plugins/events/edm/50/preview?language=en')).toBe(true);
+
+    const html = await renderedText(response);
+    expect(html).toContain('name="@sender"');
+    expect(html).toContain('name=".subject|mis"');
+    expect(html).toContain('name="#0.subject|mis"');
+    expect(html).toContain('name="#0.body|mis"');
+    expect(html).toContain('data-picture-url type="text" name="#1@picture"');
+    expect(html).not.toContain('type="url" name="#1@picture"');
   });
 
   it('renders the bespoke guest editor with RSVP custom fields from the event', async () => {

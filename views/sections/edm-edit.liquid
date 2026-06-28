@@ -39,11 +39,8 @@
 
   {%- comment -%} ── Template name + event picker ── {%- endcomment -%}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-    <label class="block">
-      <span class="{{ cls_lbl }}">Template name</span>
-      <input type="text" name="name" value="{{ name | escape }}" required class="{{ cls_input }}" placeholder="Invitation email">
-      <span class="block text-xs text-gray-400 mt-1">Internal only — not shown to guests.</span>
-    </label>
+    {% render "render-field", field: nameField %}
+    <span class="block text-xs text-gray-400">Internal only — not shown to guests.</span>
     {% unless hasEvent %}
       <label class="block">
         <span class="{{ cls_lbl }}">Event</span>
@@ -59,22 +56,18 @@
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
     <h2 class="text-lg font-bold text-gray-900">Sender &amp; styling</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <label class="block"><span class="{{ cls_lbl }}">Sender email</span>
-        <input type="text" name="@sender" value="{{ sender | escape }}" class="{{ cls_input }}" placeholder="events@example.com"></label>
-      <label class="block"><span class="{{ cls_lbl }}">Reply-to</span>
-        <input type="email" name="@reply_to" value="{{ reply_to | escape }}" class="{{ cls_input }}" placeholder="reply@example.com"></label>
+      {% for field in senderFields %}
+        <div class="{{ field.span | escape }}">
+          {% render "render-field", field: field %}
+        </div>
+      {% endfor %}
     </div>
-    <label class="block"><span class="{{ cls_lbl }}">Bcc</span>
-      <input type="text" name="@bcc" value="{{ bcc | escape }}" class="{{ cls_input }}" placeholder="archive@example.com, …"></label>
     <div class="grid grid-cols-2 gap-4">
-      <label class="block"><span class="{{ cls_lbl }}">Text color</span>
-        <input type="color" name="@text_color" value="{{ text_color | escape }}" class="block w-full h-8 rounded-lg border border-gray-300"></label>
-      <label class="block"><span class="{{ cls_lbl }}">Button color</span>
-        <input type="color" name="@button_color" value="{{ button_color | escape }}" class="block w-full h-8 rounded-lg border border-gray-300"></label>
-      <label class="block"><span class="{{ cls_lbl }}">Button text</span>
-        <input type="color" name="@button_text_color" value="{{ button_text_color | escape }}" class="block w-full h-8 rounded-lg border border-gray-300"></label>
-      <label class="block"><span class="{{ cls_lbl }}">Line height</span>
-        <input type="text" name="@line_height" value="{{ line_height | escape }}" class="{{ cls_input }}"></label>
+      {% for field in styleFields %}
+        <div class="{{ field.span | escape }}">
+          {% render "render-field", field: field %}
+        </div>
+      {% endfor %}
     </div>
   </div>
 
@@ -92,12 +85,9 @@
         </select>
       </label>
     </div>
-    <label class="block"><span class="{{ cls_lbl }}">Subject</span>
-      <input type="text" name="{{ subject.name }}" value="{{ subject.value | escape }}" placeholder="{{ subject.placeholder | escape }}" class="{{ cls_input }}"{% if language == "mis" %} required{% endif %}></label>
-    <label class="block"><span class="{{ cls_lbl }}">Headline</span>
-      <input type="text" name="{{ heading.name }}" value="{{ heading.value | escape }}" placeholder="{{ heading.placeholder | escape }}" class="{{ cls_input }}"></label>
-    <label class="block"><span class="flex items-center justify-between gap-2 mb-1"><span class="block text-sm font-medium text-gray-700">Body</span><span class="text-xs text-gray-400">Markdown / HTML</span></span>
-      <textarea name="{{ body_field.name }}" rows="10" placeholder="{{ body_field.placeholder | escape }}" class="{{ cls_area }}">{{ body_field.value | escape }}</textarea></label>
+    {% render "render-field", field: subject %}
+    {% render "render-field", field: heading %}
+    {% render "render-field", field: body_field %}
   </div>
 
   {%- comment -%} ── Content blocks ── {%- endcomment -%}
@@ -127,19 +117,11 @@
               </summary>
               <div class="px-4 py-4 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <label class="block"><span class="{{ cls_lbl }}">Block label</span>
-                    <input type="text" name="{{ block.nameName }}" value="{{ block.nameValue | escape }}" class="{{ cls_input }}" placeholder="optional"></label>
-                  <label class="block"><span class="{{ cls_lbl }}">Order</span>
-                    <input type="number" name="{{ block.weightName }}" value="{{ block.weightValue }}" class="{{ cls_input }}"></label>
+                  {% render "render-field", field: block.nameField %}
+                  {% render "render-field", field: block.weightField %}
                 </div>
                 {% for field in block.fields %}
-                  {% if field.control == "textarea" %}
-                    <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
-                      <textarea name="{{ field.name }}" rows="4" placeholder="{{ field.placeholder | escape }}" class="{{ cls_area }}">{{ field.value | escape }}</textarea></label>
-                  {% else %}
-                    <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
-                      <input type="{% if field.control == 'number' %}number{% else %}text{% endif %}" name="{{ field.name }}" value="{{ field.value | escape }}" placeholder="{{ field.placeholder | escape }}" class="{{ cls_input }}"></label>
-                  {% endif %}
+                  {% render "render-field", field: field %}
                 {% endfor %}
 
                 {% if block.hasRows %}
@@ -155,13 +137,7 @@
                           <button form="main-form" type="submit" name="action" value="{{ row.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">Remove</button>
                         </div>
                         {% for field in row.fields %}
-                          {% if field.control == "textarea" %}
-                            <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
-                              <textarea name="{{ field.name }}" rows="3" placeholder="{{ field.placeholder | escape }}" class="{{ cls_area }}">{{ field.value | escape }}</textarea></label>
-                          {% else %}
-                            <label class="block"><span class="{{ cls_lbl }}">{{ field.label | escape }}</span>
-                              <input type="text" name="{{ field.name }}" value="{{ field.value | escape }}" placeholder="{{ field.placeholder | escape }}" class="{{ cls_input }}"></label>
-                          {% endif %}
+                          {% render "render-field", field: field %}
                         {% endfor %}
                       </div>
                     {% endfor %}
@@ -182,45 +158,30 @@
     <summary class="text-lg font-bold text-gray-900 cursor-pointer">RSVP &amp; response pages</summary>
     <div class="space-y-4">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <label class="block"><span class="{{ cls_lbl }}">RSVP button text</span>
-          <input type="text" name="{{ rsvp_button.name }}" value="{{ rsvp_button.value | escape }}" placeholder="{{ rsvp_button.placeholder | escape }}" class="{{ cls_input }}"></label>
-        <label class="block"><span class="{{ cls_lbl }}">RSVP form button</span>
-          <input type="text" name="{{ rsvp_form_button.name }}" value="{{ rsvp_form_button.value | escape }}" placeholder="{{ rsvp_form_button.placeholder | escape }}" class="{{ cls_input }}"></label>
+        {% for field in rsvpTextFields %}
+          <div class="{{ field.span | escape }}">
+            {% render "render-field", field: field %}
+          </div>
+        {% endfor %}
       </div>
-      <label class="block"><span class="{{ cls_lbl }}">RSVP form decline button</span>
-        <input type="text" name="{{ rsvp_form_decline_button.name }}" value="{{ rsvp_form_decline_button.value | escape }}" placeholder="{{ rsvp_form_decline_button.placeholder | escape }}" class="{{ cls_input }}"></label>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-200" style="padding-top:1rem">
-        <fieldset>
-          <span class="{{ cls_lbl }}">Quick-confirm RSVP</span>
-          <div class="flex items-center gap-4">
-            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@quick_confirm" value="yes"{% if quick_confirm == "yes" %} checked{% endif %} class="h-4 w-4"> Yes</label>
-            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@quick_confirm" value="no"{% unless quick_confirm == "yes" %} checked{% endunless %} class="h-4 w-4"> No</label>
+        {% for field in responseSwitchFields %}
+          <div class="{{ field.span | escape }}">
+            {% render "render-field", field: field %}
           </div>
-        </fieldset>
-        <fieldset>
-          <span class="{{ cls_lbl }}">CC assistants &amp; spouse</span>
-          <div class="flex items-center gap-4">
-            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@cc_enable" value="yes"{% if cc_enable == "yes" %} checked{% endif %} class="h-4 w-4"> Yes</label>
-            <label class="inline-flex items-center gap-1 text-sm text-gray-700"><input type="radio" name="@cc_enable" value="no"{% unless cc_enable == "yes" %} checked{% endunless %} class="h-4 w-4"> No</label>
-          </div>
-        </fieldset>
+        {% endfor %}
       </div>
 
       <div class="border-t border-gray-200 space-y-4" style="padding-top:1rem">
-        <label class="block"><span class="{{ cls_lbl }}">Thank-you picture URL</span>
-          <input type="text" name="@thankyou_picture" value="{{ thankyou_picture | escape }}" class="{{ cls_input }}" placeholder="https://…"></label>
-        <label class="block"><span class="{{ cls_lbl }}">Thank-you heading</span>
-          <input type="text" name="{{ thankyou_heading.name }}" value="{{ thankyou_heading.value | escape }}" placeholder="{{ thankyou_heading.placeholder | escape }}" class="{{ cls_input }}"></label>
-        <label class="block"><span class="{{ cls_lbl }}">Thank-you body</span>
-          <textarea name="{{ thankyou_body.name }}" rows="4" placeholder="{{ thankyou_body.placeholder | escape }}" class="{{ cls_area }}">{{ thankyou_body.value | escape }}</textarea></label>
+        {% render "render-field", field: thankyou_picture_field %}
+        {% render "render-field", field: thankyou_heading %}
+        {% render "render-field", field: thankyou_body %}
       </div>
 
       <div class="border-t border-gray-200 space-y-4" style="padding-top:1rem">
-        <label class="block"><span class="{{ cls_lbl }}">Decline heading</span>
-          <input type="text" name="{{ decline_heading.name }}" value="{{ decline_heading.value | escape }}" placeholder="{{ decline_heading.placeholder | escape }}" class="{{ cls_input }}"></label>
-        <label class="block"><span class="{{ cls_lbl }}">Decline body</span>
-          <textarea name="{{ decline_body.name }}" rows="4" placeholder="{{ decline_body.placeholder | escape }}" class="{{ cls_area }}">{{ decline_body.value | escape }}</textarea></label>
+        {% render "render-field", field: decline_heading %}
+        {% render "render-field", field: decline_body %}
       </div>
     </div>
   </details>

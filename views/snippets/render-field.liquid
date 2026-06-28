@@ -1,0 +1,5 @@
+{% if field.templateName != blank %}
+  {% render field.templateName, field: field %}
+{% else %}
+  {% render "editor-field", field: field %}
+{% endif %}
