@@ -60,7 +60,12 @@ export type CmsPage = BaseCmsPage & {
 
 export class CmsClient extends BaseCmsClient {
   constructor(env: CmsClientEnv) {
-    super(env, PLUGIN_ID);
+    super({
+      cmsUrl: env.CMS_URL,
+      pluginSecret: env.PLUGIN_SECRET,
+      pluginId: PLUGIN_ID,
+      fetcher: (input, init) => globalThis.fetch.call(globalThis, input, init),
+    });
   }
 }
 

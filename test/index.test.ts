@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkins } from '../src/cms';
+import { CmsClient, checkins } from '../src/cms';
 import { signPayload } from '../src/crypto';
 import worker from '../src/index';
 import { renderView } from '../src/templates/liquid';
@@ -83,6 +83,20 @@ afterEach(() => {
 });
 
 describe('plugin contract', () => {
+  it('binds Worker fetch when the CMS bridge calls F1', async () => {
+    let fetchThis: unknown;
+    vi.stubGlobal('fetch', function (this: unknown, input: RequestInfo | URL): Promise<Response> {
+      fetchThis = this;
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      expect(url.href).toBe('https://cms.test/__cms/pages?page_type=event&limit=1');
+      return Promise.resolve(Response.json({ pages: [], total: 0 }));
+    } as typeof fetch);
+
+    const cms = new CmsClient({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' });
+    await expect(cms.list('event', { limit: 1 })).resolves.toEqual({ pages: [], total: 0 });
+    expect(fetchThis).toBe(globalThis);
+  });
+
   it('exposes the Events Suite manifest without a secret', async () => {
     const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
 
