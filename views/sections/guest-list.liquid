@@ -5,12 +5,9 @@
     <p class="mt-1 text-sm text-gray-500">{{ total }} guest{% if total != 1 %}s{% endif %}</p>
   </div>
   <div class="flex flex-wrap gap-2">
-    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="New guest" aria-label="New guest" href="{{ newGuestHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New guest</span></a>
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import CSV" aria-label="Import CSV" href="{{ importHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import CSV</span></a>
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export CSV" aria-label="Export CSV" href="{{ exportHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export CSV</span></a>
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit guest list" aria-label="Edit guest list" href="{{ editHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg><span class="hidden lg:inline">Edit guest list</span></a>
-    <form method="post" action="{{ updateFromContactsAction | escape }}" data-confirm="Refresh every linked guest from its contact record?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Update from contacts" aria-label="Update from contacts"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Update from contacts</span></button></form>
-    <form method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest list and its guests?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="Delete list" aria-label="Delete list"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">Delete list</span></button></form>
   </div>
 </div>
 
@@ -56,7 +53,7 @@
   {% if hasEdm %}<p class="mt-4 text-xs text-gray-400">Auto-send skips paused guests and anyone already sent this EDM. “Good” vs “Risky” is a deliverability heuristic on the address; re-send individually below.</p>{% endif %}
 </div>
 
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 flex items-center justify-between">
   <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref | escape }}">
     {% if selectedCustomFieldKey != blank %}<input type="hidden" name="cf" value="{{ selectedCustomFieldKey | escape }}">{% endif %}
     <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q | escape }}" placeholder="Search name, email, phone or guest ID">
@@ -74,6 +71,13 @@
     </button>
     {% if q != blank or selectedStatus != blank or selectedColor != blank %}<a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref | escape }}">Clear</a>{% endif %}
   </form>
+
+
+  <div class="flex gap-3">
+    <form method="post" action="{{ updateFromContactsAction | escape }}" data-confirm="Refresh every linked guest from its contact record?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Update from contacts" aria-label="Update from contacts"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Update from contacts</span></button></form>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="New guest" aria-label="New guest" href="{{ newGuestHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New guest</span></a>
+  </div>
+
 </div>
 
 {% render "guest-table",
@@ -90,3 +94,6 @@
   selectedCustomFieldKey: selectedCustomFieldKey,
   emptyMessage: "No guests match this list."
 %}
+<div class="mt-4">
+    <form method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest list and its guests?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="Delete list" aria-label="Delete list"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">Delete list</span></button></form>
+</div>
