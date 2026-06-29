@@ -32,7 +32,7 @@ function views(): Fetcher {
       try {
         return new Response(await readFile(fileURLToPath(new URL(`../views${url.pathname}`, import.meta.url).href), 'utf8'));
       } catch {
-        if (url.pathname.startsWith('/snippets/pagefield/')) {
+        if (url.pathname.startsWith('/snippets/pagefield/') || url.pathname === '/snippets/color-tag-picker.liquid') {
           try {
             return new Response(await readFile(fileURLToPath(new URL(`../../cms/views${url.pathname}`, import.meta.url).href), 'utf8'));
           } catch {
@@ -181,6 +181,21 @@ describe('plugin contract', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/views/snippets/pagefield/text/basic.liquid?r=revision');
     expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('redirects the client-rendered color tag picker aliases to Worker CMS views', async () => {
+    for (const path of [
+      '/__plugin/admin/views/color-tag-picker.liquid?r=revision',
+      '/__plugin/admin/views/sections/color-tag-picker.liquid?r=revision',
+    ]) {
+      const response = await plugin.fetch(request(path, {
+        headers: { 'x-plugin-secret': 'shared-secret' },
+      }), env({ PLUGIN_SECRET: 'shared-secret' }));
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/admin/views/snippets/color-tag-picker.liquid?r=revision');
+      expect(response.headers.get('cache-control')).toBe('no-store');
+    }
   });
 });
 
@@ -593,14 +608,68 @@ describe('events admin', () => {
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('<option value="orange"');
     expect(html).toContain('<option value="purple"');
+    expect(html).toContain('<option value="gray"');
     expect(html).not.toContain('aria-label="Search guests"');
     expect(html).toContain('data-table-filter-form');
     expect(html).toContain('data-table-filter="guests"');
     expect(html).toContain('data-filter-search="55 Ada  ada@example.com +852 5555 0000"');
     expect(html).toContain('data-filter-status="confirmed"');
     expect(html).toContain('data-filter-color="blue"');
+    expect(html).toContain('data-color-tag-picker');
+    expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/55/color"');
+    expect(html).toContain('data-color-tag-color="blue"');
     expect(html).toContain('data-table-filter-count="guests">1</span>');
     expect(html).toContain('data-table-filter-count-label="guests" data-singular="guest" data-plural="guests">guest</span>');
+  });
+
+  it('updates and clears a guest color tag through the RSVP admin route', async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/55' && (!init || init.method === 'GET')) {
+        return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: { _pointers: { mail_list: '8' }, color_tag: 'blue' } } });
+      }
+      if (url.pathname === '/__cms/pages/55' && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        updates.push(body);
+        return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: body.lect } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const setResponse = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/color', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-plugin-secret': 'shared-secret',
+        'x-requested-with': 'fetch',
+      },
+      body: new URLSearchParams({ color: 'gray' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(setResponse.status).toBe(200);
+    await expect(setResponse.json()).resolves.toMatchObject({ status: 'success', payload: { id: 55, color: 'gray' } });
+    expect(updates[0]).toEqual({ lect: { color_tag: 'gray' } });
+
+    const clearResponse = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/color', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-plugin-secret': 'shared-secret',
+        'x-requested-with': 'fetch',
+      },
+      body: new URLSearchParams({ color: '' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(clearResponse.status).toBe(200);
+    await expect(clearResponse.json()).resolves.toMatchObject({ status: 'success', payload: { id: 55, color: '' } });
+    expect(updates[1]).toEqual({ lect: { color_tag: '' } });
   });
 
   it('renders the selected RSVP custom field column on a guest list', async () => {
@@ -1693,6 +1762,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('<option value="yellow"');
     expect(html).toContain('<option value="purple"');
+    expect(html).toContain('<option value="gray"');
     expect(html).toContain('data-table-filter-form');
     expect(html).toContain('data-table-filter="guests"');
     expect(html).toContain('data-filter-search="1 Ada  ada@x.io +852 5555 0000"');
@@ -1704,6 +1774,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<option value="rsvp_custom_diet" selected>Diet</option>');
     expect(html).toContain('vegan');
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/status"');
+    expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/color"');
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/checkin"');
     expect(html).toContain('name="return_to" value="/admin/plugins/events/events/7/all-guests?q=5555&amp;status=confirmed&amp;color=blue&amp;cf=rsvp-custom-diet"');
     expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/1/qrcode"');

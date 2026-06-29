@@ -158,7 +158,7 @@ function placeholderQrSvg(views: Fetcher, data: string): Promise<string> {
 }
 
 const ADMIN_BASE = `/admin/plugins/${PLUGIN_ID}`;
-const COLOR_TAGS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const;
+const COLOR_TAGS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'] as const;
 
 /**
  * Edit link into the CMS page editor that carries a `return_to` so the editor's
@@ -193,6 +193,13 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
   }
   if (section === 'views') {
     const viewPath = `/${segments.slice(1).join('/')}`;
+    if (
+      viewPath === '/color-tag-picker.liquid' ||
+      viewPath === '/snippets/color-tag-picker.liquid' ||
+      viewPath === '/sections/color-tag-picker.liquid'
+    ) {
+      return redirect(`/admin/views/snippets/color-tag-picker.liquid${url.search}`);
+    }
     if (viewPath.startsWith('/snippets/pagefield/')) {
       return redirect(`/admin/views${viewPath}${url.search}`);
     }

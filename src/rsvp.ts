@@ -35,7 +35,7 @@ const GUEST_STATUSES = ['to be invited', 'onhold', 'invited', 'confirmed', 'decl
 
 type GuestStatus = typeof GUEST_STATUSES[number];
 
-const COLOR_TAGS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const;
+const COLOR_TAGS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'] as const;
 
 /**
  * Guests per CMS `/pages/batch` call. The host creates each page through the
@@ -189,6 +189,7 @@ export async function handleRsvpAdmin(
     if (!guestId) return new Response('not found', { status: 404 });
     if (segments[3] === 'delete' && request.method === 'POST') return deleteGuest(cms, listId, guestId);
     if (segments[3] === 'status' && request.method === 'POST') return updateGuestStatus(request, cms, listId, guestId);
+    if (segments[3] === 'color' && request.method === 'POST') return updateGuestColor(request, cms, listId, guestId);
     if (segments[3] === 'checkin' && request.method === 'POST') return checkInGuest(request, cms, listId, guestId);
     if (segments[3] === 'move' && request.method === 'POST') return moveGuest(request, cms, listId, guestId);
     if (segments[3] === 'update-from-contact' && request.method === 'POST') return updateGuestFromContact(cms, listId, guestId);
@@ -665,6 +666,26 @@ async function updateGuestStatus(request: Request, cms: CmsClient, listId: numbe
       }],
     },
   });
+  return redirect(returnTo);
+}
+
+async function updateGuestColor(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
+  const guest = await cms.get(guestId);
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const returnTo = safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`;
+  const color = normalizeAssignableColor(formText(form, 'color'));
+
+  if (color === null) {
+    return wantsJsonResponse(request)
+      ? Response.json({ status: 'error', action: 'assign_color', error: 'invalid color' }, { status: 400 })
+      : redirect(returnTo);
+  }
+
+  await cms.update(guestId, { lect: { color_tag: color } });
+  if (wantsJsonResponse(request)) {
+    return Response.json({ status: 'success', action: 'assign_color', payload: { id: guestId, color } });
+  }
   return redirect(returnTo);
 }
 
@@ -1636,6 +1657,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     editHref: guestEditHref(guest.id, listId),
     qrHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode`,
     statusAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/status`,
+    colorAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/color`,
     statusClass: statusClass(values.status),
     statusColor: statusColor(values.status),
     searchText: [String(guest.id), values.name, values.last_name, values.email, values.phone].join(' '),
@@ -1779,11 +1801,23 @@ function guestMatchesColor(guest: CmsPage, color: string): boolean {
 }
 
 function normalizeColor(value: string | null): string {
-  return (value ?? '').trim();
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (normalized === 'none') return normalized;
+  return isColorTag(normalized) ? normalized : '';
 }
 
 function guestColorTag(guest: CmsPage): string {
   return attr(guest.lect, 'color_tag').trim();
+}
+
+function normalizeAssignableColor(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return '';
+  return isColorTag(normalized) ? normalized : null;
+}
+
+function isColorTag(value: string): boolean {
+  return (COLOR_TAGS as readonly string[]).includes(value);
 }
 
 function colorTagOptions(selectedColor: string): Array<{ value: string; label: string; selected: boolean }> {
@@ -2130,6 +2164,11 @@ function nativeCustomGuestFields(form: FormData): Record<string, string> {
 
 function safeAdminReturn(value: string): string {
   return value.startsWith('/admin') ? value : '';
+}
+
+function wantsJsonResponse(request: Request): boolean {
+  return request.headers.get('Accept')?.includes('application/json') === true
+    || request.headers.get('X-Requested-With') === 'fetch';
 }
 
 function chunks<T>(values: T[], size: number): T[][] {
