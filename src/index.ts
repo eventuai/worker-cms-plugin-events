@@ -65,7 +65,7 @@ interface PluginEnv extends EdmEnv {
 }
 
 export default {
-  async fetch(request: Request, env: PluginEnv): Promise<Response> {
+  async fetch(request: Request, env: PluginEnv, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -114,7 +114,7 @@ export default {
     }
 
     if (path.startsWith('/__plugin/admin')) {
-      return handleAdmin(request, env, url);
+      return handleAdmin(request, env, url, ctx);
     }
 
     // ── Public guest-facing routes (own domain) ────────────────────────────
@@ -183,9 +183,23 @@ function wantsJson(url: URL): boolean {
   return format === 'json' || (url.searchParams.has('json') && json !== '0' && json !== 'false');
 }
 
+function withFlash(path: string, message: string): string {
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}flash=${encodeURIComponent(message)}`;
+}
+
+function runBackground(ctx: ExecutionContext | undefined, label: string, task: () => Promise<unknown>): Promise<void> | void {
+  const promise = Promise.resolve().then(task);
+  if (ctx) {
+    ctx.waitUntil(promise.catch((error) => console.error(`[events-suite] ${label} failed`, error)));
+    return;
+  }
+  return promise.then(() => undefined);
+}
+
 // ── Admin router ──────────────────────────────────────────────────────────────
 
-async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<Response> {
+async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: ExecutionContext): Promise<Response> {
   const rest = url.pathname.replace(/^\/__plugin\/admin\/?/, '');
   const segments = rest.split('/').filter(Boolean);
   const section = segments[0] || 'events';
@@ -237,11 +251,11 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
       return await adhocCheckinForm(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'duplicate') {
-      if (request.method === 'POST') return await duplicateEvent(request, cms, eventId);
+      if (request.method === 'POST') return await duplicateEvent(request, cms, eventId, ctx);
       return await duplicateEventForm(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'delete') {
-      if (request.method === 'POST') return await deleteEvent(cms, eventId);
+      if (request.method === 'POST') return await deleteEvent(request, cms, eventId, ctx);
       return await deleteEventForm(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'labels') return await handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url, jsonOnly);
@@ -257,7 +271,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     if (eventId && sub === 'lists') return await eventGuestLists(cms, env.VIEWS, eventId, jsonOnly);
     if (eventId && sub === 'all-guests') return await flatAllGuests(cms, env.VIEWS, eventId, url, jsonOnly);
     if (eventId) return await eventDashboard(cms, env.VIEWS, eventId, url, jsonOnly);
-    return await eventsList(cms, env.VIEWS, jsonOnly);
+    return await eventsList(cms, env.VIEWS, url, jsonOnly);
   } catch (error) {
     if (error instanceof CmsApiError) {
       const target = error.method && error.path ? ` ${error.method} ${error.path}` : '';
@@ -340,9 +354,10 @@ function rsvpStatusCounts(summary: GuestListSummary): StatusCount[] {
 
 // ── Events section views ──────────────────────────────────────────────────────
 
-async function eventsList(cms: CmsClient, views: Fetcher, jsonOnly = false): Promise<Response> {
+async function eventsList(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false): Promise<Response> {
   const { pages } = await cms.list('event', { limit: 200 });
   return adminView(views, 'Events', 'events', {
+    flash: url.searchParams.get('flash') ?? '',
     events: pages.map((event) => ({
       name: event.name,
       // `start` and `timezone` are native CMS page columns (the F1 API returns
@@ -378,7 +393,7 @@ async function duplicateEventForm(cms: CmsClient, views: Fetcher, eventId: numbe
   }, jsonOnly);
 }
 
-async function duplicateEvent(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+async function duplicateEvent(request: Request, cms: CmsClient, eventId: number, ctx?: ExecutionContext): Promise<Response> {
   const form = await request.formData();
   const scope: DuplicateScope = DUPLICATE_SCOPES.includes(form.get('scope') as DuplicateScope)
     ? (form.get('scope') as DuplicateScope)
@@ -401,41 +416,57 @@ async function duplicateEvent(request: Request, cms: CmsClient, eventId: number)
     lect: { ...event.lect },
   });
 
-  if (scope === 'lists' || scope === 'guests') {
-    // Skip the auto-managed adhoc list — the copy grows its own on first view.
-    const lists = (await listByEvent(cms, 'mail_list', eventId)).filter((list) => !isAdhocList(list));
-    for (const list of lists) {
-      // Re-point the copied list at the new event and drop its EDM assignment
-      // (that EDM belongs to the source event and is not duplicated).
-      const newList = await cms.create({
-        page_type: 'mail_list',
-        name: list.name,
-        weight: list.weight,
-        lect: { ...list.lect, _pointers: { event: String(copy.id) } },
-      });
-      if (scope === 'guests') {
-        // Clone the source list's guests server-side (they are its children via
-        // page_id) as "fresh invites": identity/contact carry over, but status
-        // resets and the occurrence-specific checkin/response blocks drop. Done
-        // in the CMS Worker so a large list doesn't stream every guest out and
-        // back — which is what risked a timeout / subrequest exhaustion.
-        await cms.duplicateChildren({
-          // Guests reference their list by the `mail_list` lect pointer (the
-          // canonical link), not by parent page, so select on the pointer.
-          source: { pointerKey: 'mail_list', pointerValue: String(list.id) },
-          sourcePageType: 'guest',
-          targetPageId: newList.id,
-          lect: {
-            status: 'to be invited',
-            _pointers: { event: String(copy.id), mail_list: String(newList.id) },
-          },
-          dropLect: ['checkin', 'response'],
-        });
-      }
-    }
+  if (scope === 'event') {
+    return redirect(withFlash(`${ADMIN_BASE}/events/${copy.id}`, 'Event duplicated.'));
   }
 
-  return redirect(`${ADMIN_BASE}/events/${copy.id}`);
+  if (request.headers.get('x-cms-background-job') === '1') {
+    await duplicateEventRelations(cms, eventId, copy.id, scope);
+  } else {
+    const pending = runBackground(ctx, `duplicate event ${eventId}`, () => duplicateEventRelations(cms, eventId, copy.id, scope));
+    if (pending) await pending;
+  }
+
+  const message = scope === 'guests'
+    ? 'Event duplicated. Guest lists and guests are copying in the background.'
+    : 'Event duplicated. Guest lists are copying in the background.';
+  return redirect(withFlash(`${ADMIN_BASE}/events/${copy.id}`, message));
+}
+
+async function duplicateEventRelations(cms: CmsClient, eventId: number, copyId: number, scope: DuplicateScope): Promise<void> {
+  if (scope === 'event') return;
+
+  // Skip the auto-managed adhoc list — the copy grows its own on first view.
+  const lists = (await listByEvent(cms, 'mail_list', eventId)).filter((list) => !isAdhocList(list));
+  for (const list of lists) {
+    // Re-point the copied list at the new event and drop its EDM assignment
+    // (that EDM belongs to the source event and is not duplicated).
+    const newList = await cms.create({
+      page_type: 'mail_list',
+      name: list.name,
+      weight: list.weight,
+      lect: { ...list.lect, _pointers: { event: String(copyId) } },
+    });
+    if (scope === 'guests') {
+      // Clone the source list's guests server-side (they are its children via
+      // page_id) as "fresh invites": identity/contact carry over, but status
+      // resets and the occurrence-specific checkin/response blocks drop. Done
+      // in the CMS Worker so a large list doesn't stream every guest out and
+      // back — which is what risked a timeout / subrequest exhaustion.
+      await cms.duplicateChildren({
+        // Guests reference their list by the `mail_list` lect pointer (the
+        // canonical link), not by parent page, so select on the pointer.
+        source: { pointerKey: 'mail_list', pointerValue: String(list.id) },
+        sourcePageType: 'guest',
+        targetPageId: newList.id,
+        lect: {
+          status: 'to be invited',
+          _pointers: { event: String(copyId), mail_list: String(newList.id) },
+        },
+        dropLect: ['checkin', 'response'],
+      });
+    }
+  }
 }
 
 // ── Event deletion ────────────────────────────────────────────────────────────
@@ -459,10 +490,21 @@ async function deleteEventForm(cms: CmsClient, views: Fetcher, eventId: number, 
   }, jsonOnly);
 }
 
-async function deleteEvent(cms: CmsClient, eventId: number): Promise<Response> {
+async function deleteEvent(request: Request, cms: CmsClient, eventId: number, ctx?: ExecutionContext): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
+  if (request.headers.get('x-cms-background-job') === '1') {
+    await deleteEventCascade(cms, eventId);
+  } else {
+    const pending = runBackground(ctx, `delete event ${eventId}`, () => deleteEventCascade(cms, eventId));
+    if (pending) await pending;
+  }
+
+  return redirect(withFlash(`${ADMIN_BASE}/events`, 'Event deletion started. It may take a moment to finish.'));
+}
+
+async function deleteEventCascade(cms: CmsClient, eventId: number): Promise<void> {
   // Guest lists and EDMs group under the event by the `event` pointer — they are
   // not children of the event page, so deleting it would orphan them rather than
   // cascade. Remove them explicitly. (The Adhoc list is included here; the
@@ -486,8 +528,6 @@ async function deleteEvent(cms: CmsClient, eventId: number): Promise<Response> {
   // id-batch is fine.
   await cms.batchRemove(edms.map((edm) => edm.id));
   await cms.remove(eventId);
-
-  return redirect(`${ADMIN_BASE}/events`);
 }
 
 const RESPONSES_PER_PAGE = 25;
@@ -527,6 +567,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
   const orderedLists = [...guestLists].sort(compareByWeightThenName);
 
   return adminView(views, event.name, 'event-dashboard', {
+    flash: url.searchParams.get('flash') ?? '',
     eventName: event.name,
     eventsHref: `${ADMIN_BASE}/events`,
     adhocCheckinHref: `${ADMIN_BASE}/events/${eventId}/adhoc-checkin`,

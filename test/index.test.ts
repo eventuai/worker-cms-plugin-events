@@ -23,7 +23,10 @@ interface SignedQr {
   url: string;
 }
 
-const plugin = worker as { fetch(request: Request, env: PluginEnv): Promise<Response> };
+const plugin = worker as {
+  fetch(request: Request, env: PluginEnv, ctx?: ExecutionContext): Promise<Response>;
+  queue(batch: MessageBatch<unknown>, env: PluginEnv): Promise<void>;
+};
 
 function views(): Fetcher {
   return {
@@ -1001,7 +1004,7 @@ describe('event duplication', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/99');
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/99?flash=Event%20duplicated.');
     // Only the event page is created (no lists/guests), and its native date
     // columns plus the full lect ride along.
     expect(posts).toHaveLength(1);
@@ -1047,7 +1050,7 @@ describe('event duplication', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/99');
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/99?flash=Event%20duplicated.%20Guest%20lists%20and%20guests%20are%20copying%20in%20the%20background.');
 
     const eventCopy = posts.find((p) => p.page_type === 'event');
     const listCopy = posts.find((p) => p.page_type === 'mail_list');
@@ -1075,6 +1078,38 @@ describe('event duplication', () => {
       drop_lect: ['checkin', 'response'],
     });
     expect('source_page_id' in duplicateCalls[0]).toBe(false);
+  });
+
+  it('continues guest-list duplication in waitUntil when Worker context is available', async () => {
+    const waits: Promise<unknown>[] = [];
+    const ctx = {
+      waitUntil: vi.fn((promise: Promise<unknown>) => waits.push(promise)),
+    } as unknown as ExecutionContext;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', page_id: null, lect: { _type: 'event' } } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        return Response.json({ page: { id: 99 } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/duplicate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ scope: 'lists' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }), ctx);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/99?flash=Event%20duplicated.%20Guest%20lists%20are%20copying%20in%20the%20background.');
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+    await Promise.all(waits);
   });
 });
 
@@ -1149,7 +1184,7 @@ describe('event deletion', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events');
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20started.%20It%20may%20take%20a%20moment%20to%20finish.');
     // Each list's guests are trashed by a server-side delete call selecting on the
     // canonical mail_list pointer (one per list), not by parent page.
     expect(deleteChildrenCalls).toEqual([
@@ -1160,6 +1195,37 @@ describe('event deletion', () => {
     expect(batchRemoved).toContainEqual([40]);
     // Both lists and the event page itself are removed; the event goes last.
     expect(removed).toEqual([8, 9, 7]);
+  });
+
+  it('continues event deletion in waitUntil when Worker context is available', async () => {
+    const waits: Promise<unknown>[] = [];
+    const ctx = {
+      waitUntil: vi.fn((promise: Promise<unknown>) => waits.push(promise)),
+    } as unknown as ExecutionContext;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return Response.json({ ok: true });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }), ctx);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20started.%20It%20may%20take%20a%20moment%20to%20finish.');
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+    await Promise.all(waits);
   });
 });
 
