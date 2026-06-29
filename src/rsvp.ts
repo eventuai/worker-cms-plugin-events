@@ -1705,16 +1705,7 @@ function guestValues(guest: CmsPage): Record<string, string> {
 
 function guestEditFields(values: Record<string, string>, language: string): GuestEditField[] {
   return [
-    guestEditField('name', 'First name / display name', values.name, 'text', { required: true }),
-    guestEditField(`.last_name|${language}`, 'Last name', values.last_name),
-    guestEditField('@email', 'Email', values.email, 'email'),
-    guestEditField('@phone', 'Phone', values.phone, 'tel'),
-    guestEditField('@organization', 'Organisation', values.organization),
-    guestEditField('@job_title', 'Job title', values.job_title),
-    guestEditField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),
-    guestEditField('@status', 'Status', values.status, 'select', {
-      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
-    }),
+    guestEditField('name', 'display name', values.name, 'text', { required: true }),
     guestEditField('@prefer_language', 'Preferred language', values.prefer_language, 'select', {
       options: [
         { value: '', label: 'Not set', selected: values.prefer_language === '' },
@@ -1723,6 +1714,18 @@ function guestEditFields(values: Record<string, string>, language: string): Gues
         { value: 'zh-hans', label: '简体中文', selected: values.prefer_language === 'zh-hans' },
       ],
     }),
+    guestEditField(`.first_name|${language}`, 'First name', values.first_name),
+    guestEditField(`.last_name|${language}`, 'Last name', values.last_name),
+    guestEditField('@organization', 'Organisation', values.organization),
+    guestEditField('@job_title', 'Job title', values.job_title),
+    guestEditField('@email', 'Email', values.email, 'email'),
+    guestEditField('@phone', 'Phone', values.phone, 'tel'),
+
+    guestEditField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),
+    guestEditField('@status', 'Status', values.status, 'select', {
+      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
+    }),
+
     guestEditField('@cc', 'CC email', values.cc, 'email'),
   ];
 }
