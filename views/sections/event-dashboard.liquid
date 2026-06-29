@@ -134,13 +134,13 @@
     {% if responsesTotal > 0 %}<span class="text-sm text-gray-500">{{ responsesTotal }} responses</span>{% endif %}
   </div>
   <div class="overflow-x-auto w-full">
-  <table class="w-full min-w-[560px] text-left relative">
+  <table class="w-full min-w-[560px] text-left relative" data-privacy-table>
     <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name / contact</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Response</th>{% if responsesShowCheckin %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Checked-in</th>{% endif %}</tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for row in responses %}
         <tr>
           <td class="px-6 py-3 text-sm text-gray-700 whitespace-nowrap">{{ row.dateLabel }}<br><span class="text-xs text-gray-500">{{ row.timeLabel }}</span></td>
-          <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.href | escape }}">{{ row.name | escape }}</a><br><span class="text-xs text-gray-500">{{ row.contact | escape }}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.href | escape }}" data-private-field="name">{{ row.name | escape }}</a><br><span class="text-xs text-gray-500" data-private-field="contact">{{ row.contact | escape }}</span></td>
           <td class="px-6 py-3 text-sm"><span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {% if row.status == 'confirmed' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">{{ row.status | capitalize }}</span></td>
           {% if responsesShowCheckin %}<td class="px-6 py-3 text-sm text-gray-700">{% if row.checkedIn %}<span class="text-indigo-600 font-medium">Yes</span>{% else %}—{% endif %}</td>{% endif %}
         </tr>
