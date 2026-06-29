@@ -1055,6 +1055,9 @@ describe('event duplication', () => {
     expect((guestCopy?.lect as Record<string, unknown>).checkin).toBeUndefined();
     expect((guestCopy?.lect as Record<string, unknown>).response).toBeUndefined();
     expect(eventCopy).toMatchObject({ name: 'Copy of Launch' });
+    // A top-level source event (page_id null) must NOT send page_id — the host
+    // coerces a null parent to 0 and the page self-FK would reject it.
+    expect(eventCopy && 'page_id' in eventCopy).toBe(false);
   });
 });
 

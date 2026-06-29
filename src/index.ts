@@ -216,12 +216,15 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     throw error;
   }
 
+  // Each handler is `await`ed (not bare-returned) so a CmsApiError it throws is
+  // caught below and rendered as an error panel rather than escaping this
+  // function as an unhandled 500.
   try {
     if (section === 'rsvp') {
       const qr = { secret: env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL };
-      return handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr, jsonOnly);
+      return await handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr, jsonOnly);
     }
-    if (section === 'edm') return handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, jsonOnly);
+    if (section === 'edm') return await handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, jsonOnly);
 
     // section === 'events'
     // /events/:id/...
@@ -229,27 +232,27 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
     const sub = segments[2] ?? '';
 
     if (eventId && sub === 'adhoc-checkin') {
-      if (request.method === 'POST') return adhocCheckinSubmit(cms, eventId, request);
-      return adhocCheckinForm(cms, env.VIEWS, eventId, jsonOnly);
+      if (request.method === 'POST') return await adhocCheckinSubmit(cms, eventId, request);
+      return await adhocCheckinForm(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'duplicate') {
-      if (request.method === 'POST') return duplicateEvent(request, cms, eventId);
-      return duplicateEventForm(cms, env.VIEWS, eventId, jsonOnly);
+      if (request.method === 'POST') return await duplicateEvent(request, cms, eventId);
+      return await duplicateEventForm(cms, env.VIEWS, eventId, jsonOnly);
     }
-    if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url, jsonOnly);
-    if (eventId && sub === 'export') return exportEventGuests(cms, eventId);
+    if (eventId && sub === 'labels') return await handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url, jsonOnly);
+    if (eventId && sub === 'export') return await exportEventGuests(cms, eventId);
     if (eventId && sub === 'import') {
-      if (segments[3] === 'confirm' && request.method === 'POST') return confirmEventGuestImport(request, cms, eventId);
-      if (request.method === 'POST') return previewEventGuestImport(request, cms, env.VIEWS, eventId, jsonOnly);
-      return eventGuestImport(cms, env.VIEWS, eventId, jsonOnly);
+      if (segments[3] === 'confirm' && request.method === 'POST') return await confirmEventGuestImport(request, cms, eventId);
+      if (request.method === 'POST') return await previewEventGuestImport(request, cms, env.VIEWS, eventId, jsonOnly);
+      return await eventGuestImport(cms, env.VIEWS, eventId, jsonOnly);
     }
-    if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') return reorderGuestLists(request, cms, eventId);
-    if (eventId && sub === 'reorder-sessions' && request.method === 'POST') return reorderSessions(request, cms, eventId);
-    if (eventId && sub === 'sessions') return eventSessions(cms, env.VIEWS, eventId, jsonOnly);
-    if (eventId && sub === 'lists') return eventGuestLists(cms, env.VIEWS, eventId, jsonOnly);
-    if (eventId && sub === 'all-guests') return flatAllGuests(cms, env.VIEWS, eventId, url, jsonOnly);
-    if (eventId) return eventDashboard(cms, env.VIEWS, eventId, url, jsonOnly);
-    return eventsList(cms, env.VIEWS, jsonOnly);
+    if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') return await reorderGuestLists(request, cms, eventId);
+    if (eventId && sub === 'reorder-sessions' && request.method === 'POST') return await reorderSessions(request, cms, eventId);
+    if (eventId && sub === 'sessions') return await eventSessions(cms, env.VIEWS, eventId, jsonOnly);
+    if (eventId && sub === 'lists') return await eventGuestLists(cms, env.VIEWS, eventId, jsonOnly);
+    if (eventId && sub === 'all-guests') return await flatAllGuests(cms, env.VIEWS, eventId, url, jsonOnly);
+    if (eventId) return await eventDashboard(cms, env.VIEWS, eventId, url, jsonOnly);
+    return await eventsList(cms, env.VIEWS, jsonOnly);
   } catch (error) {
     if (error instanceof CmsApiError) {
       const target = error.method && error.path ? ` ${error.method} ${error.path}` : '';
@@ -350,7 +353,9 @@ async function duplicateEvent(request: Request, cms: CmsClient, eventId: number)
   const copy = await cms.create({
     page_type: 'event',
     name: `Copy of ${event.name}`,
-    page_id: event.page_id,
+    // Only carry a real parent; a top-level event has page_id null, and sending
+    // null would be coerced to parent 0 and violate the page self-FK.
+    ...(event.page_id != null ? { page_id: event.page_id } : {}),
     start: event.start,
     end: event.end,
     timezone: event.timezone,
