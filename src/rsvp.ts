@@ -2004,10 +2004,10 @@ export function statusClass(status: string): string {
 export function statusColor(status: string): string {
   switch (normalizeStatus(status)) {
     case 'confirmed': return '#22c55e';
-    case 'invited': return '#fdba74';
+    case 'invited': return '#2563eb';
     case 'to be invited': return '#facc15';
     case 'declined': return '#ef4444';
-    case 'onhold': return '#111827';
+    case 'onhold': return '';
     case 'unconfirmed': return '#6b7280';
     default: return '#374151';
   }

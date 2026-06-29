@@ -319,9 +319,9 @@ describe('events admin', () => {
     expect(html).toContain('response-state-to-be-invited');
     expect(html).toContain('style="color:#facc15"');
     expect(html).toContain('response-state-onhold');
-    expect(html).toContain('style="color:#111827"');
+    expect(html).toContain('response-state-onhold">On hold 1</span>');
     expect(html).toContain('response-state-invited');
-    expect(html).toContain('style="color:#fdba74"');
+    expect(html).toContain('style="color:#2563eb"');
     expect(html).toContain('response-state-declined');
     expect(html).toContain('style="color:#ef4444"');
     expect(html).toContain('Checked-in');
@@ -331,6 +331,9 @@ describe('events admin', () => {
     expect(html).toContain('You are invited');
     // Guest responses section: the confirmed guest appears, with her date.
     expect(html).toContain('Guest responses');
+    expect(html).toContain('data-privacy-toggle');
+    expect(html).toContain('class="hidden lg:inline" data-privacy-toggle-label');
+    expect(html).toContain('<div data-privacy-control hidden></div>');
     expect(html).toContain('Ada');
     expect(html).toContain('2026-09-01');
   });
