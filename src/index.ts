@@ -25,7 +25,6 @@ import {
   listByEvent,
   localized,
   type CmsPage,
-  type CmsPageInput,
   type GuestListSummary,
 } from './cms';
 import { signPayload, verifyPayload } from './crypto';
@@ -43,7 +42,6 @@ import {
   handleGuestEditView,
   handleRsvpAdmin,
   confirmEventGuestImport,
-  createImportedGuests,
   previewEventGuestImport,
   reorderGuestLists,
   reorderSessions,
@@ -416,29 +414,26 @@ async function duplicateEvent(request: Request, cms: CmsClient, eventId: number)
         lect: { ...list.lect, _pointers: { event: String(copy.id) } },
       });
       if (scope === 'guests') {
-        const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
-        const inputs = guests.map((guest) => duplicateGuestInput(guest, copy.id, newList.id));
-        await createImportedGuests(cms, inputs);
+        // Clone the source list's guests server-side (they are its children via
+        // page_id) as "fresh invites": identity/contact carry over, but status
+        // resets and the occurrence-specific checkin/response blocks drop. Done
+        // in the CMS Worker so a large list doesn't stream every guest out and
+        // back — which is what risked a timeout / subrequest exhaustion.
+        await cms.duplicateChildren({
+          sourcePageId: list.id,
+          sourcePageType: 'guest',
+          targetPageId: newList.id,
+          lect: {
+            status: 'to be invited',
+            _pointers: { event: String(copy.id), mail_list: String(newList.id) },
+          },
+          dropLect: ['checkin', 'response'],
+        });
       }
     }
   }
 
   return redirect(`${ADMIN_BASE}/events/${copy.id}`);
-}
-
-/**
- * A "fresh invite" copy of a guest: identity and contact fields carry over, but
- * the RSVP state is reset — status back to "to be invited" and the occurrence-
- * specific `checkin`/`response` blocks dropped — and the page is re-pointed at
- * the duplicated event and list.
- */
-function duplicateGuestInput(guest: CmsPage, eventId: number, listId: number): CmsPageInput {
-  const lect: Record<string, unknown> = { ...guest.lect };
-  delete lect.checkin;
-  delete lect.response;
-  lect.status = 'to be invited';
-  lect._pointers = { event: String(eventId), mail_list: String(listId) };
-  return { page_type: 'guest', page_id: listId, name: guest.name, lect };
 }
 
 // ── Event deletion ────────────────────────────────────────────────────────────

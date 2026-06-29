@@ -12,10 +12,6 @@
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#tag"></use></svg>
       <span class="hidden lg:inline">Labels</span>
     </a>
-    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Duplicate event" aria-label="Duplicate event" href="{{ duplicateHref | escape }}">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
-      <span class="hidden lg:inline">Duplicate</span>
-    </a>
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit event" aria-label="Edit event" href="{{ editHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
       <span class="hidden lg:inline">Edit event</span>
@@ -135,7 +131,24 @@
         <tr>
           <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.href | escape }}">{{ edm.name | escape }}</a></td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ edm.subject | escape }}</td>
-          <td class="px-6 py-3 text-right whitespace-nowrap"><div class="inline-flex items-center gap-4"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.previewHref | escape }}" target="_blank" rel="noopener">Preview ↗</a><form method="post" action="{{ edm.duplicateAction | escape }}"><button class="border-0 bg-transparent p-0 text-indigo-600 font-medium hover:text-indigo-800 cursor-pointer" type="submit">Duplicate</button></form><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.href | escape }}">Edit →</a></div></td>
+          <td class="px-6 py-3 text-right whitespace-nowrap">
+            <div class="inline-flex items-center gap-3">
+              <a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Preview email template" aria-label="Preview email template" href="{{ edm.previewHref | escape }}" target="_blank" rel="noopener">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye"></use></svg>
+                <span class="sr-only">Preview</span>
+              </a>
+              <form method="post" action="{{ edm.duplicateAction | escape }}" class="inline shrink-0">
+                <button class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 cursor-pointer" type="submit" title="Duplicate email template" aria-label="Duplicate email template">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
+                  <span class="sr-only">Duplicate</span>
+                </button>
+              </form>
+              <a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Edit email template" aria-label="Edit email template" href="{{ edm.href | escape }}">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
+                <span class="sr-only">Edit</span>
+              </a>
+            </div>
+          </td>
         </tr>
       {% else %}
         <tr><td colspan="3" class="px-6 py-10 text-center text-sm text-gray-400">No email templates yet. Add one to invite or blast this event's guests.</td></tr>
@@ -206,6 +219,10 @@
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Sessions" aria-label="Sessions" href="{{ sessionsHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#calendar"></use></svg>
       <span class="hidden lg:inline">Sessions</span>
+    </a>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Duplicate event" aria-label="Duplicate event" href="{{ duplicateHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
+      <span class="hidden lg:inline">Duplicate</span>
     </a>
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" title="Delete event" aria-label="Delete event" href="{{ deleteHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>

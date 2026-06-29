@@ -58,7 +58,23 @@ export type CmsPage = BaseCmsPage & {
   guest_summary?: GuestListSummary;
 };
 
+export interface DuplicateChildrenInput {
+  /** Parent page whose children are cloned. */
+  sourcePageId: number;
+  /** Page type of the children to clone (e.g. 'guest'). */
+  sourcePageType: string;
+  /** Parent assigned to the clones. */
+  targetPageId: number | null;
+  /** Lect fields merged over each clone (e.g. status reset, repointed pointers). */
+  lect?: Record<string, unknown>;
+  /** Top-level lect keys stripped from each clone before the merge. */
+  dropLect?: string[];
+}
+
 export class CmsClient extends BaseCmsClient {
+  /** The base `call`/`json` are private, so duplicateChildren keeps its own copy of the link config. */
+  private readonly link: { base: string; secret: string };
+
   constructor(env: CmsClientEnv) {
     super({
       cmsUrl: env.CMS_URL,
@@ -66,6 +82,47 @@ export class CmsClient extends BaseCmsClient {
       pluginId: PLUGIN_ID,
       fetcher: (input, init) => globalThis.fetch(input, init),
     });
+    this.link = { base: (env.CMS_URL ?? '').replace(/\/+$/, ''), secret: env.PLUGIN_SECRET ?? '' };
+  }
+
+  /**
+   * Server-side bulk clone of a parent's children (CMS `POST /pages/duplicate`).
+   * Pushes the copy work to the CMS Worker — no page data streams out and back —
+   * and follows the host's `next_cursor` until done, so an arbitrarily large
+   * guest list duplicates across several bounded requests instead of one that
+   * would exhaust the subrequest budget / time out. Returns the total cloned.
+   */
+  async duplicateChildren(input: DuplicateChildrenInput): Promise<number> {
+    let cursor = 0;
+    let total = 0;
+    // Bounded loop: the host caps each call, so iterations ≈ children / 1000.
+    for (;;) {
+      const response = await globalThis.fetch(`${this.link.base}/__cms/pages/duplicate`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-plugin-secret': this.link.secret,
+          'x-plugin-id': PLUGIN_ID,
+        },
+        body: JSON.stringify({
+          source_page_id: input.sourcePageId,
+          source_page_type: input.sourcePageType,
+          target_page_id: input.targetPageId,
+          lect: input.lect ?? {},
+          drop_lect: input.dropLect ?? [],
+          cursor,
+        }),
+      });
+      if (!response.ok) {
+        const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+        throw new CmsApiError(response.status, code, 'POST', '/pages/duplicate');
+      }
+      const result = await response.json() as { count: number; next_cursor: number | null; done: boolean };
+      total += result.count;
+      if (result.done || result.next_cursor == null) break;
+      cursor = result.next_cursor;
+    }
+    return total;
   }
 }
 

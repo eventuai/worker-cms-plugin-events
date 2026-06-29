@@ -329,6 +329,15 @@ describe('events admin', () => {
     expect(html).toContain('Email templates');
     expect(html).toContain('Save the date');
     expect(html).toContain('You are invited');
+    expect(html).toContain('title="Preview email template"');
+    expect(html).toContain('href="/admin/plugins/events/edm/50/preview"');
+    expect(html).toContain('<use href="/assets/icons.svg#eye"></use>');
+    expect(html).toContain('title="Duplicate email template"');
+    expect(html).toContain('<use href="/assets/icons.svg#duplicate"></use>');
+    expect(html).toContain('title="Edit email template"');
+    expect(html).toContain('<use href="/assets/icons.svg#pencil-square"></use>');
+    expect(html).not.toContain('Preview ↗');
+    expect(html).not.toContain('Edit →');
     // Guest responses section: the confirmed guest appears, with her date.
     expect(html).toContain('Guest responses');
     expect(html).toContain('data-privacy-toggle');
@@ -1003,8 +1012,9 @@ describe('event duplication', () => {
     });
   });
 
-  it('duplicates the event with all guests, re-pointing lists/guests and resetting RSVP state', async () => {
+  it('duplicates the event with all guests, re-pointing lists and cloning guests server-side', async () => {
     const posts: Array<Record<string, unknown>> = [];
+    const duplicateCalls: Array<Record<string, unknown>> = [];
     let nextId = 99;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -1017,24 +1027,13 @@ describe('event duplication', () => {
           adhocList(9, 7),
         ], total: 2 });
       }
-      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        // Guests belonging to the VIP list (pointer mail_list=8) only.
-        if (url.searchParams.get('pointer_value') === '8') {
-          return Response.json({ pages: [{
-            id: 50, page_type: 'guest', name: 'Jane Doe', page_id: 8,
-            lect: {
-              _type: 'guest', name: { en: 'Jane Doe' }, email: 'jane@example.com', status: 'confirmed',
-              _pointers: { event: '7', mail_list: '8' },
-              checkin: [{ status: 'checked-in', date: '2026-09-01T18:30' }],
-              response: [{ status: 'confirmed', date: '2026-08-01T10:00' }],
-            },
-          }], total: 1 });
-        }
-        return Response.json({ pages: [], total: 0 });
+      // The guests are cloned in the CMS Worker, not streamed back to the plugin.
+      if (url.pathname === '/__cms/pages/duplicate' && init?.method === 'POST') {
+        duplicateCalls.push(JSON.parse(String(init.body)));
+        return Response.json({ count: 1, next_cursor: null, done: true });
       }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
-        const body = JSON.parse(String(init.body));
-        posts.push(body);
+        posts.push(JSON.parse(String(init.body)));
         return Response.json({ page: { id: nextId++ } });
       }
       return new Response('not found', { status: 404 });
@@ -1052,25 +1051,27 @@ describe('event duplication', () => {
 
     const eventCopy = posts.find((p) => p.page_type === 'event');
     const listCopy = posts.find((p) => p.page_type === 'mail_list');
-    const guestCopy = posts.find((p) => p.page_type === 'guest');
 
     // The adhoc list is skipped (the copy grows its own), so only the VIP list copies.
     expect(posts.filter((p) => p.page_type === 'mail_list')).toHaveLength(1);
     // The list is re-pointed at the new event and loses its EDM assignment.
     expect(listCopy).toMatchObject({ page_type: 'mail_list', name: 'VIP', weight: 5, lect: { allow_checkin: 'yes', _pointers: { event: '99' } } });
     expect((listCopy?.lect as { _pointers: Record<string, unknown> })._pointers.edm).toBeUndefined();
-
-    // The guest keeps identity/contact but resets status and drops occurrence data.
-    expect(guestCopy).toMatchObject({
-      page_type: 'guest', page_id: 100, name: 'Jane Doe',
-      lect: { email: 'jane@example.com', status: 'to be invited', _pointers: { event: '99', mail_list: '100' } },
-    });
-    expect((guestCopy?.lect as Record<string, unknown>).checkin).toBeUndefined();
-    expect((guestCopy?.lect as Record<string, unknown>).response).toBeUndefined();
     expect(eventCopy).toMatchObject({ name: 'Copy of Launch' });
     // A top-level source event (page_id null) must NOT send page_id — the host
     // coerces a null parent to 0 and the page self-FK would reject it.
     expect(eventCopy && 'page_id' in eventCopy).toBe(false);
+
+    // Guests are cloned via one server-side call: source = the old VIP list (8),
+    // target = the new list (100), with the fresh-invite transform.
+    expect(duplicateCalls).toHaveLength(1);
+    expect(duplicateCalls[0]).toMatchObject({
+      source_page_id: 8,
+      source_page_type: 'guest',
+      target_page_id: 100,
+      lect: { status: 'to be invited', _pointers: { event: '99', mail_list: '100' } },
+      drop_lect: ['checkin', 'response'],
+    });
   });
 });
 
