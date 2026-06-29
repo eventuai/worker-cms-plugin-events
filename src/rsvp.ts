@@ -1997,11 +1997,11 @@ function guestCustomFieldValue(guest: CmsPage, field: AdminCustomField): string 
   return String(values[field.key] ?? values[field.legacyKey] ?? '').trim();
 }
 
-function statusClass(status: string): string {
+export function statusClass(status: string): string {
   return `response-state-${status.trim().toLowerCase().replace(/\s+/g, '-')}`;
 }
 
-function statusColor(status: string): string {
+export function statusColor(status: string): string {
   switch (normalizeStatus(status)) {
     case 'confirmed': return '#22c55e';
     case 'invited': return '#fdba74';

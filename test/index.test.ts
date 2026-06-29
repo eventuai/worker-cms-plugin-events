@@ -314,6 +314,16 @@ describe('events admin', () => {
     expect(html).toContain('VIP');
     expect(html).toContain('6 people');
     expect(html).toContain('Confirmed 1');
+    expect(html).toContain('response-state-confirmed');
+    expect(html).toContain('style="color:#22c55e"');
+    expect(html).toContain('response-state-to-be-invited');
+    expect(html).toContain('style="color:#facc15"');
+    expect(html).toContain('response-state-onhold');
+    expect(html).toContain('style="color:#111827"');
+    expect(html).toContain('response-state-invited');
+    expect(html).toContain('style="color:#fdba74"');
+    expect(html).toContain('response-state-declined');
+    expect(html).toContain('style="color:#ef4444"');
     expect(html).toContain('Checked-in');
     // Email templates section: the event's EDM is listed.
     expect(html).toContain('Email templates');
@@ -1058,6 +1068,87 @@ describe('event duplication', () => {
     // A top-level source event (page_id null) must NOT send page_id — the host
     // coerces a null parent to 0 and the page self-FK would reject it.
     expect(eventCopy && 'page_id' in eventCopy).toBe(false);
+  });
+});
+
+describe('event deletion', () => {
+  it('renders the delete confirmation with guest list and template counts', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [
+          { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } },
+          adhocList(9, 7),
+        ], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [{ id: 40, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('2 guest lists');
+    expect(html).toContain('1 email template');
+    expect(html).toContain('action="/admin/plugins/events/events/7/delete"');
+  });
+
+  it('deletes the event after trashing its guest lists, guests and templates', async () => {
+    const removed: number[] = [];
+    const batchRemoved: number[][] = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [
+          { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } },
+          adhocList(9, 7),
+        ], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [{ id: 40, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        if (url.searchParams.get('pointer_value') === '8') {
+          return Response.json({ pages: [{ id: 50, page_type: 'guest', name: 'Jane', lect: {} }], total: 1 });
+        }
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'DELETE') {
+        batchRemoved.push((JSON.parse(String(init.body)) as { ids: number[] }).ids);
+        return Response.json({ ok: true });
+      }
+      const single = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
+      if (single && init?.method === 'DELETE') {
+        removed.push(Number(single[1]));
+        return Response.json({ ok: true });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events');
+    // Guests of the VIP list are batch-trashed (the empty Adhoc list contributes none).
+    expect(batchRemoved).toContainEqual([50]);
+    // The event's EDMs are batch-trashed too.
+    expect(batchRemoved).toContainEqual([40]);
+    // Both lists and the event page itself are removed; the event goes last.
+    expect(removed).toEqual([8, 9, 7]);
   });
 });
 

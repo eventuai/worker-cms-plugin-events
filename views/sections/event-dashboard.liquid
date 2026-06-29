@@ -89,8 +89,20 @@
             </div>
           </td>
 
-          <td class="px-6 py-3 text-sm text-gray-700">On hold {{ list.summary.onhold_count }} · To invite {{ list.summary.to_be_invited_count }} · Invited {{ list.summary.invited_count }}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">Confirmed {{ list.summary.confirmed_count }} · Declined {{ list.summary.declined_count }}{% if list.summary.unconfirmed_count > 0 %} · Unconfirmed {{ list.summary.unconfirmed_count }}{% endif %}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {% for item in list.invitationStatusCounts %}
+                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass | escape }}" style="color:{{ item.statusColor | escape }}">{{ item.label | escape }} {{ item.value }}</span>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="px-6 py-3 text-sm text-gray-700">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {% for item in list.rsvpStatusCounts %}
+                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass | escape }}" style="color:{{ item.statusColor | escape }}">{{ item.label | escape }} {{ item.value }}</span>
+              {% endfor %}
+            </div>
+          </td>
           <td class="px-6 py-3 text-sm text-gray-700">
 {% if list.summary.checked_in_count != list.summary.checked_in_total %}<strong>{{ list.summary.checked_in_count }}</strong> groups <br>{% endif %}
 <span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} people</span></td>
@@ -182,5 +194,9 @@
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Sessions" aria-label="Sessions" href="{{ sessionsHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#calendar"></use></svg>
       <span class="hidden lg:inline">Sessions</span>
+    </a>
+    <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" title="Delete event" aria-label="Delete event" href="{{ deleteHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>
+      <span class="hidden lg:inline">Delete</span>
     </a>
   </div>

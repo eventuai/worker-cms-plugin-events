@@ -1,0 +1,26 @@
+<div class="flex items-center justify-between gap-4 mb-4">
+  <div>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
+    <h1 class="text-2xl font-bold text-gray-900">Delete event</h1>
+    <p class="mt-1 text-sm text-gray-500">Move <strong>{{ eventName | escape }}</strong> to trash.</p>
+  </div>
+</div>
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:40rem">
+  <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    <p class="font-semibold">This will also delete everything under the event:</p>
+    <ul class="mt-2 list-disc ps-4">
+      <li>{{ listCount }} guest list{% unless listCount == 1 %}s{% endunless %} and all of their guests</li>
+      <li>{{ edmCount }} email template{% unless edmCount == 1 %}s{% endunless %}</li>
+    </ul>
+    <p class="mt-2">Deleted items move to the CMS trash and can be restored from there.</p>
+  </div>
+  <form method="post" action="{{ action | escape }}">
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="Delete event" aria-label="Delete event">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>
+        <span>Delete event</span>
+      </button>
+      <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ backHref | escape }}">Cancel</a>
+    </div>
+  </form>
+</div>
