@@ -932,6 +932,132 @@ describe('events admin', () => {
   });
 });
 
+describe('event duplication', () => {
+  it('renders the duplicate form with the three scope choices', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/duplicate', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('value="event"');
+    expect(html).toContain('value="lists"');
+    expect(html).toContain('value="guests"');
+    expect(html).toContain('action="/admin/plugins/events/events/7/duplicate"');
+  });
+
+  it('duplicates the event only and opens the copy', async () => {
+    const posts: Array<Record<string, unknown>> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: {
+          id: 7, page_type: 'event', name: 'Launch', page_id: 3,
+          start: '2026-09-01T18:00', end: null, timezone: '+0800',
+          lect: { _type: 'event', kiosk_title: 'Welcome' },
+        } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        posts.push(JSON.parse(String(init.body)));
+        return Response.json({ page: { id: 99 } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/duplicate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ scope: 'event' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/99');
+    // Only the event page is created (no lists/guests), and its native date
+    // columns plus the full lect ride along.
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toMatchObject({
+      page_type: 'event', name: 'Copy of Launch', page_id: 3,
+      start: '2026-09-01T18:00', timezone: '+0800',
+      lect: { _type: 'event', kiosk_title: 'Welcome' },
+    });
+  });
+
+  it('duplicates the event with all guests, re-pointing lists/guests and resetting RSVP state', async () => {
+    const posts: Array<Record<string, unknown>> = [];
+    let nextId = 99;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', page_id: null, lect: { _type: 'event' } } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [
+          { id: 8, page_type: 'mail_list', name: 'VIP', weight: 5, lect: { _type: 'mail_list', name: { en: 'VIP' }, allow_checkin: 'yes', _pointers: { event: '7', edm: '40' } } },
+          adhocList(9, 7),
+        ], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        // Guests belonging to the VIP list (pointer mail_list=8) only.
+        if (url.searchParams.get('pointer_value') === '8') {
+          return Response.json({ pages: [{
+            id: 50, page_type: 'guest', name: 'Jane Doe', page_id: 8,
+            lect: {
+              _type: 'guest', name: { en: 'Jane Doe' }, email: 'jane@example.com', status: 'confirmed',
+              _pointers: { event: '7', mail_list: '8' },
+              checkin: [{ status: 'checked-in', date: '2026-09-01T18:30' }],
+              response: [{ status: 'confirmed', date: '2026-08-01T10:00' }],
+            },
+          }], total: 1 });
+        }
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        posts.push(body);
+        return Response.json({ page: { id: nextId++ } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/duplicate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ scope: 'guests' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/99');
+
+    const eventCopy = posts.find((p) => p.page_type === 'event');
+    const listCopy = posts.find((p) => p.page_type === 'mail_list');
+    const guestCopy = posts.find((p) => p.page_type === 'guest');
+
+    // The adhoc list is skipped (the copy grows its own), so only the VIP list copies.
+    expect(posts.filter((p) => p.page_type === 'mail_list')).toHaveLength(1);
+    // The list is re-pointed at the new event and loses its EDM assignment.
+    expect(listCopy).toMatchObject({ page_type: 'mail_list', name: 'VIP', weight: 5, lect: { allow_checkin: 'yes', _pointers: { event: '99' } } });
+    expect((listCopy?.lect as { _pointers: Record<string, unknown> })._pointers.edm).toBeUndefined();
+
+    // The guest keeps identity/contact but resets status and drops occurrence data.
+    expect(guestCopy).toMatchObject({
+      page_type: 'guest', page_id: 100, name: 'Jane Doe',
+      lect: { email: 'jane@example.com', status: 'to be invited', _pointers: { event: '99', mail_list: '100' } },
+    });
+    expect((guestCopy?.lect as Record<string, unknown>).checkin).toBeUndefined();
+    expect((guestCopy?.lect as Record<string, unknown>).response).toBeUndefined();
+    expect(eventCopy).toMatchObject({ name: 'Copy of Launch' });
+  });
+});
+
 describe('EDM and labels', () => {
   it('creates a minimal EDM under its event, then hands off to the page editor', async () => {
     let createRequest: RequestInit | undefined;

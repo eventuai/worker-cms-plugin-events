@@ -25,6 +25,7 @@ import {
   listByEvent,
   localized,
   type CmsPage,
+  type CmsPageInput,
 } from './cms';
 import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
@@ -41,6 +42,7 @@ import {
   handleGuestEditView,
   handleRsvpAdmin,
   confirmEventGuestImport,
+  createImportedGuests,
   previewEventGuestImport,
   reorderGuestLists,
   reorderSessions,
@@ -230,6 +232,10 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL): Promise<
       if (request.method === 'POST') return adhocCheckinSubmit(cms, eventId, request);
       return adhocCheckinForm(cms, env.VIEWS, eventId, jsonOnly);
     }
+    if (eventId && sub === 'duplicate') {
+      if (request.method === 'POST') return duplicateEvent(request, cms, eventId);
+      return duplicateEventForm(cms, env.VIEWS, eventId, jsonOnly);
+    }
     if (eventId && sub === 'labels') return handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url, jsonOnly);
     if (eventId && sub === 'export') return exportEventGuests(cms, eventId);
     if (eventId && sub === 'import') {
@@ -304,8 +310,89 @@ async function eventsList(cms: CmsClient, views: Fetcher, jsonOnly = false): Pro
       start: [(event.start ?? '').replace('T', ' '), event.timezone ?? ''].filter(Boolean).join(' '),
       dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
       editHref: editHrefReturningTo(event.id, `${ADMIN_BASE}/events`),
+      duplicateHref: `${ADMIN_BASE}/events/${event.id}/duplicate`,
     })),
   }, jsonOnly);
+}
+
+// ── Event duplication ─────────────────────────────────────────────────────────
+
+/** Duplicate scopes, narrowing what gets copied alongside the event page. */
+const DUPLICATE_SCOPES = ['event', 'lists', 'guests'] as const;
+type DuplicateScope = (typeof DUPLICATE_SCOPES)[number];
+
+async function duplicateEventForm(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return errorPanel(views, 'Event not found.', false, jsonOnly);
+  return adminView(views, `Duplicate — ${event.name}`, 'event-duplicate', {
+    eventName: event.name,
+    backHref: `${ADMIN_BASE}/events/${eventId}`,
+    action: `${ADMIN_BASE}/events/${eventId}/duplicate`,
+    options: [
+      { value: 'event', label: 'Event only', hint: 'Copy the event and its settings. No guest lists or guests.' },
+      { value: 'lists', label: 'Event + guest lists', hint: 'Also copy each guest list (empty — no guests).' },
+      { value: 'guests', label: 'Event + all guests', hint: 'Also copy every guest. Statuses reset to “to be invited”; check-ins and responses are not carried over.' },
+    ],
+  }, jsonOnly);
+}
+
+async function duplicateEvent(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+  const form = await request.formData();
+  const scope: DuplicateScope = DUPLICATE_SCOPES.includes(form.get('scope') as DuplicateScope)
+    ? (form.get('scope') as DuplicateScope)
+    : 'event';
+
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+
+  // The event's native date columns and full lect (sessions, kiosk settings, …)
+  // ride along so the copy is a faithful starting point the admin can edit.
+  const copy = await cms.create({
+    page_type: 'event',
+    name: `Copy of ${event.name}`,
+    page_id: event.page_id,
+    start: event.start,
+    end: event.end,
+    timezone: event.timezone,
+    lect: { ...event.lect },
+  });
+
+  if (scope === 'lists' || scope === 'guests') {
+    // Skip the auto-managed adhoc list — the copy grows its own on first view.
+    const lists = (await listByEvent(cms, 'mail_list', eventId)).filter((list) => !isAdhocList(list));
+    for (const list of lists) {
+      // Re-point the copied list at the new event and drop its EDM assignment
+      // (that EDM belongs to the source event and is not duplicated).
+      const newList = await cms.create({
+        page_type: 'mail_list',
+        name: list.name,
+        weight: list.weight,
+        lect: { ...list.lect, _pointers: { event: String(copy.id) } },
+      });
+      if (scope === 'guests') {
+        const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
+        const inputs = guests.map((guest) => duplicateGuestInput(guest, copy.id, newList.id));
+        await createImportedGuests(cms, inputs);
+      }
+    }
+  }
+
+  return redirect(`${ADMIN_BASE}/events/${copy.id}`);
+}
+
+/**
+ * A "fresh invite" copy of a guest: identity and contact fields carry over, but
+ * the RSVP state is reset — status back to "to be invited" and the occurrence-
+ * specific `checkin`/`response` blocks dropped — and the page is re-pointed at
+ * the duplicated event and list.
+ */
+function duplicateGuestInput(guest: CmsPage, eventId: number, listId: number): CmsPageInput {
+  const lect: Record<string, unknown> = { ...guest.lect };
+  delete lect.checkin;
+  delete lect.response;
+  lect.status = 'to be invited';
+  lect._pointers = { event: String(eventId), mail_list: String(listId) };
+  return { page_type: 'guest', page_id: listId, name: guest.name, lect };
 }
 
 const RESPONSES_PER_PAGE = 25;
@@ -358,6 +445,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     guestSearchColorOptions: colorTagOptions(),
     statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
     editHref: editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`),
+    duplicateHref: `${ADMIN_BASE}/events/${eventId}/duplicate`,
     reorderAction: CMS_BATCH_WEIGHT_ACTION,
     reorderEventId: eventId,
     stats: statTiles(r),

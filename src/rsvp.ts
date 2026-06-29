@@ -1448,7 +1448,7 @@ function classifyImport(incoming: IncomingGuest[], existingGuests: CmsPage[], ev
   return { create, update, rows };
 }
 
-async function createImportedGuests(cms: CmsClient, inputs: CmsPageInput[]): Promise<void> {
+export async function createImportedGuests(cms: CmsClient, inputs: CmsPageInput[]): Promise<void> {
   for (const chunk of chunks(inputs, IMPORT_CREATE_BATCH)) await createImportedGuestBatch(cms, chunk);
 }
 
