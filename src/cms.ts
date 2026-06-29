@@ -58,10 +58,19 @@ export type CmsPage = BaseCmsPage & {
   guest_summary?: GuestListSummary;
 };
 
+/**
+ * Selects a related collection of pages for the bulk clone/delete operations.
+ * Prefer the lect pointer — the canonical reference (e.g. a guest's list is
+ * `_pointers.mail_list`, NOT its parent page) — over the parent page id.
+ */
+export type CollectionSelector =
+  | { pointerKey: string; pointerValue: string }
+  | { parentPageId: number };
+
 export interface DuplicateChildrenInput {
-  /** Parent page whose children are cloned. */
-  sourcePageId: number;
-  /** Page type of the children to clone (e.g. 'guest'). */
+  /** Which source pages to clone (by lect pointer or parent page). */
+  source: CollectionSelector;
+  /** Page type of the pages to clone (e.g. 'guest'). */
   sourcePageType: string;
   /** Parent assigned to the clones. */
   targetPageId: number | null;
@@ -69,6 +78,13 @@ export interface DuplicateChildrenInput {
   lect?: Record<string, unknown>;
   /** Top-level lect keys stripped from each clone before the merge. */
   dropLect?: string[];
+}
+
+/** Expands a selector into the CMS request fields, e.g. prefix 'source_' → source_pointer_key. */
+function selectorFields(selector: CollectionSelector, prefix: 'source_' | ''): Record<string, unknown> {
+  return 'pointerKey' in selector
+    ? { [`${prefix}pointer_key`]: selector.pointerKey, [`${prefix}pointer_value`]: selector.pointerValue }
+    : { [`${prefix}${prefix ? 'page_id' : 'parent_page_id'}`]: selector.parentPageId };
 }
 
 export class CmsClient extends BaseCmsClient {
@@ -105,7 +121,7 @@ export class CmsClient extends BaseCmsClient {
           'x-plugin-id': PLUGIN_ID,
         },
         body: JSON.stringify({
-          source_page_id: input.sourcePageId,
+          ...selectorFields(input.source, 'source_'),
           source_page_type: input.sourcePageType,
           target_page_id: input.targetPageId,
           lect: input.lect ?? {},
@@ -121,6 +137,39 @@ export class CmsClient extends BaseCmsClient {
       total += result.count;
       if (result.done || result.next_cursor == null) break;
       cursor = result.next_cursor;
+    }
+    return total;
+  }
+
+  /**
+   * Server-side bulk soft-delete of a related collection (CMS `DELETE
+   * /pages/children`). Trashes the work in the CMS Worker — no child ids stream
+   * back to the plugin — and repeats while the host reports more remain, so a
+   * list with thousands of guests is torn down across bounded requests instead
+   * of one that times out. Returns the total trashed.
+   */
+  async deleteChildren(selector: CollectionSelector, pageType: string): Promise<number> {
+    let total = 0;
+    // Trashed rows leave draft_pages, so each call drains the next slice; loop
+    // until the host reports it is done.
+    for (;;) {
+      const response = await globalThis.fetch(`${this.link.base}/__cms/pages/children`, {
+        method: 'DELETE',
+        headers: {
+          'content-type': 'application/json',
+          'x-plugin-secret': this.link.secret,
+          'x-plugin-id': PLUGIN_ID,
+        },
+        body: JSON.stringify({ ...selectorFields(selector, ''), page_type: pageType }),
+      });
+      if (!response.ok) {
+        const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+        throw new CmsApiError(response.status, code, 'DELETE', '/pages/children');
+      }
+      const result = await response.json() as { trashed: number; done: boolean };
+      total += result.trashed;
+      // Guard against a non-progressing response (nothing trashed yet not done).
+      if (result.done || result.trashed === 0) break;
     }
     return total;
   }

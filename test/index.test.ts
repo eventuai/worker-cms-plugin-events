@@ -1066,12 +1066,15 @@ describe('event duplication', () => {
     // target = the new list (100), with the fresh-invite transform.
     expect(duplicateCalls).toHaveLength(1);
     expect(duplicateCalls[0]).toMatchObject({
-      source_page_id: 8,
+      // Guests are selected by the canonical mail_list pointer, not parent page.
+      source_pointer_key: 'mail_list',
+      source_pointer_value: '8',
       source_page_type: 'guest',
       target_page_id: 100,
       lect: { status: 'to be invited', _pointers: { event: '99', mail_list: '100' } },
       drop_lect: ['checkin', 'response'],
     });
+    expect('source_page_id' in duplicateCalls[0]).toBe(false);
   });
 });
 
@@ -1104,9 +1107,10 @@ describe('event deletion', () => {
     expect(html).toContain('action="/admin/plugins/events/events/7/delete"');
   });
 
-  it('deletes the event after trashing its guest lists, guests and templates', async () => {
+  it('deletes the event, trashing each list\'s guests server-side then the lists and templates', async () => {
     const removed: number[] = [];
     const batchRemoved: number[][] = [];
+    const deleteChildrenCalls: Array<Record<string, unknown>> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
@@ -1121,11 +1125,10 @@ describe('event deletion', () => {
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
         return Response.json({ pages: [{ id: 40, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
       }
-      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        if (url.searchParams.get('pointer_value') === '8') {
-          return Response.json({ pages: [{ id: 50, page_type: 'guest', name: 'Jane', lect: {} }], total: 1 });
-        }
-        return Response.json({ pages: [], total: 0 });
+      // Guests are trashed server-side by parent, not listed back to the plugin.
+      if (url.pathname === '/__cms/pages/children' && init?.method === 'DELETE') {
+        deleteChildrenCalls.push(JSON.parse(String(init.body)));
+        return Response.json({ trashed: 1, done: true });
       }
       if (url.pathname === '/__cms/pages/batch' && init?.method === 'DELETE') {
         batchRemoved.push((JSON.parse(String(init.body)) as { ids: number[] }).ids);
@@ -1147,9 +1150,13 @@ describe('event deletion', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/events');
-    // Guests of the VIP list are batch-trashed (the empty Adhoc list contributes none).
-    expect(batchRemoved).toContainEqual([50]);
-    // The event's EDMs are batch-trashed too.
+    // Each list's guests are trashed by a server-side delete call selecting on the
+    // canonical mail_list pointer (one per list), not by parent page.
+    expect(deleteChildrenCalls).toEqual([
+      { pointer_key: 'mail_list', pointer_value: '8', page_type: 'guest' },
+      { pointer_key: 'mail_list', pointer_value: '9', page_type: 'guest' },
+    ]);
+    // The event's EDMs are batch-trashed by id (few, group by pointer not parent).
     expect(batchRemoved).toContainEqual([40]);
     // Both lists and the event page itself are removed; the event goes last.
     expect(removed).toEqual([8, 9, 7]);

@@ -420,7 +420,9 @@ async function duplicateEvent(request: Request, cms: CmsClient, eventId: number)
         // in the CMS Worker so a large list doesn't stream every guest out and
         // back — which is what risked a timeout / subrequest exhaustion.
         await cms.duplicateChildren({
-          sourcePageId: list.id,
+          // Guests reference their list by the `mail_list` lect pointer (the
+          // canonical link), not by parent page, so select on the pointer.
+          source: { pointerKey: 'mail_list', pointerValue: String(list.id) },
           sourcePageType: 'guest',
           targetPageId: newList.id,
           lect: {
@@ -473,11 +475,15 @@ async function deleteEvent(cms: CmsClient, eventId: number): Promise<Response> {
   for (const list of guestLists) {
     // Trash a list's guests before the list itself: the schema cascades on the
     // list's page_id, so removing the list first would wipe guest rows before
-    // they could be copied into trash. Mirrors deleteGuestList in rsvp.ts.
-    const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
-    await cms.batchRemove(guests.map((guest) => guest.id));
+    // they could be copied into trash. Guests reference their list by the
+    // `mail_list` lect pointer (the canonical link, not parent page), so the CMS
+    // trashes them by that pointer server-side — no streaming every guest back
+    // here, which is what risked a timeout on a large list.
+    await cms.deleteChildren({ pointerKey: 'mail_list', pointerValue: String(list.id) }, 'guest');
     await cms.remove(list.id);
   }
+  // EDMs group by the event pointer (not children), and are few — a single
+  // id-batch is fine.
   await cms.batchRemove(edms.map((edm) => edm.id));
   await cms.remove(eventId);
 
