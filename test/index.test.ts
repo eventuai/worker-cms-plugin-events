@@ -595,7 +595,7 @@ describe('events admin', () => {
     expect(new URL(String(listCall?.[0])).searchParams.get('page_id')).toBeNull();
   });
 
-  it('filters a guest list by name, email, phone, guest id and color tag in plugin code', async () => {
+  it('delegates guest-list text search to CMS and filters status/color locally', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') {
@@ -603,12 +603,12 @@ describe('events admin', () => {
       }
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        expect(url.searchParams.get('q')).toBeNull();
+        expect(url.searchParams.get('q')).toBe('蘇');
         return Response.json({
           pages: [
-            { id: 55, page_type: 'guest', name: 'Ada', weight: 2, lect: { email: 'ada@example.com', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue' } },
-            { id: 56, page_type: 'guest', name: 'Grace', weight: 1, lect: { email: 'grace@example.com', phone: '+852 5555 9999', status: 'confirmed', color_tag: 'red' } },
-            { id: 57, page_type: 'guest', name: 'Lin', weight: 3, lect: { email: 'lin@example.com', phone: '+852 1234 0000', status: 'confirmed' } },
+            { id: 55, page_type: 'guest', name: '苏生', weight: 2, lect: { email: 'su@example.com', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue' } },
+            { id: 56, page_type: 'guest', name: '蘇太', weight: 1, lect: { email: 'mrs-su@example.com', phone: '+852 5555 9999', status: 'confirmed', color_tag: 'red' } },
+            { id: 57, page_type: 'guest', name: '蘇小姐', weight: 3, lect: { email: 'miss-su@example.com', phone: '+852 1234 0000', status: 'invited', color_tag: 'blue' } },
           ],
           total: 3,
         });
@@ -620,16 +620,16 @@ describe('events admin', () => {
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8?q=5555&color=blue&status=confirmed', {
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8?q=%E8%98%87&color=blue&status=confirmed', {
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
     const html = await renderedText(response);
-    expect(html).toContain('Ada');
-    expect(html).not.toContain('Grace');
-    expect(html).not.toContain('Lin');
-    expect(html).toContain('value="5555"');
+    expect(html).toContain('苏生');
+    expect(html).not.toContain('蘇太');
+    expect(html).not.toContain('蘇小姐');
+    expect(html).toContain('value="蘇"');
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('<option value="orange"');
     expect(html).toContain('<option value="purple"');
@@ -637,7 +637,7 @@ describe('events admin', () => {
     expect(html).not.toContain('aria-label="Search guests"');
     expect(html).toContain('data-table-filter-form');
     expect(html).toContain('data-table-filter="guests"');
-    expect(html).toContain('data-filter-search="55 Ada  ada@example.com +852 5555 0000"');
+    expect(html).toContain('data-filter-search="55 苏生  su@example.com +852 5555 0000 蘇"');
     expect(html).toContain('data-filter-status="confirmed"');
     expect(html).toContain('data-filter-color="blue"');
     expect(html).toContain('data-color-tag-picker');
@@ -2079,6 +2079,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        expect(url.searchParams.get('q')).toBe('5555');
         const listId = url.searchParams.get('page_id') ?? url.searchParams.get('pointer_value');
         if (listId === '8') {
           return Response.json({ pages: [
@@ -2109,7 +2110,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<option value="gray"');
     expect(html).toContain('data-table-filter-form');
     expect(html).toContain('data-table-filter="guests"');
-    expect(html).toContain('data-filter-search="1 Ada  ada@x.io +852 5555 0000"');
+    expect(html).toContain('data-filter-search="1 Ada  ada@x.io +852 5555 0000 5555"');
     expect(html).toContain('data-filter-status="confirmed"');
     expect(html).toContain('data-filter-color="blue"');
     expect(html).toContain('<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">List</th>');

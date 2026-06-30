@@ -358,8 +358,8 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
   const selectedColor = normalizeColor(url.searchParams.get('color'));
-  const { pages, total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
-  const filteredGuests = filterGuests(pages, q, selectedStatus ?? undefined, selectedColor);
+  const { pages, total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, q, limit: 500 });
+  const filteredGuests = filterGuests(pages, '', selectedStatus ?? undefined, selectedColor);
   const noFilter = !q && !selectedStatus && !selectedColor;
   const guests = noFilter ? sortByWeight(filteredGuests) : filteredGuests;
 
@@ -414,7 +414,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     hasCustomFields: customFields.length > 0,
     selectedCustomFieldKey: selectedCustomField?.key ?? '',
     total: noFilter ? total : filteredGuests.length,
-    guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null, selectedCustomField)),
+    guests: guests.map((guest) => guestRow(guest, listId, hasEdm ? selectedEdm!.id : null, selectedCustomField, '', q)),
   }, jsonOnly);
 }
 
@@ -1007,15 +1007,15 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
-  const lists = await listByEvent(cms, 'mail_list', eventId);
-  const ordered = sortByWeight(lists);
-  const guestsByList = await Promise.all(
-    ordered.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 }).then((res) => res.pages)),
-  );
-
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedColor = normalizeColor(url.searchParams.get('color'));
+  const lists = await listByEvent(cms, 'mail_list', eventId);
+  const ordered = sortByWeight(lists);
+  const guestsByList = await Promise.all(
+    ordered.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, q, limit: 500 }).then((res) => res.pages)),
+  );
+
   const colorOptions = colorTagOptions(selectedColor);
   const customFields = uniqueAdminCustomFields(ordered.flatMap((list) => adminCustomFieldsForGuest(event, list)));
   const selectedCustomFieldParam = url.searchParams.get('cf')?.trim() ?? '';
@@ -1027,9 +1027,9 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
     const listEdmId = pageId(pointer(list.lect, 'edm'));
     if (listEdmId) hasEdm = true;
     for (const guest of guestsByList[index] ?? []) {
-      if (!guestMatchesFilters(guest, q, selectedStatus ?? undefined, selectedColor)) continue;
+      if (!guestMatchesFilters(guest, '', selectedStatus ?? undefined, selectedColor)) continue;
       rows.push({
-        ...guestRow(guest, list.id, listEdmId, selectedCustomField, returnTo),
+        ...guestRow(guest, list.id, listEdmId, selectedCustomField, returnTo, q),
         listName: list.name,
         editHref: guestEditHref(guest.id, list.id, returnTo),
       });
@@ -1644,7 +1644,7 @@ function guestEditHref(guestId: number, listId: number, returnTo = `${ADMIN_BASE
   return `/admin/pages/${guestId}/edit?return_to=${encodeURIComponent(returnTo)}`;
 }
 
-function guestRow(guest: CmsPage, listId: number, edmId: number | null, customField?: AdminCustomField | null, returnTo = ''): Record<string, unknown> {
+function guestRow(guest: CmsPage, listId: number, edmId: number | null, customField?: AdminCustomField | null, returnTo = '', searchQuery = ''): Record<string, unknown> {
   const values = guestValues(guest);
   const quality = emailQuality(values.email);
   return {
@@ -1658,7 +1658,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     colorAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/color`,
     statusClass: statusClass(values.status),
     statusColor: statusColor(values.status),
-    searchText: [String(guest.id), values.name, values.last_name, values.email, values.phone].join(' '),
+    searchText: [String(guest.id), values.name, values.last_name, values.email, values.phone, searchQuery].join(' '),
     customFieldValue: customField ? guestCustomFieldValue(guest, customField) : '',
     checkinAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin`,
     checkedIn: checkins(guest.lect).length > 0,
