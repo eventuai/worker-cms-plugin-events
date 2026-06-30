@@ -1738,35 +1738,9 @@ function switchValue(lect: Record<string, unknown>, key: string): string {
 
 function guestDetailFields(values: Record<string, string>, language: string): GuestFormField[] {
   return [
+    guestFormField('name', 'Display name', values.name, 'textarea', { required: true }),
     guestFormField('@picture', 'Picture', values.picture, 'picture', { span: 'md:col-span-2' }),
-    guestFormField('name', 'Display name', values.name, 'text', { required: true }),
-    guestFormField(`.first_name|${language}`, 'First name', values.first_name),
-    guestFormField(`.last_name|${language}`, 'Last name', values.last_name),
     guestFormField('@prefix', 'Prefix', values.prefix),
-    guestFormField('@zh_hant_name', 'Traditional Chinese name', values.zh_hant_name),
-    guestFormField('@zh_hans_name', 'Simplified Chinese name', values.zh_hans_name),
-  ];
-}
-
-function guestContactFields(values: Record<string, string>): GuestFormField[] {
-  return [
-    guestFormField('*contact', 'Contact', values.contact, 'page'),
-    guestFormField('@email', 'Email', values.email, 'email'),
-    guestFormField('@phone', 'Phone', values.phone),
-    guestFormField('@cc', 'CC email', values.cc),
-    guestFormField('@organization', 'Organisation', values.organization),
-    guestFormField('@job_title', 'Job title', values.job_title),
-    guestFormField('@wechat', 'WeChat', values.wechat),
-    guestFormField('@nationality', 'Nationality', values.nationality),
-    guestFormField('@parent', 'Parent', values.parent),
-  ];
-}
-
-function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
-  return [
-    guestFormField('@status', 'Status', values.status, 'select', {
-      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
-    }),
     guestFormField('@prefer_language', 'Preferred language', values.prefer_language, 'select', {
       blankOption: true,
       blankLabel: 'Not set',
@@ -1776,8 +1750,34 @@ function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
         { value: 'zh-hans', label: '简体中文', selected: values.prefer_language === 'zh-hans' },
       ],
     }),
+    guestFormField('@organization', 'Organisation', values.organization),
+    guestFormField('@job_title', 'Job title', values.job_title),
+    guestFormField(`.first_name|${language}`, 'First name', values.first_name),
+    guestFormField(`.last_name|${language}`, 'Last name', values.last_name),
+    guestFormField('@zh_hant_name', 'Traditional Chinese name', values.zh_hant_name),
+    guestFormField('@zh_hans_name', 'Simplified Chinese name', values.zh_hans_name),
+  ];
+}
+
+function guestContactFields(values: Record<string, string>): GuestFormField[] {
+  return [
+    guestFormField('*contact', 'Source Contact ID', values.contact, 'page'),
+    guestFormField('@nationality', 'Nationality', values.nationality),
+    guestFormField('@email', 'Email', values.email, 'email'),
+    guestFormField('@cc', 'CC email', values.cc),
+    guestFormField('@phone', 'Phone', values.phone),
+    guestFormField('@wechat', 'WeChat', values.wechat),
+  ];
+}
+
+function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
+  return [
+    guestFormField('@status', 'Status', values.status, 'select', {
+      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
+    }),
     guestFormField('@allow_refill', 'Allow refill', values.allow_refill, 'switch'),
     guestFormField('@primary_guest', 'Primary guest', values.primary_guest, 'switch'),
+    guestFormField('@parent', 'Primary guest', values.parent),
     guestFormField('@not_send', 'Pause email sends', values.not_send, 'switch'),
     guestFormField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),
     guestFormField('@total_guests', 'Total guests', values.total_guests, 'number'),
