@@ -30,6 +30,7 @@ import {
 import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
+import { eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
 import { handlePublicRsvp } from './public-rsvp';
 import {
   ensureAdhocGuestList,
@@ -101,6 +102,8 @@ export default {
     // editor context; we return a bespoke editor as an HTML fragment the CMS
     // wraps in its admin chrome.
     if (path === '/__plugin/edit' && request.method === 'POST') {
+      const access = eventAdminAccessForRequest(request);
+      if (!access.canEdit) return forbidden();
       let cms: CmsClient;
       try {
         cms = new CmsClient(env);
@@ -231,15 +234,21 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
     throw error;
   }
 
+  const access = eventAdminAccessForRequest(request);
+  if (!access.canView) return forbidden();
+
   // Each handler is `await`ed (not bare-returned) so a CmsApiError it throws is
   // caught below and rendered as an error panel rather than escaping this
   // function as an unhandled 500.
   try {
     if (section === 'rsvp') {
       const qr = { secret: env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL };
-      return await handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr, jsonOnly);
+      return await handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr, jsonOnly, access);
     }
-    if (section === 'edm') return await handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, jsonOnly);
+    if (section === 'edm') {
+      if (!access.canManageEmail) return forbidden();
+      return await handleEdmAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, jsonOnly);
+    }
 
     // section === 'events'
     // /events/:id/...
@@ -247,31 +256,50 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
     const sub = segments[2] ?? '';
 
     if (eventId && sub === 'adhoc-checkin') {
+      if (!access.canCheckIn) return forbidden();
       if (request.method === 'POST') return await adhocCheckinSubmit(cms, eventId, request);
       return await adhocCheckinForm(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'duplicate') {
+      if (!access.canEdit) return forbidden();
       if (request.method === 'POST') return await duplicateEvent(request, cms, eventId, ctx);
       return await duplicateEventForm(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'delete') {
+      if (!access.canDelete) return forbidden();
       if (request.method === 'POST') return await deleteEvent(request, cms, eventId, ctx);
       return await deleteEventForm(cms, env.VIEWS, eventId, jsonOnly);
     }
-    if (eventId && sub === 'labels') return await handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url, jsonOnly);
-    if (eventId && sub === 'export') return await exportEventGuests(cms, eventId);
+    if (eventId && sub === 'labels') {
+      if (!access.canEdit) return forbidden();
+      return await handleLabelsAdmin(request, cms, env.VIEWS, eventId, segments.slice(3), url, jsonOnly);
+    }
+    if (eventId && sub === 'export') {
+      if (!access.canImportExport) return forbidden();
+      return await exportEventGuests(cms, eventId);
+    }
     if (eventId && sub === 'import') {
+      if (!access.canImportExport) return forbidden();
       if (segments[3] === 'confirm' && request.method === 'POST') return await confirmEventGuestImport(request, cms, eventId);
       if (request.method === 'POST') return await previewEventGuestImport(request, cms, env.VIEWS, eventId, jsonOnly);
       return await eventGuestImport(cms, env.VIEWS, eventId, jsonOnly);
     }
-    if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') return await reorderGuestLists(request, cms, eventId);
-    if (eventId && sub === 'reorder-sessions' && request.method === 'POST') return await reorderSessions(request, cms, eventId);
-    if (eventId && sub === 'sessions') return await eventSessions(cms, env.VIEWS, eventId, jsonOnly);
-    if (eventId && sub === 'lists') return await eventGuestLists(cms, env.VIEWS, eventId, jsonOnly);
-    if (eventId && sub === 'all-guests') return await flatAllGuests(cms, env.VIEWS, eventId, url, jsonOnly);
-    if (eventId) return await eventDashboard(cms, env.VIEWS, eventId, url, jsonOnly);
-    return await eventsList(cms, env.VIEWS, url, jsonOnly);
+    if (eventId && sub === 'reorder-guest-lists' && request.method === 'POST') {
+      if (!access.canEdit) return forbidden();
+      return await reorderGuestLists(request, cms, eventId);
+    }
+    if (eventId && sub === 'reorder-sessions' && request.method === 'POST') {
+      if (!access.canEdit) return forbidden();
+      return await reorderSessions(request, cms, eventId);
+    }
+    if (eventId && sub === 'sessions') {
+      if (!access.canEdit) return forbidden();
+      return await eventSessions(cms, env.VIEWS, eventId, jsonOnly);
+    }
+    if (eventId && sub === 'lists') return await eventGuestLists(cms, env.VIEWS, eventId, jsonOnly, access);
+    if (eventId && sub === 'all-guests') return await flatAllGuests(cms, env.VIEWS, eventId, url, jsonOnly, access);
+    if (eventId) return await eventDashboard(cms, env.VIEWS, eventId, url, jsonOnly, access);
+    return await eventsList(cms, env.VIEWS, url, jsonOnly, access);
   } catch (error) {
     if (error instanceof CmsApiError) {
       const target = error.method && error.path ? ` ${error.method} ${error.path}` : '';
@@ -354,10 +382,14 @@ function rsvpStatusCounts(summary: GuestListSummary): StatusCount[] {
 
 // ── Events section views ──────────────────────────────────────────────────────
 
-async function eventsList(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false): Promise<Response> {
+async function eventsList(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
+  const canEdit = access?.canEdit ?? true;
+  const canDelete = access?.canDelete ?? true;
   const { pages } = await cms.list('event', { limit: 200 });
   return adminView(views, 'Events', 'events', {
     flash: url.searchParams.get('flash') ?? '',
+    canEdit,
+    canDelete,
     events: pages.map((event) => ({
       name: event.name,
       // `start` and `timezone` are native CMS page columns (the F1 API returns
@@ -365,9 +397,9 @@ async function eventsList(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = f
       // show the raw values rather than reformatting against an IANA zone.
       start: [(event.start ?? '').replace('T', ' '), event.timezone ?? ''].filter(Boolean).join(' '),
       dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
-      editHref: editHrefReturningTo(event.id, `${ADMIN_BASE}/events`),
-      duplicateHref: `${ADMIN_BASE}/events/${event.id}/duplicate`,
-      deleteHref: `${ADMIN_BASE}/events/${event.id}/delete`,
+      editHref: canEdit ? editHrefReturningTo(event.id, `${ADMIN_BASE}/events`) : '',
+      duplicateHref: canEdit ? `${ADMIN_BASE}/events/${event.id}/duplicate` : '',
+      deleteHref: canDelete ? `${ADMIN_BASE}/events/${event.id}/delete` : '',
     })),
   }, jsonOnly);
 }
@@ -532,7 +564,12 @@ async function deleteEventCascade(cms: CmsClient, eventId: number): Promise<void
 
 const RESPONSES_PER_PAGE = 25;
 
-async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, url: URL, jsonOnly = false): Promise<Response> {
+async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, url: URL, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
+  const canEdit = access?.canEdit ?? true;
+  const canDelete = access?.canDelete ?? true;
+  const canImportExport = access?.canImportExport ?? true;
+  const canCheckIn = access?.canCheckIn ?? true;
+  const canManageEmail = access?.canManageEmail ?? true;
   // `mail_list` and `edm` group under their event by the `event` pointer (their
   // parent page may be a different page type), so filter on the pointer.
   const [event, guestLists, edms] = await Promise.all([
@@ -570,20 +607,25 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     flash: url.searchParams.get('flash') ?? '',
     eventName: event.name,
     eventsHref: `${ADMIN_BASE}/events`,
-    adhocCheckinHref: `${ADMIN_BASE}/events/${eventId}/adhoc-checkin`,
+    canEdit,
+    canDelete,
+    canImportExport,
+    canCheckIn,
+    canManageEmail,
+    adhocCheckinHref: canCheckIn ? `${ADMIN_BASE}/events/${eventId}/adhoc-checkin` : '',
     guestListsHref: `${ADMIN_BASE}/events/${eventId}/lists`,
     allGuestsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
-    sessionsHref: `${ADMIN_BASE}/events/${eventId}/sessions`,
-    importHref: `${ADMIN_BASE}/events/${eventId}/import`,
-    exportAllHref: `${ADMIN_BASE}/events/${eventId}/export`,
-    labelsHref: `${ADMIN_BASE}/events/${eventId}/labels`,
+    sessionsHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/sessions` : '',
+    importHref: canImportExport ? `${ADMIN_BASE}/events/${eventId}/import` : '',
+    exportAllHref: canImportExport ? `${ADMIN_BASE}/events/${eventId}/export` : '',
+    labelsHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/labels` : '',
     guestSearchHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
     guestSearchColorOptions: colorTagOptions(),
     statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
-    editHref: editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`),
-    duplicateHref: `${ADMIN_BASE}/events/${eventId}/duplicate`,
-    deleteHref: `${ADMIN_BASE}/events/${eventId}/delete`,
-    reorderAction: CMS_BATCH_WEIGHT_ACTION,
+    editHref: canEdit ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
+    duplicateHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
+    deleteHref: canDelete ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
+    reorderAction: canEdit ? CMS_BATCH_WEIGHT_ACTION : '',
     reorderEventId: eventId,
     stats: statTiles(r),
     guestLists: orderedLists.map((list) => {
@@ -597,18 +639,18 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
         rsvpStatusCounts: rsvpStatusCounts(summary),
       };
     }),
-    newGuestListHref: `${ADMIN_BASE}/rsvp/new?event_id=${eventId}`,
+    newGuestListHref: canEdit ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : '',
     // Email Templates section — EDMs belonging to this event.
     edms: edms.map((edm) => ({
       name: edm.name,
       subject: localized(edm.lect, 'subject') || edm.name,
       // Edit directly in the page editor (the plugin renders the EDM edit view),
       // returning to this event dashboard.
-      href: `/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/events/${eventId}`)}`,
+      href: canManageEmail ? `/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/events/${eventId}`)}` : '',
       previewHref: `${ADMIN_BASE}/edm/${edm.id}/preview`,
-      duplicateAction: `${ADMIN_BASE}/edm/${edm.id}/duplicate`,
+      duplicateAction: canManageEmail ? `${ADMIN_BASE}/edm/${edm.id}/duplicate` : '',
     })),
-    newEdmHref: `${ADMIN_BASE}/edm/new?event_id=${eventId}`,
+    newEdmHref: canManageEmail ? `${ADMIN_BASE}/edm/new?event_id=${eventId}` : '',
     // Guest Responses section.
     responses: pagedResponses,
     responsesTotal,

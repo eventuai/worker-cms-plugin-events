@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "hooks": ["publish", "unpublish", "delete"],
   "nav": [
-    { "label": "Events", "href": "events", "roles": ["admin", "editor"] }
+    { "label": "Events", "href": "events", "roles": ["admin", "editor", "moderator", "event-helper"] }
+  ],
+  "permissions": [
+    { "value": "events:view", "label": "Events: view events, guest lists and guests" },
+    { "value": "events:checkin", "label": "Events: check in guests" }
   ],
   "editViews": ["edm", "guest"],
   "contentTypes": {
