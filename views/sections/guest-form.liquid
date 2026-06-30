@@ -27,7 +27,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in detailFields %}
         <div class="{{ field.span | escape }}">
-          {% render "render-field", field: field %}
+          {% render field.templateName, field: field %}
         </div>
       {% endfor %}
     </div>
@@ -38,7 +38,7 @@
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in contactFields %}
         <div class="{{ field.span | escape }}">
-          {% render "render-field", field: field %}
+          {% render field.templateName, field: field %}
         </div>
       {% endfor %}
     </div>
@@ -49,7 +49,7 @@
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in rsvpFields %}
         <div class="{{ field.span | escape }}">
-          {% render "render-field", field: field %}
+          {% render field.templateName, field: field %}
         </div>
       {% endfor %}
     </div>
@@ -60,7 +60,7 @@
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in noteFields %}
         <div class="{{ field.span | escape }}">
-          {% render "render-field", field: field %}
+          {% render field.templateName, field: field %}
         </div>
       {% endfor %}
     </div>
@@ -71,7 +71,7 @@
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in ticketFields %}
         <div class="{{ field.span | escape }}">
-          {% render "render-field", field: field %}
+          {% render field.templateName, field: field %}
         </div>
       {% endfor %}
     </div>
@@ -83,7 +83,7 @@
       <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
         {% for field in adminCustomFields %}
           <div class="{% if field.type == 'textarea' or field.type == 'radio' %}md:col-span-2{% endif %}">
-            {% render "render-field", field: field %}
+            {% render field.templateName, field: field %}
           </div>
         {% endfor %}
       </div>
