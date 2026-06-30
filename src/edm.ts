@@ -286,7 +286,24 @@ function pageFieldType(type: string): string {
 }
 
 function workerPageFieldTemplate(type: string): string {
-  if (['text', 'email', 'date', 'switch', 'boolean', 'picture'].includes(type)) return `snippets/pagefield/${type}/basic`;
+  if (type === 'richtext/md') return 'snippets/pagefield/richtext/md';
+  if ([
+    'text',
+    'email',
+    'tel',
+    'url',
+    'number',
+    'date',
+    'time',
+    'textarea',
+    'select',
+    'radio',
+    'checkbox',
+    'switch',
+    'boolean',
+    'color',
+    'picture',
+  ].includes(type)) return `snippets/pagefield/${type}/basic`;
   return '';
 }
 
@@ -653,7 +670,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   const deliveries: EmailDelivery[] = [];
   for (const guest of guests) {
     const recipient = attr(guest.lect, 'email');
-    if (!recipient || !isEmail(recipient) || attr(guest.lect, 'not_send') === 'true') continue;
+    if (!recipient || !isEmail(recipient) || truthyAttr(guest.lect, 'not_send')) continue;
     const rsvpUrl = rsvpEnabled ? await guestRsvpUrl(env, eventId!, listId, guest.id) : '';
     const html = applyTemplateTokens(
       rsvpEnabled ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, rsvpUrl) : htmlTemplate,
@@ -1072,6 +1089,10 @@ function chunks<T>(values: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
   return result;
+}
+
+function truthyAttr(lect: Record<string, unknown>, key: string): boolean {
+  return ['true', 'yes', '1', 'on'].includes(attr(lect, key).trim().toLowerCase());
 }
 
 function mailError(views: Fetcher, message: string, jsonOnly = false): Promise<Response> {

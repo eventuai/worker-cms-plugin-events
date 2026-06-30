@@ -1698,9 +1698,34 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
           lect: JSON.stringify({
             _type: 'guest',
             name: { mis: 'Ada Lovelace' },
+            first_name: { mis: 'Ada' },
+            last_name: { mis: 'Lovelace' },
+            picture: '/media/pictures/ada.jpg',
             email: 'ada@example.com',
             phone: '+85290001000',
+            cc: 'assistant@example.com',
+            organization: 'Analytical Engines',
+            job_title: 'Mathematician',
+            contact_id: '200',
+            allow_refill: 'yes',
+            primary_guest: 'true',
+            max_main_checkin: '2',
+            nationality: 'GB',
+            parent: 'Ada Sr.',
+            rsvp_code: 'RSVP-123',
             status: 'confirmed',
+            checkin_remark: 'Front desk note',
+            qrcode_remark: 'QR note',
+            not_send: 'true',
+            no: '42',
+            prefix: 'Ms',
+            prefer_language: 'en',
+            zh_hant_name: 'Ada ZH-Hant',
+            zh_hans_name: 'Ada ZH-Hans',
+            wechat: 'ada-wechat',
+            total_guests: '3',
+            color_tag: 'blue',
+            remarks: 'VIP guest',
             qrcode: 'ticket-qr-123',
             barcode: 'BAR-456',
             _pointers: { event: '7', mail_list: '8' },
@@ -1720,6 +1745,28 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('name="return_to" value="/admin/plugins/events/rsvp/8"');
     expect(html).toContain('Town &amp; Country');
     expect(html).toContain('name="@phone"');
+    expect(html).toContain('name="*contact" value="200"');
+    expect(html).toContain('name="@picture"');
+    expect(html).toContain('value="/media/pictures/ada.jpg"');
+    expect(html).toContain('name="@allow_refill"');
+    expect(html).toContain('name="@primary_guest"');
+    expect(html).toContain('name="@max_main_checkin"');
+    expect(html).toContain('value="2"');
+    expect(html).toContain('name="@nationality"');
+    expect(html).toContain('value="GB"');
+    expect(html).toContain('name="@rsvp_code"');
+    expect(html).toContain('value="RSVP-123"');
+    expect(html).toContain('name="@checkin_remark"');
+    expect(html).toContain('Front desk note');
+    expect(html).toContain('name="@qrcode_remark"');
+    expect(html).toContain('QR note');
+    expect(html).toContain('name="@not_send"');
+    expect(html).toContain('name="@zh_hant_name"');
+    expect(html).toContain('value="Ada ZH-Hant"');
+    expect(html).toContain('name="@total_guests"');
+    expect(html).toContain('value="3"');
+    expect(html).toContain('name="@color_tag"');
+    expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('name="@qrcode"');
     expect(html).toContain('value="ticket-qr-123"');
     expect(html).toContain('name="@barcode"');

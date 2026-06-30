@@ -101,7 +101,7 @@ interface AdminCustomField {
   source: string;
 }
 
-interface GuestEditField {
+interface GuestFormField {
   name: string;
   inputName: string;
   id: string;
@@ -474,20 +474,18 @@ async function guestFormView(
     eventId: context.eventId ?? '',
     language: options.language ?? 'mis',
     guest: values,
-    guestFields: guestEditFields(values, options.language ?? 'mis'),
-    remarkField: guestEditField('@remarks', 'Remarks', values.remarks, 'textarea', { span: 'md:col-span-2' }),
-    ticketFields: [
-      guestEditField('@qrcode', 'Ticket QR code', values.qrcode, 'text', { placeholder: 'Third-party QR code text' }),
-      guestEditField('@barcode', 'Ticket barcode', values.barcode, 'text', { placeholder: 'Third-party Code128 barcode number' }),
-    ],
-    statuses: GUEST_STATUSES.map((status) => ({ value: status, selected: values.status === status })),
+    detailFields: guestDetailFields(values, options.language ?? 'mis'),
+    contactFields: guestContactFields(values),
+    rsvpFields: guestRsvpFields(values),
+    noteFields: guestNoteFields(values),
+    ticketFields: guestTicketFields(values),
     adminCustomFields,
     hasAdminCustomFields: adminCustomFields.length > 0,
     activity,
     hasActivity: activity.length > 0,
     deleteAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
     qrHref: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode` : '',
-    updateFromContactAction: guest && attr(guest.lect, 'contact_id')
+    updateFromContactAction: guest && guestContactId(guest)
       ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/update-from-contact`
       : '',
     moveAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/move` : '',
@@ -613,7 +611,7 @@ async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env
   let skipped = 0;
   let failed = 0;
   for (const guest of guests) {
-    const paused = attr(guest.lect, 'not_send') === 'true';
+    const paused = truthyAttr(guest.lect, 'not_send');
     const matches = emailQuality(attr(guest.lect, 'email')) === quality;
     // Auto-send never re-sends — the per-guest button does that explicitly.
     if (paused || !matches || guestWasSentEdm(guest, edm.id)) {
@@ -791,12 +789,12 @@ function contactToGuestFields(contact: CmsPage): ContactFields {
 }
 
 /**
- * Re-pulls a single guest's details from its linked `@contact_id` page and logs
- * the refresh to the RSVP response history. No-op (returns false) when the guest
- * has no contact link or the contact can't be read.
+ * Re-pulls a single guest's details from its linked contact page and logs the
+ * refresh to the RSVP response history. No-op (returns false) when the guest has
+ * no contact link or the contact can't be read.
  */
 async function applyContactToGuest(cms: CmsClient, guest: CmsPage): Promise<boolean> {
-  const contactId = pageId(attr(guest.lect, 'contact_id'));
+  const contactId = pageId(guestContactId(guest));
   if (!contactId) return false;
 
   let contact: CmsPage;
@@ -1669,7 +1667,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     canEmail: quality !== 'invalid',
     isGood: quality === 'good',
     isRisky: quality === 'risky',
-    notSend: attr(guest.lect, 'not_send') === 'true',
+    notSend: truthyAttr(guest.lect, 'not_send'),
     sent: edmId ? guestWasSentEdm(guest, edmId) : false,
     sendAction: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/send`,
     previewHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/preview`,
@@ -1678,65 +1676,144 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
 
 function emptyGuestValues(): Record<string, string> {
   return {
-    name: '', last_name: '', email: '', phone: '', organization: '', job_title: '', plus_guests: '0',
-    status: 'to be invited', prefer_language: '', cc: '', remarks: '', color_tag: '',
-    qrcode: '', barcode: '',
+    name: '', first_name: '', last_name: '', prefix: '', zh_hant_name: '', zh_hans_name: '',
+    picture: '', contact: '', email: '', phone: '', cc: '', organization: '', job_title: '', wechat: '',
+    nationality: '', parent: '', allow_refill: '', primary_guest: '', not_send: '', plus_guests: '0',
+    total_guests: '', max_main_checkin: '', status: 'to be invited', prefer_language: '', color_tag: '',
+    remarks: '', checkin_remark: '', qrcode_remark: '', rsvp_code: '', qrcode: '', barcode: '', no: '',
   };
 }
 
 function guestValues(guest: CmsPage): Record<string, string> {
   return {
     name: guest.name || localized(guest.lect, 'name'),
+    first_name: localized(guest.lect, 'first_name'),
     last_name: localized(guest.lect, 'last_name'),
+    prefix: attr(guest.lect, 'prefix'),
+    zh_hant_name: attr(guest.lect, 'zh_hant_name'),
+    zh_hans_name: attr(guest.lect, 'zh_hans_name'),
+    picture: attr(guest.lect, 'picture'),
+    contact: guestContactId(guest),
     email: attr(guest.lect, 'email'),
     phone: attr(guest.lect, 'phone'),
+    cc: attr(guest.lect, 'cc'),
     organization: attr(guest.lect, 'organization'),
     job_title: attr(guest.lect, 'job_title'),
+    wechat: attr(guest.lect, 'wechat'),
+    nationality: attr(guest.lect, 'nationality'),
+    parent: attr(guest.lect, 'parent'),
+    allow_refill: switchValue(guest.lect, 'allow_refill'),
+    primary_guest: switchValue(guest.lect, 'primary_guest'),
+    not_send: switchValue(guest.lect, 'not_send'),
     plus_guests: attr(guest.lect, 'plus_guests') || '0',
+    total_guests: attr(guest.lect, 'total_guests'),
+    max_main_checkin: attr(guest.lect, 'max_main_checkin'),
     status: guestStatus(guest),
     prefer_language: attr(guest.lect, 'prefer_language'),
-    cc: attr(guest.lect, 'cc'),
-    remarks: attr(guest.lect, 'remarks'),
     color_tag: guestColorTag(guest),
+    remarks: attr(guest.lect, 'remarks'),
+    checkin_remark: attr(guest.lect, 'checkin_remark'),
+    qrcode_remark: attr(guest.lect, 'qrcode_remark'),
+    rsvp_code: attr(guest.lect, 'rsvp_code'),
     qrcode: attr(guest.lect, 'qrcode'),
     barcode: attr(guest.lect, 'barcode'),
+    no: attr(guest.lect, 'no'),
   };
 }
 
-function guestEditFields(values: Record<string, string>, language: string): GuestEditField[] {
+function guestContactId(guest: CmsPage): string {
+  return String(pointer(guest.lect, 'contact') || attr(guest.lect, 'contact_id') || '').trim();
+}
+
+function truthyAttr(lect: Record<string, unknown>, key: string): boolean {
+  return ['true', 'yes', '1', 'on'].includes(attr(lect, key).trim().toLowerCase());
+}
+
+function switchValue(lect: Record<string, unknown>, key: string): string {
+  const value = attr(lect, key).trim().toLowerCase();
+  if (['true', 'yes', '1', 'on'].includes(value)) return 'yes';
+  if (['false', 'no', '0', 'off'].includes(value)) return 'no';
+  return '';
+}
+
+function guestDetailFields(values: Record<string, string>, language: string): GuestFormField[] {
   return [
-    guestEditField('name', 'display name', values.name, 'text', { required: true }),
-    guestEditField('@prefer_language', 'Preferred language', values.prefer_language, 'select', {
+    guestFormField('@picture', 'Picture', values.picture, 'picture', { span: 'md:col-span-2' }),
+    guestFormField('name', 'Display name', values.name, 'text', { required: true }),
+    guestFormField(`.first_name|${language}`, 'First name', values.first_name),
+    guestFormField(`.last_name|${language}`, 'Last name', values.last_name),
+    guestFormField('@prefix', 'Prefix', values.prefix),
+    guestFormField('@zh_hant_name', 'Traditional Chinese name', values.zh_hant_name),
+    guestFormField('@zh_hans_name', 'Simplified Chinese name', values.zh_hans_name),
+  ];
+}
+
+function guestContactFields(values: Record<string, string>): GuestFormField[] {
+  return [
+    guestFormField('*contact', 'Contact', values.contact, 'page'),
+    guestFormField('@email', 'Email', values.email, 'email'),
+    guestFormField('@phone', 'Phone', values.phone),
+    guestFormField('@cc', 'CC email', values.cc),
+    guestFormField('@organization', 'Organisation', values.organization),
+    guestFormField('@job_title', 'Job title', values.job_title),
+    guestFormField('@wechat', 'WeChat', values.wechat),
+    guestFormField('@nationality', 'Nationality', values.nationality),
+    guestFormField('@parent', 'Parent', values.parent),
+  ];
+}
+
+function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
+  return [
+    guestFormField('@status', 'Status', values.status, 'select', {
+      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
+    }),
+    guestFormField('@prefer_language', 'Preferred language', values.prefer_language, 'select', {
+      blankOption: true,
+      blankLabel: 'Not set',
       options: [
-        { value: '', label: 'Not set', selected: values.prefer_language === '' },
         { value: 'en', label: 'English', selected: values.prefer_language === 'en' },
         { value: 'zh-hant', label: '繁體中文', selected: values.prefer_language === 'zh-hant' },
         { value: 'zh-hans', label: '简体中文', selected: values.prefer_language === 'zh-hans' },
       ],
     }),
-    guestEditField(`.first_name|${language}`, 'First name', values.first_name),
-    guestEditField(`.last_name|${language}`, 'Last name', values.last_name),
-    guestEditField('@organization', 'Organisation', values.organization),
-    guestEditField('@job_title', 'Job title', values.job_title),
-    guestEditField('@email', 'Email', values.email, 'email'),
-    guestEditField('@phone', 'Phone', values.phone, 'tel'),
-
-    guestEditField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),
-    guestEditField('@status', 'Status', values.status, 'select', {
-      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
+    guestFormField('@allow_refill', 'Allow refill', values.allow_refill, 'switch'),
+    guestFormField('@primary_guest', 'Primary guest', values.primary_guest, 'switch'),
+    guestFormField('@not_send', 'Pause email sends', values.not_send, 'switch'),
+    guestFormField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),
+    guestFormField('@total_guests', 'Total guests', values.total_guests, 'number'),
+    guestFormField('@max_main_checkin', 'Max main check-ins', values.max_main_checkin, 'number'),
+    guestFormField('@color_tag', 'Color tag', values.color_tag, 'select', {
+      blankOption: true,
+      blankLabel: 'No color tag',
+      options: COLOR_TAGS.map((color) => ({ value: color, label: color, selected: values.color_tag === color })),
     }),
-
-    guestEditField('@cc', 'CC email', values.cc, 'email'),
   ];
 }
 
-function guestEditField(
+function guestNoteFields(values: Record<string, string>): GuestFormField[] {
+  return [
+    guestFormField('@remarks', 'Remarks', values.remarks, 'textarea', { span: 'md:col-span-2' }),
+    guestFormField('@checkin_remark', 'Check-in remark', values.checkin_remark, 'textarea', { span: 'md:col-span-2' }),
+    guestFormField('@qrcode_remark', 'QR code remark', values.qrcode_remark, 'textarea', { span: 'md:col-span-2' }),
+  ];
+}
+
+function guestTicketFields(values: Record<string, string>): GuestFormField[] {
+  return [
+    guestFormField('@rsvp_code', 'RSVP code', values.rsvp_code),
+    guestFormField('@qrcode', 'Ticket QR code', values.qrcode, 'text', { placeholder: 'Third-party QR code text' }),
+    guestFormField('@barcode', 'Ticket barcode', values.barcode, 'text', { placeholder: 'Third-party Code128 barcode number' }),
+    guestFormField('@no', 'Guest number', values.no),
+  ];
+}
+
+function guestFormField(
   inputName: string,
   label: string,
   value: string,
   type = 'text',
-  options: Partial<Pick<GuestEditField, 'placeholder' | 'required' | 'options' | 'checked' | 'defaultValue' | 'span'>> = {},
-): GuestEditField {
+  options: Partial<Pick<GuestFormField, 'placeholder' | 'required' | 'options' | 'checked' | 'defaultValue' | 'span' | 'blankOption' | 'blankLabel'>> = {},
+): GuestFormField {
   const normalizedType = pageFieldType(type);
   return {
     name: inputName.replace(/^[@*.]/, '').split('|')[0],
@@ -1747,8 +1824,8 @@ function guestEditField(
     templateName: workerPageFieldTemplate(normalizedType),
     value,
     placeholder: options.placeholder ?? '',
-    blankOption: false,
-    blankLabel: '',
+    blankOption: options.blankOption ?? false,
+    blankLabel: options.blankLabel ?? '',
     required: options.required ?? false,
     options: options.options ?? [],
     checked: options.checked ?? false,
@@ -1759,12 +1836,28 @@ function guestEditField(
 
 function pageFieldType(type: string): string {
   const normalized = type.trim().toLowerCase();
-  if (['checkbox', 'select', 'radio', 'textarea', 'email', 'tel', 'date', 'time', 'number', 'url'].includes(normalized)) return normalized;
+  if (['checkbox', 'select', 'radio', 'textarea', 'email', 'tel', 'date', 'time', 'number', 'url', 'switch', 'boolean', 'picture', 'page'].includes(normalized)) return normalized;
   return 'text';
 }
 
 function workerPageFieldTemplate(type: string): string {
-  if (['text', 'email', 'date', 'switch', 'boolean'].includes(type)) return `snippets/pagefield/${type}/basic`;
+  if ([
+    'text',
+    'email',
+    'tel',
+    'url',
+    'number',
+    'date',
+    'time',
+    'textarea',
+    'select',
+    'radio',
+    'checkbox',
+    'switch',
+    'boolean',
+    'picture',
+    'page',
+  ].includes(type)) return `snippets/pagefield/${type}/basic`;
   return '';
 }
 
@@ -2040,24 +2133,44 @@ function guestInput(
 ): { name: string; lect: Record<string, unknown> } {
   const name = formText(form, 'name') || formLocalizedText(form, 'name');
   const fields = new Map<string, string>([
+    ['first_name', formText(form, 'first_name') || formLocalizedText(form, 'first_name')],
     ['last_name', formText(form, 'last_name') || formLocalizedText(form, 'last_name')],
+    ['prefix', formText(form, 'prefix') || formText(form, '@prefix')],
+    ['zh_hant_name', formText(form, 'zh_hant_name') || formText(form, '@zh_hant_name')],
+    ['zh_hans_name', formText(form, 'zh_hans_name') || formText(form, '@zh_hans_name')],
+    ['picture', formText(form, 'picture') || formText(form, '@picture')],
+    ['contact', formText(form, 'contact') || formText(form, '*contact') || formText(form, 'contact_id') || formText(form, '@contact_id')],
     ['email', formText(form, 'email') || formText(form, '@email')],
     ['phone', formText(form, 'phone') || formText(form, '@phone')],
+    ['cc', formText(form, 'cc') || formText(form, '@cc')],
     ['organization', formText(form, 'organization') || formText(form, '@organization')],
     ['job_title', formText(form, 'job_title') || formText(form, '@job_title')],
+    ['wechat', formText(form, 'wechat') || formText(form, '@wechat')],
+    ['nationality', formText(form, 'nationality') || formText(form, '@nationality')],
+    ['parent', formText(form, 'parent') || formText(form, '@parent')],
+    ['allow_refill', formText(form, 'allow_refill') || formText(form, '@allow_refill')],
+    ['primary_guest', formText(form, 'primary_guest') || formText(form, '@primary_guest')],
+    ['not_send', formText(form, 'not_send') || formText(form, '@not_send')],
     ['plus_guests', formText(form, 'plus_guests') || formText(form, '@plus_guests') || '0'],
+    ['total_guests', formText(form, 'total_guests') || formText(form, '@total_guests')],
+    ['max_main_checkin', formText(form, 'max_main_checkin') || formText(form, '@max_main_checkin')],
     ['status', normalizeStatus(formText(form, 'status') || formText(form, '@status')) ?? 'to be invited'],
     ['prefer_language', formText(form, 'prefer_language') || formText(form, '@prefer_language')],
-    ['cc', formText(form, 'cc') || formText(form, '@cc')],
+    ['color_tag', formText(form, 'color_tag') || formText(form, '@color_tag')],
     ['remarks', formText(form, 'remarks') || formText(form, '@remarks')],
+    ['checkin_remark', formText(form, 'checkin_remark') || formText(form, '@checkin_remark')],
+    ['qrcode_remark', formText(form, 'qrcode_remark') || formText(form, '@qrcode_remark')],
+    ['rsvp_code', formText(form, 'rsvp_code') || formText(form, '@rsvp_code')],
     ['qrcode', formText(form, 'qrcode') || formText(form, '@qrcode')],
     ['barcode', formText(form, 'barcode') || formText(form, '@barcode')],
+    ['no', formText(form, 'no') || formText(form, '@no')],
   ]);
   const input = guestPageInput(name, fields, eventId, listId);
   return { name, lect: { ...(existing?.lect ?? {}), ...input.lect, ...nativeCustomGuestFields(form) } };
 }
 
 function guestPageInput(name: string, fields: Map<string, string>, eventId: number | null, listId: number): CmsPageInput {
+  const contactId = fields.get('contact') ?? '';
   return {
     page_type: 'guest',
     page_id: listId,
@@ -2065,19 +2178,38 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
     lect: {
       _type: 'guest',
       name: { en: name },
+      first_name: { en: fields.get('first_name') ?? '' },
       last_name: { en: fields.get('last_name') ?? '' },
+      prefix: fields.get('prefix') ?? '',
+      zh_hant_name: fields.get('zh_hant_name') ?? '',
+      zh_hans_name: fields.get('zh_hans_name') ?? '',
+      picture: fields.get('picture') ?? '',
+      contact_id: contactId,
       email: fields.get('email') ?? '',
       phone: fields.get('phone') ?? '',
+      cc: fields.get('cc') ?? '',
       organization: fields.get('organization') ?? '',
       job_title: fields.get('job_title') ?? '',
+      wechat: fields.get('wechat') ?? '',
+      nationality: fields.get('nationality') ?? '',
+      parent: fields.get('parent') ?? '',
+      allow_refill: fields.get('allow_refill') ?? '',
+      primary_guest: fields.get('primary_guest') ?? '',
+      not_send: fields.get('not_send') ?? '',
       plus_guests: fields.get('plus_guests') ?? '0',
+      total_guests: fields.get('total_guests') ?? '',
+      max_main_checkin: fields.get('max_main_checkin') ?? '',
       status: fields.get('status') ?? 'to be invited',
       prefer_language: fields.get('prefer_language') ?? '',
-      cc: fields.get('cc') ?? '',
+      color_tag: fields.get('color_tag') ?? '',
       remarks: fields.get('remarks') ?? '',
+      checkin_remark: fields.get('checkin_remark') ?? '',
+      qrcode_remark: fields.get('qrcode_remark') ?? '',
+      rsvp_code: fields.get('rsvp_code') ?? '',
       qrcode: fields.get('qrcode') ?? '',
       barcode: fields.get('barcode') ?? '',
-      _pointers: { ...(eventId ? { event: String(eventId) } : {}), mail_list: String(listId) },
+      no: fields.get('no') ?? '',
+      _pointers: { ...(eventId ? { event: String(eventId) } : {}), mail_list: String(listId), ...(contactId ? { contact: contactId } : {}) },
     },
   };
 }
