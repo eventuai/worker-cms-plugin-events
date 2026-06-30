@@ -67,11 +67,25 @@
     return path.startsWith('/') ? path : '/' + path;
   }
 
-  function loadTemplate(path) {
+  function sharedCmsTemplatePath(path) {
     var normalized = normalizePath(path);
+    if (normalized.indexOf('/snippets/pagefield/') === 0) return normalized;
+    if (
+      normalized === '/snippets/color-tag-picker.liquid' ||
+      normalized === '/sections/color-tag-picker.liquid' ||
+      normalized === '/color-tag-picker.liquid'
+    ) {
+      return '/snippets/color-tag-picker.liquid';
+    }
+    return '';
+  }
+
+  function loadTemplate(path) {
+    var sharedPath = sharedCmsTemplatePath(path);
+    var normalized = sharedPath || normalizePath(path);
     if (templateCache.has(normalized)) return templateCache.get(normalized);
 
-    var basePath = normalized.indexOf('/snippets/pagefield/') === 0
+    var basePath = sharedPath
       ? (payload.cmsViewBasePath || '/admin/views')
       : (payload.viewBasePath || '/admin/plugins/events/views');
     var promise = fetch(withRevision(basePath + normalized), {
