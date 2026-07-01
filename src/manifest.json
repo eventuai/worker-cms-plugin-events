@@ -8,6 +8,7 @@
   ],
   "permissions": [
     { "value": "events:view", "label": "Events: view events, guest lists and guests" },
+    { "value": "events:write", "label": "Events: edit and delete events, guest lists, guests and EDM templates" },
     { "value": "events:checkin", "label": "Events: check in guests" }
   ],
   "editViews": ["edm", "guest"],

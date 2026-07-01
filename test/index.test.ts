@@ -72,8 +72,8 @@ function request(path: string, init?: RequestInit): Request {
   return new Request(`https://events.test${path}`, init);
 }
 
-function cmsUser(role: string): string {
-  return JSON.stringify({ id: '42', email: `${role}@example.com`, name: role, role });
+function cmsUser(role: string, permissions: string[] = []): string {
+  return JSON.stringify({ id: '42', email: `${role}@example.com`, name: role, role, permissions });
 }
 
 function adhocList(id: number, eventId: number) {
@@ -118,6 +118,7 @@ describe('plugin contract', () => {
       ],
       permissions: [
         { value: 'events:view', label: 'Events: view events, guest lists and guests' },
+        { value: 'events:write', label: 'Events: edit and delete events, guest lists, guests and EDM templates' },
         { value: 'events:checkin', label: 'Events: check in guests' },
       ],
       contentTypes: {
@@ -764,6 +765,84 @@ describe('events admin', () => {
         checkin: [{ status: 'checked-in', message: 'checked in by event admin' }],
       },
     });
+  });
+
+  it('lets events:write roles edit and delete events data without import/export or check-in', async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const removals: number[] = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/55' && (!init || init.method === 'GET')) {
+        return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: { _pointers: { mail_list: '8' }, status: 'confirmed' } } });
+      }
+      if (url.pathname === '/__cms/pages/55' && init?.method === 'PUT') {
+        updates.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/55' && init?.method === 'DELETE') {
+        removals.push(55);
+        return Response.json({ success: true });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({
+          pages: [{ id: 55, page_type: 'guest', name: 'Ada', lect: { email: 'ada@example.com', status: 'confirmed', _pointers: { mail_list: '8' } } }],
+          total: 1,
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+    const testEnv = env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' });
+    const writerHeaders = { 'x-plugin-secret': 'shared-secret', 'x-cms-user': cmsUser('event-writer', ['events:write']) };
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8', {
+      headers: writerHeaders,
+    }), testEnv);
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('title="Edit guest list"');
+    expect(html).toContain('title="New guest"');
+    expect(html).toContain('Edit →');
+    expect(html).toContain('Email template (EDM)');
+    expect(html).toContain('Delete list');
+    expect(html).not.toContain('title="Import CSV"');
+    expect(html).not.toContain('title="Export CSV"');
+    expect(html).not.toContain('type="submit">Check in</button>');
+    expect(html).not.toContain('>QR</a>');
+
+    const status = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/status', {
+      method: 'POST',
+      headers: { ...writerHeaders, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ status: 'declined' }),
+    }), testEnv);
+    expect(status.status).toBe(302);
+    expect(updates[0]).toMatchObject({
+      lect: {
+        status: 'declined',
+        response: [{ status: 'declined', message: 'status updated by event admin' }],
+      },
+    });
+
+    const checkin = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/checkin', {
+      method: 'POST',
+      headers: { ...writerHeaders, 'content-type': 'application/x-www-form-urlencoded' },
+    }), testEnv);
+    expect(checkin.status).toBe(403);
+
+    const remove = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/delete', {
+      method: 'POST',
+      headers: writerHeaders,
+    }), testEnv);
+    expect(remove.status).toBe(302);
+    expect(removals).toEqual([55]);
   });
 
   it('updates and clears a guest color tag through the RSVP admin route', async () => {

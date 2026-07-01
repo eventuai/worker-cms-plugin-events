@@ -27,22 +27,28 @@ const NO_ACCESS: EventAdminAccess = {
 
 export function eventAdminAccessForRequest(request: Request): EventAdminAccess {
   const roles = cmsUserRoles(request);
+  const permissions = cmsUserPermissions(request);
 
   // Direct secret-authenticated calls predate x-cms-user forwarding in tests and
   // local tooling. Treat those as trusted full-access calls.
   if (!roles.length) return { ...FULL_ACCESS };
   if (roles.includes('admin') || roles.includes('editor')) return { ...FULL_ACCESS };
 
-  const canView = roles.includes('moderator') || roles.includes('event-helper');
+  const canWrite = permissions.includes('events:write');
+  const canView = canWrite
+    || permissions.includes('events:view')
+    || permissions.includes('events:checkin')
+    || roles.includes('moderator')
+    || roles.includes('event-helper');
   if (!canView) return { ...NO_ACCESS };
 
   return {
     canView: true,
-    canEdit: false,
-    canDelete: false,
+    canEdit: canWrite,
+    canDelete: canWrite,
     canImportExport: false,
-    canCheckIn: roles.includes('event-helper'),
-    canManageEmail: false,
+    canCheckIn: permissions.includes('events:checkin') || roles.includes('event-helper'),
+    canManageEmail: canWrite,
   };
 }
 
@@ -53,6 +59,26 @@ function cmsUserRoles(request: Request): string[] {
     const parsed = JSON.parse(raw) as { role?: unknown };
     if (typeof parsed.role !== 'string') return [];
     return [...new Set(parsed.role.split(',').map((role) => role.trim().toLowerCase()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+function cmsUserPermissions(request: Request): string[] {
+  const raw = request.headers.get('x-cms-user');
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { permissions?: unknown };
+    if (Array.isArray(parsed.permissions)) {
+      return [...new Set(parsed.permissions
+        .filter((permission): permission is string => typeof permission === 'string')
+        .map((permission) => permission.trim().toLowerCase())
+        .filter(Boolean))];
+    }
+    if (typeof parsed.permissions === 'string') {
+      return [...new Set(parsed.permissions.split(',').map((permission) => permission.trim().toLowerCase()).filter(Boolean))];
+    }
+    return [];
   } catch {
     return [];
   }
