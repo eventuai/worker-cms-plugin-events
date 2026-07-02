@@ -600,7 +600,12 @@ async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number, jsonO
 async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, language?: string): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
-  const html = await renderEmail(views, edm, env, { server: env.PUBLIC_BASE_URL, language });
+  const html = await renderEmail(views, edm, env, {
+    server: env.PUBLIC_BASE_URL,
+    language,
+    // No recipient in the editor preview — neutralize the per-guest tokens.
+    tokenValues: { unsubscribe_url: '#' },
+  });
   return new Response(html, {
     headers: {
       'content-type': 'text/html; charset=utf-8',
@@ -617,7 +622,10 @@ async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: E
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.', jsonOnly);
   try {
-    await deliverQueuedEmail(env, { ...await emailFor(views, edm, recipient, env, { server: env.PUBLIC_BASE_URL }), edmId });
+    await deliverQueuedEmail(env, {
+      ...await emailFor(views, edm, recipient, env, { server: env.PUBLIC_BASE_URL, tokenValues: { unsubscribe_url: '#' } }),
+      edmId,
+    });
   } catch (error) {
     return mailError(views, error instanceof Error ? error.message : 'Unable to send the test email.', jsonOnly);
   }
@@ -796,9 +804,14 @@ async function renderEmail(
 ): Promise<string> {
   const tokens = edmTokens(edm, options.language);
   const server = options.server ?? '';
+  // The unsubscribe block renders a per-recipient link. Like the RSVP URL, the
+  // template carries a {{unsubscribe_url}} token that the per-guest
+  // applyTemplateTokens pass fills in (worker-rsvp resolves the link) — only
+  // when this Worker can actually mint signed links.
+  const unsubscribeUrl = env.PUBLIC_BASE_URL && env.PLUGIN_SECRET ? '{{unsubscribe_url}}' : '';
   // Stage 1 — build the MJML body from the EDM's content blocks.
   const main = await renderLiquid(views, '/templates/edm-mjml.liquid', {
-    blocks: edmRenderBlocks(edm, options.language),
+    blocks: edmRenderBlocks(edm, options.language, unsubscribeUrl),
     server,
     rsvpUrl: options.rsvpUrl ?? '',
     rsvp_button: tokens.rsvp_button,
@@ -889,6 +902,9 @@ async function guestEmailTokens(
     ? await signPayload(env.PLUGIN_SECRET, `rsvp:${eventId}:${listId}:${guest.id}`)
     : '';
   const publicBase = (env.PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
+  const unsubscribeUrl = publicBase && env.PLUGIN_SECRET
+    ? `${publicBase}/unsubscribe/${listId}/${guest.id}/${await signPayload(env.PLUGIN_SECRET, `unsub:${listId}:${guest.id}`)}`
+    : '';
   const tokens: Record<string, string> = {
     domain: publicBase.replace(/^https?:\/\//, ''),
     landing: publicBase.replace(/^https?:\/\//, ''),
@@ -897,6 +913,7 @@ async function guestEmailTokens(
     sign: signature,
     rsvp_url: rsvpUrl,
     rsvpUrl,
+    unsubscribe_url: unsubscribeUrl,
     contact: email,
     email: email.replaceAll('.', '<span>.</span>'),
     email_url: encodeURIComponent(email),
@@ -965,7 +982,7 @@ function edmTokens(edm: CmsPage, language?: string): Record<string, string> {
  * Projects the EDM's content blocks into the flat, sanitised shapes the MJML
  * block snippets expect (rich-text fields run through safeHtml).
  */
-function edmRenderBlocks(edm: CmsPage, language?: string): Array<Record<string, unknown>> {
+function edmRenderBlocks(edm: CmsPage, language?: string, unsubscribeUrl = ''): Array<Record<string, unknown>> {
   return blocks(edm.lect).map((block) => {
     const type = attr(block, '_type');
     switch (type) {
@@ -988,7 +1005,7 @@ function edmRenderBlocks(edm: CmsPage, language?: string): Array<Record<string, 
       case 'spacer':
         return { _type: type, lines: attr(block, 'lines') };
       case 'edm-unsubscribe':
-        return { _type: type };
+        return { _type: type, unsubscribeUrl };
       default:
         return { _type: type };
     }

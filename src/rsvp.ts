@@ -191,6 +191,12 @@ export async function handleRsvpAdmin(
     if (!canEdit) return forbidden();
     return updateAllGuestsFromContacts(cms, listId);
   }
+  if (segments[1] === 'contacts') {
+    if (!canEdit) return forbidden();
+    if (segments[2] === 'add' && request.method === 'POST') return addContactsToList(request, cms, listId);
+    if (segments[2] === 'remove' && request.method === 'POST') return removeContactsFromList(request, cms, listId);
+    return listContactsBrowser(cms, views, listId, url, jsonOnly);
+  }
   if (segments[1] === 'export') {
     if (!canImportExport) return forbidden();
     return exportGuests(cms, listId);
@@ -451,6 +457,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     editHref: canEdit ? `/admin/pages/${listId}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
     importHref: canImportExport ? `${ADMIN_BASE}/rsvp/${listId}/import` : '',
     exportHref: canImportExport ? `${ADMIN_BASE}/rsvp/${listId}/export` : '',
+    contactsHref: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/contacts` : '',
     updateFromContactsAction: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts` : '',
     deleteAction: canDelete && !isAdhocList(context.list) ? `${ADMIN_BASE}/rsvp/${listId}/delete` : '',
     flash: url.searchParams.get('flash') ?? '',
@@ -821,7 +828,7 @@ function firstItemValue(list: Array<Record<string, unknown>>, key: string): stri
  * Maps a contact page's lect onto the guest fields the events suite stores,
  * mirroring the legacy HelperContact precedence (other → work → general).
  */
-function contactToGuestFields(contact: CmsPage): ContactFields {
+export function contactToGuestFields(contact: CmsPage): ContactFields {
   const lect = contact.lect;
   const position = items(lect, 'position');
   const work = position[0] ?? {};
@@ -894,6 +901,142 @@ async function applyContactToGuest(cms: CmsClient, guest: CmsPage): Promise<bool
     },
   });
   return true;
+}
+
+// ── Add / remove guests from the contact database (legacy add/remove-contacts) ─
+
+/**
+ * Contact browser for a guest list: search the contact pages (readTypes grants
+ * the events plugin read access to `contact`), showing which contacts are
+ * already on the list — matched by the guest's `contact` pointer, falling back
+ * to email — with add/remove bulk actions.
+ */
+async function listContactsBrowser(
+  cms: CmsClient,
+  views: Fetcher,
+  listId: number,
+  url: URL,
+  jsonOnly = false,
+): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const q = (url.searchParams.get('q') ?? '').trim();
+  const [{ pages: contacts }, membership] = await Promise.all([
+    cms.list('contact', { q: q || undefined, limit: 100 }),
+    listMembership(cms, listId),
+  ]);
+
+  return adminView(views, `Contacts — ${context.list.name}`, 'guest-list-contacts', {
+    listName: context.list.name,
+    listHref: `${ADMIN_BASE}/rsvp/${listId}`,
+    eventName: context.event?.name ?? '',
+    q,
+    flash: url.searchParams.get('flash') ?? '',
+    searchAction: `${ADMIN_BASE}/rsvp/${listId}/contacts`,
+    addAction: `${ADMIN_BASE}/rsvp/${listId}/contacts/add`,
+    removeAction: `${ADMIN_BASE}/rsvp/${listId}/contacts/remove`,
+    rows: contacts.map((contact) => {
+      const fields = contactToGuestFields(contact);
+      const inList = membership.contactIds.has(String(contact.id))
+        || (fields.email !== '' && membership.emails.has(fields.email.toLowerCase()));
+      return {
+        id: contact.id,
+        name: fields.name || contact.name,
+        email: fields.email,
+        organization: fields.organization,
+        title: fields.job_title,
+        inList,
+      };
+    }),
+    hasRows: contacts.length > 0,
+  }, jsonOnly);
+}
+
+/** Contacts already represented on a list: linked contact ids + guest emails. */
+async function listMembership(cms: CmsClient, listId: number): Promise<{ contactIds: Set<string>; emails: Set<string> }> {
+  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const contactIds = new Set<string>();
+  const emails = new Set<string>();
+  for (const guest of guests) {
+    const contactId = guestContactId(guest);
+    if (contactId) contactIds.add(contactId);
+    const email = attr(guest.lect, 'email').trim().toLowerCase();
+    if (email) emails.add(email);
+  }
+  return { contactIds, emails };
+}
+
+/** POST: create a guest (canonical lect shape, linked via the `contact` pointer)
+ *  for each selected contact not already on the list. */
+async function addContactsToList(request: Request, cms: CmsClient, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const q = formText(form, 'q');
+  const ids = form.getAll('contact_ids').map((value) => pageId(value)).filter((id): id is number => id !== null).slice(0, 200);
+  const membership = await listMembership(cms, listId);
+
+  const creates: CmsPageInput[] = [];
+  let skipped = 0;
+  for (const contactId of ids) {
+    if (membership.contactIds.has(String(contactId))) {
+      skipped += 1;
+      continue;
+    }
+    let contact: CmsPage;
+    try {
+      contact = await cms.get(contactId);
+    } catch (error) {
+      if (error instanceof CmsApiError && (error.status === 404 || error.status === 403)) continue;
+      throw error;
+    }
+    if (contact.page_type !== 'contact') continue;
+    const contactFields = contactToGuestFields(contact);
+    if (contactFields.email && membership.emails.has(contactFields.email.toLowerCase())) {
+      skipped += 1;
+      continue;
+    }
+    const fields = new Map<string, string>([
+      ['contact', String(contact.id)],
+      ['email', contactFields.email],
+      ['phone', contactFields.phone],
+      ['cc', contactFields.cc],
+      ['organization', contactFields.organization],
+      ['job_title', contactFields.job_title],
+      ['prefix', contactFields.prefix],
+      ['nationality', contactFields.nationality],
+      ['prefer_language', contactFields.prefer_language],
+      ['status', 'to be invited'],
+      ['plus_guests', '0'],
+    ]);
+    creates.push(guestPageInput(contactFields.name || contact.name, fields, context.eventId, listId));
+  }
+
+  // Same chunking as the CSV import: keep each CMS batch light on subrequests.
+  for (const chunk of chunks(creates, IMPORT_CREATE_BATCH)) await cms.batchCreate(chunk);
+
+  const detail = `Added ${creates.length} guest(s)${skipped ? `, ${skipped} already on the list` : ''}`;
+  return redirect(`${ADMIN_BASE}/rsvp/${listId}/contacts?q=${encodeURIComponent(q)}&flash=${encodeURIComponent(detail)}`);
+}
+
+/** POST: remove the guests linked (by `contact` pointer) to the selected contacts. */
+async function removeContactsFromList(request: Request, cms: CmsClient, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const q = formText(form, 'q');
+  const ids = new Set(form.getAll('contact_ids').map((value) => String(value)));
+  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+
+  let removed = 0;
+  for (const guest of guests) {
+    const contactId = guestContactId(guest);
+    if (!contactId || !ids.has(contactId)) continue;
+    await cms.remove(guest.id);
+    removed += 1;
+  }
+  const detail = `Removed ${removed} guest(s)`;
+  return redirect(`${ADMIN_BASE}/rsvp/${listId}/contacts?q=${encodeURIComponent(q)}&flash=${encodeURIComponent(detail)}`);
 }
 
 /** POST handler: refresh one guest from its linked contact. */
@@ -1795,7 +1938,7 @@ function guestValues(guest: CmsPage): Record<string, string> {
   };
 }
 
-function guestContactId(guest: CmsPage): string {
+export function guestContactId(guest: CmsPage): string {
   return String(pointer(guest.lect, 'contact') || attr(guest.lect, 'contact_id') || '').trim();
 }
 

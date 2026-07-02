@@ -34,6 +34,8 @@ import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEdit
 import { handleLabelsAdmin } from './labels';
 import { eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
 import {
+  contactToGuestFields,
+  guestContactId,
   ensureAdhocGuestList,
   isAdhocList,
   eventGuestImport,
@@ -293,6 +295,11 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
       if (!access.canEdit) return forbidden();
       return await reorderSessions(request, cms, eventId);
     }
+    if (eventId && sub === 'archive') {
+      if (!access.canEdit) return forbidden();
+      if (request.method === 'POST') return await archiveEvent(request, cms, eventId);
+      return await archiveReview(cms, env.VIEWS, eventId, jsonOnly);
+    }
     if (eventId && sub === 'sessions') {
       if (!access.canEdit) return forbidden();
       return await eventSessions(cms, env.VIEWS, eventId, jsonOnly);
@@ -386,23 +393,142 @@ function rsvpStatusCounts(summary: GuestListSummary): StatusCount[] {
 async function eventsList(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
   const canEdit = access?.canEdit ?? true;
   const canDelete = access?.canDelete ?? true;
+  // Archived events (lect.archived = yes) are hidden by default, mirroring the
+  // legacy archive behavior; ?archived=1 shows them instead.
+  const showArchived = url.searchParams.get('archived') === '1';
   const { pages } = await cms.list('event', { limit: 200 });
+  const visible = pages.filter((event) => isArchived(event.lect) === showArchived);
   return adminView(views, 'Events', 'events', {
     flash: url.searchParams.get('flash') ?? '',
     canEdit,
     canDelete,
-    events: pages.map((event) => ({
+    showArchived,
+    archivedHref: `${ADMIN_BASE}/events?archived=1`,
+    activeHref: `${ADMIN_BASE}/events`,
+    events: visible.map((event) => ({
       name: event.name,
       // `start` and `timezone` are native CMS page columns (the F1 API returns
       // them top-level, not in lect). Timezone is an offset like "+0800", so we
       // show the raw values rather than reformatting against an IANA zone.
       start: [(event.start ?? '').replace('T', ' '), event.timezone ?? ''].filter(Boolean).join(' '),
+      archived: isArchived(event.lect),
       dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
       editHref: canEdit ? editHrefReturningTo(event.id, `${ADMIN_BASE}/events`) : '',
       duplicateHref: canEdit ? `${ADMIN_BASE}/events/${event.id}/duplicate` : '',
       deleteHref: canDelete ? `${ADMIN_BASE}/events/${event.id}/delete` : '',
     })),
   }, jsonOnly);
+}
+
+function isArchived(lect: Record<string, unknown>): boolean {
+  return attr(lect, 'archived').trim().toLowerCase() === 'yes';
+}
+
+// ── Event archive (legacy Event.archive) ──────────────────────────────────────
+
+/**
+ * Archive review: reconciles every guest on the event against the contact
+ * database (readTypes grants contact reads) — the categorization the legacy
+ * archive screen ran before closing out an event:
+ *
+ *   linked-in-sync  — guest carries a `contact` pointer and matches the record
+ *   linked-conflict — linked, but guest fields drifted from the contact
+ *   email-match     — no link, but a contact shares the guest's email
+ *   no-match        — nobody in the contact database
+ *
+ * Confirming marks the event `archived: yes` (hidden from the events index).
+ * Writing event_history back onto contact pages is NOT done here — the events
+ * plugin has read-only access to `contact`; that sync belongs to the contacts
+ * plugin once a cross-plugin write path exists.
+ */
+async function archiveReview(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return errorPanel(views, 'Event not found.', false, jsonOnly);
+
+  const lists = await listByEvent(cms, 'mail_list', eventId);
+  const guests: Array<{ guest: CmsPage; listName: string }> = [];
+  for (const list of lists) {
+    const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
+    for (const guest of pages) guests.push({ guest, listName: list.name });
+  }
+
+  // Contact lookups (bounded: large CRMs stop at the cap and say so).
+  const CONTACT_CAP = 2000;
+  const contactsById = new Map<string, CmsPage>();
+  const contactsByEmail = new Map<string, CmsPage>();
+  let contactTotal = 0;
+  for (let offset = 0; offset < CONTACT_CAP; offset += 500) {
+    const { pages, total } = await cms.list('contact', { limit: 500, offset });
+    contactTotal = total;
+    for (const contact of pages) {
+      contactsById.set(String(contact.id), contact);
+      const fields = contactToGuestFields(contact);
+      if (fields.email) contactsByEmail.set(fields.email.toLowerCase(), contact);
+    }
+    if (offset + pages.length >= total || pages.length === 0) break;
+  }
+
+  type Row = { name: string; listName: string; email: string; detail: string };
+  const categories: Record<'synced' | 'conflict' | 'emailMatch' | 'noMatch', Row[]> = {
+    synced: [], conflict: [], emailMatch: [], noMatch: [],
+  };
+
+  for (const { guest, listName } of guests) {
+    const email = attr(guest.lect, 'email').trim().toLowerCase();
+    const row: Row = { name: guest.name, listName, email, detail: '' };
+    const contactId = guestContactId(guest);
+    const linked = contactId ? contactsById.get(contactId) : undefined;
+    if (linked) {
+      const fields = contactToGuestFields(linked);
+      const diffs: string[] = [];
+      for (const [label, guestValue, contactValue] of [
+        ['email', email, fields.email.toLowerCase()],
+        ['organization', attr(guest.lect, 'organization'), fields.organization],
+        ['job title', attr(guest.lect, 'job_title'), fields.job_title],
+      ] as Array<[string, string, string]>) {
+        if (guestValue && contactValue && guestValue.trim() !== contactValue.trim()) {
+          diffs.push(`${label}: ${guestValue} ≠ ${contactValue}`);
+        }
+      }
+      row.detail = diffs.join(' · ');
+      categories[diffs.length ? 'conflict' : 'synced'].push(row);
+      continue;
+    }
+    const byEmail = email ? contactsByEmail.get(email) : undefined;
+    if (byEmail) {
+      row.detail = `contact #${byEmail.id} shares this email`;
+      categories.emailMatch.push(row);
+      continue;
+    }
+    categories.noMatch.push(row);
+  }
+
+  const archived = isArchived(event.lect);
+  return adminView(views, `Archive — ${event.name}`, 'event-archive', {
+    eventName: event.name,
+    backHref: `${ADMIN_BASE}/events/${eventId}`,
+    action: `${ADMIN_BASE}/events/${eventId}/archive`,
+    archived,
+    guestTotal: guests.length,
+    contactsCapped: contactTotal > CONTACT_CAP,
+    categories: [
+      { key: 'synced', label: 'Linked & in sync', rows: categories.synced, count: categories.synced.length },
+      { key: 'conflict', label: 'Linked with conflicts', rows: categories.conflict, count: categories.conflict.length },
+      { key: 'emailMatch', label: 'Email matches a contact (not linked)', rows: categories.emailMatch, count: categories.emailMatch.length },
+      { key: 'noMatch', label: 'No contact match', rows: categories.noMatch, count: categories.noMatch.length },
+    ],
+  }, jsonOnly);
+}
+
+/** POST: toggle the event's archived flag. */
+async function archiveEvent(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const unarchive = String(form.get('action') ?? '') === 'unarchive';
+  await cms.update(eventId, { lect: { archived: unarchive ? '' : 'yes' } });
+  const flash = unarchive ? `Event “${event.name}” restored` : `Event “${event.name}” archived`;
+  return redirect(`${ADMIN_BASE}/events?flash=${encodeURIComponent(flash)}${unarchive ? '' : '&archived=1'}`);
 }
 
 // ── Event duplication ─────────────────────────────────────────────────────────
@@ -625,6 +751,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
     editHref: canEdit ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
     duplicateHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
+    archiveHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/archive` : '',
     deleteHref: canDelete ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
     reorderAction: canEdit ? CMS_BATCH_WEIGHT_ACTION : '',
     reorderEventId: eventId,

@@ -90,8 +90,15 @@ No `wrangler.toml` change or CMS redeploy needed.
       the standalone `worker-rsvp` Worker from the published DB
 - [x] Render/send email, scheduled blasts (code done — provision the
       `wrangler.toml` email/queue/cron/KV bindings before enabling delivery)
+- [x] Add/remove guests from the contact database (per-list Contacts page;
+      reads `contact` pages via manifest `readTypes`)
+- [x] Event archive (guest↔contact reconciliation review + archived flag;
+      archived events hidden from the index)
+- [x] EDM unsubscribe links (per-recipient `{{unsubscribe_url}}` token;
+      the route itself is served by worker-rsvp)
 - [ ] RSVP response storage (submits keep the interim draft-guest update)
-- [ ] EDM unsubscribe public route
+- [ ] Contact `event_history` write-back on archive (events plugin is
+      read-only on `contact` pages — belongs to the contacts plugin)
 
 ## Source mapping
 

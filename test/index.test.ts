@@ -2795,3 +2795,120 @@ describe('per-list import preview', () => {
     expect(updateOnly.updates).toHaveLength(1); // Ada updated
   });
 });
+
+describe('add/remove guests from contacts', () => {
+  const CONTACT_ADA = {
+    id: 70,
+    page_type: 'contact',
+    name: 'Ada Lovelace',
+    lect: {
+      first_name: { en: 'Ada' },
+      last_name: { en: 'Lovelace' },
+      email: [{ type: 'personal', email: 'ada@example.com' }],
+      phone: [{ type: 'mobile', phone: '+852 9876' }],
+      position: [{ organization_name: { en: 'Analytical Engines' }, title: { en: 'Director' } }],
+    },
+  };
+  const CONTACT_ALAN = {
+    id: 71,
+    page_type: 'contact',
+    name: 'Alan Turing',
+    lect: { first_name: { en: 'Alan' }, last_name: { en: 'Turing' }, email: [{ email: 'alan@example.com' }] },
+  };
+  const LIST = { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } };
+  const EVENT = { id: 7, page_type: 'event', name: 'Launch', lect: {} };
+  // Ada is already on the list, linked via the contact pointer.
+  const GUEST_ADA = {
+    id: 90, page_type: 'guest', name: 'Ada Lovelace', page_id: 8,
+    lect: { email: 'ada@example.com', _pointers: { mail_list: '8', contact: '70' } },
+  };
+
+  function contactsCms() {
+    const batches: Array<Record<string, unknown>> = [];
+    const deletes: number[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages' && (!init?.method || init.method === 'GET')) {
+        const type = url.searchParams.get('page_type');
+        if (type === 'contact') return Response.json({ pages: [CONTACT_ADA, CONTACT_ALAN], total: 2 });
+        if (type === 'guest') return Response.json({ pages: [GUEST_ADA], total: 1 });
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        batches.push(body);
+        const inputs = body.pages as Array<Record<string, unknown>>;
+        return Response.json({ pages: inputs.map((page, index) => ({ id: 900 + index, ...page })) });
+      }
+      const idMatch = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
+      if (idMatch && init?.method === 'DELETE') {
+        deletes.push(Number(idMatch[1]));
+        return Response.json({ ok: true });
+      }
+      if (idMatch) {
+        const page = [CONTACT_ADA, CONTACT_ALAN, LIST, EVENT, GUEST_ADA].find((entry) => entry.id === Number(idMatch[1]));
+        return page ? Response.json({ page }) : new Response('not found', { status: 404 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return { batches, deletes };
+  }
+
+  it('browses contacts showing who is already on the list', async () => {
+    contactsCms();
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/contacts?q=a', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    const html = await renderedText(response);
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('Ada Lovelace');
+    expect(html).toContain('Alan Turing');
+    // Ada flagged as already on the list; the add/remove buttons post back.
+    expect(html).toContain('>yes</span>');
+    expect(html).toContain('action="/admin/plugins/events/rsvp/8/contacts/add"');
+    expect(html).toContain('formaction="/admin/plugins/events/rsvp/8/contacts/remove"');
+  });
+
+  it('adds selected contacts as linked guests, skipping ones already on the list', async () => {
+    const { batches } = contactsCms();
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/contacts/add', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams([['contact_ids', '70'], ['contact_ids', '71'], ['q', '']]),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toContain('Added%201%20guest(s)%2C%201%20already%20on%20the%20list');
+    expect(batches).toHaveLength(1);
+    const created = (batches[0].pages as Array<Record<string, unknown>>);
+    expect(created).toHaveLength(1);
+    const guest = created[0] as { name: string; page_id: number; lect: Record<string, unknown> };
+    expect(guest.name).toBe('Alan Turing');
+    expect(guest.page_id).toBe(8);
+    expect(guest.lect.email).toBe('alan@example.com');
+    expect((guest.lect._pointers as Record<string, string>).contact).toBe('71');
+    expect((guest.lect._pointers as Record<string, string>).mail_list).toBe('8');
+  });
+
+  it('removes the guests linked to the selected contacts', async () => {
+    const { deletes } = contactsCms();
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/contacts/remove', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams([['contact_ids', '70'], ['q', '']]),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(deletes).toEqual([90]);
+  });
+
+  it('denies the contact flows without edit access', async () => {
+    contactsCms();
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/contacts', {
+      headers: { 'x-plugin-secret': 'shared-secret', 'x-cms-user': cmsUser('viewer', ['events:view']) },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    expect(response.status).toBe(403);
+  });
+});

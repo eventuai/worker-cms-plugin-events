@@ -227,6 +227,10 @@
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
       <span class="hidden lg:inline">Duplicate</span>
     </a>{% endif %}
+    {% if archiveHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Archive event" aria-label="Archive event" href="{{ archiveHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>
+      <span class="hidden lg:inline">Archive</span>
+    </a>{% endif %}
     {% if deleteHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" title="Delete event" aria-label="Delete event" href="{{ deleteHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>
       <span class="hidden lg:inline">Delete</span>
