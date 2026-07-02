@@ -671,7 +671,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   for (const guest of guests) {
     const recipient = attr(guest.lect, 'email');
     if (!recipient || !isEmail(recipient) || truthyAttr(guest.lect, 'not_send')) continue;
-    const rsvpUrl = rsvpEnabled ? await guestRsvpUrl(env, eventId!, listId, guest.id) : '';
+    const rsvpUrl = rsvpEnabled ? await guestRsvpUrl(env, eventId!, listId, guest, edmId) : '';
     const html = applyTemplateTokens(
       rsvpEnabled ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, rsvpUrl) : htmlTemplate,
       await guestEmailTokens(env, eventId, listId, guest, rsvpUrl),
@@ -745,7 +745,7 @@ export async function sendEdmToGuest(
 ): Promise<void> {
   const recipient = attr(guest.lect, 'email');
   if (!recipient || !isEmail(recipient)) throw new Error('Guest has no valid email address');
-  const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest.id) : '';
+  const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest, edm.id) : '';
   const language = attr(guest.lect, 'prefer_language') || undefined;
   const delivery = {
     ...await emailFor(views, edm, recipient, env, {
@@ -772,7 +772,7 @@ export function previewEdmForGuest(
 ): Promise<string> {
   const language = attr(guest.lect, 'prefer_language') || undefined;
   return (async () => {
-    const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest.id) : '';
+    const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest, edm.id) : '';
     return renderEmail(views, edm, env, {
       rsvpUrl,
       server: env.PUBLIC_BASE_URL,
@@ -995,11 +995,24 @@ function edmRenderBlocks(edm: CmsPage, language?: string): Array<Record<string, 
   });
 }
 
-async function guestRsvpUrl(env: EdmEnv, eventId: number, listId: number, guestId: number): Promise<string> {
+/** Languages worker-rsvp accepts as a URL prefix (legacy parity — keep in sync with its RSVP_LANGUAGES). */
+const PUBLIC_RSVP_LANGUAGES = ['mis', 'en', 'zh-hant', 'zh-hans'];
+
+/**
+ * Signed public RSVP link for one guest, resolved by the worker-rsvp site
+ * (PUBLIC_BASE_URL). The signature covers only `rsvp:event:list:guest` (so
+ * older links keep verifying); the guest's preferred language rides as a path
+ * prefix and the sending EDM as `?edm=`, which the form uses to pick its
+ * `rsvp-*` blocks.
+ */
+async function guestRsvpUrl(env: EdmEnv, eventId: number, listId: number, guest: CmsPage, edmId?: number): Promise<string> {
   if (!env.PUBLIC_BASE_URL || !env.PLUGIN_SECRET) return '';
-  const payload = `rsvp:${eventId}:${listId}:${guestId}`;
+  const payload = `rsvp:${eventId}:${listId}:${guest.id}`;
   const signature = await signPayload(env.PLUGIN_SECRET, payload);
-  return `${env.PUBLIC_BASE_URL.replace(/\/+$/, '')}/rsvp/${eventId}/${listId}/${guestId}/${signature}`;
+  const language = attr(guest.lect, 'prefer_language').toLowerCase();
+  const prefix = PUBLIC_RSVP_LANGUAGES.includes(language) ? `/${language}` : '';
+  const suffix = edmId ? `?edm=${edmId}` : '';
+  return `${env.PUBLIC_BASE_URL.replace(/\/+$/, '')}${prefix}/rsvp/${eventId}/${listId}/${guest.id}/${signature}${suffix}`;
 }
 
 /** EDM styling/line-height defaults — kept in sync with the MJML layout's own

@@ -6,8 +6,10 @@
 // budget (100k): events + RSVP + EDM (email) + QR codes.
 //
 // Exposes three admin nav items (Events / RSVP / EDM) under a single manifest
-// id, plus public guest-facing routes on its own domain (QR images, RSVP forms,
-// unsubscribe). Content types ported from the legacy Eventuai config/cms.mjs.
+// id, plus public QR signing routes on its own domain. The guest-facing RSVP
+// site is the standalone worker-rsvp Worker, which reads the published D1 and
+// resolves the signed links this plugin mints (PUBLIC_BASE_URL points there).
+// Content types ported from the legacy Eventuai config/cms.mjs.
 // ============================================================
 
 import {
@@ -31,7 +33,6 @@ import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
 import { eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
-import { handlePublicRsvp } from './public-rsvp';
 import {
   ensureAdhocGuestList,
   isAdhocList,
@@ -121,8 +122,8 @@ export default {
     }
 
     // ── Public guest-facing routes (own domain) ────────────────────────────
-    const rsvpResponse = await handlePublicRsvp(request, env, url);
-    if (rsvpResponse) return rsvpResponse;
+    // The RSVP form itself lives in the standalone worker-rsvp Worker (this
+    // plugin's PUBLIC_BASE_URL points there); only QR signing stays here.
 
     // QR codes — signed with PLUGIN_SECRET so they can't be forged.
     if (path === '/qr') {

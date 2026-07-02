@@ -28,8 +28,11 @@ assembled from constants. Edit the JSON to change content types, blocks, nav, et
   (ported from the legacy Eventuai admin) instead of the CMS's generic structured
   editor. See [EDM editor](#edm-editor).
 - **Hooks:** `publish`, `unpublish`, `delete`.
-- **Public routes (own domain):** `/qr` + `/sign` (signed QR, live); RSVP forms,
-  check-in, and EDM unsubscribe are TODO.
+- **Public routes (own domain):** `/qr` + `/sign` (signed QR). The guest-facing
+  RSVP form lives in the standalone [`worker-rsvp`](../worker-rsvp) Worker —
+  this plugin mints its signed links (`PUBLIC_BASE_URL` points there, and
+  worker-rsvp verifies them with a copy of this plugin's `PLUGIN_SECRET`).
+  Check-in lives in `cms-plugin-checkin`; EDM unsubscribe is TODO.
 
 ## EDM editor
 
@@ -80,12 +83,15 @@ No `wrangler.toml` change or CMS redeploy needed.
 ## Status
 
 - [x] All event/RSVP/EDM blueprints + blocks + block lists; 3-section admin
-- [x] Signed QR `/qr` + `/sign` (HMAC via Web Crypto; image is a placeholder)
+- [x] Signed QR `/qr` + `/sign` (real QR matrix, HMAC via Web Crypto)
 - [x] Bespoke EDM editor as a plugin edit view (`editViews: ['edm']`)
-- [ ] Guest lists, label designer, public check-in (events)
-- [ ] Guest management, public RSVP form + submit → write-back F1 (rsvp)
-- [ ] Render/send email, scheduled blasts (edm — bindings stubbed in `wrangler.toml`)
-- [ ] Real QR matrix render
+- [x] Guest lists, guest management, CSV import/export, label designer
+- [x] Signed RSVP links (multilingual, `?edm=`) — the form itself is served by
+      the standalone `worker-rsvp` Worker from the published DB
+- [x] Render/send email, scheduled blasts (code done — provision the
+      `wrangler.toml` email/queue/cron/KV bindings before enabling delivery)
+- [ ] RSVP response storage (submits keep the interim draft-guest update)
+- [ ] EDM unsubscribe public route
 
 ## Source mapping
 

@@ -24,8 +24,9 @@ binding = "CF_VERSION_METADATA"
 # Base URL of the CMS Worker — where this plugin reaches the F1 page read/write
 # API ({CMS_URL}/__cms/*) to read events and create/update guest pages.
 CMS_URL = "https://cms.eventuai.com"
-# Public origin of this Worker, used to generate signed RSVP links in queued EDMs.
-# PUBLIC_BASE_URL = "https://events.eventuai.com"
+# Public origin of the worker-rsvp site — signed RSVP links in queued EDMs point
+# there (it verifies them with a copy of this plugin's PLUGIN_SECRET).
+# PUBLIC_BASE_URL = "https://rsvp.eventuai.com"
 
 # ── EDM email backbone (uncomment + provision before enabling delivery) ────────
 # Cloudflare Email Service binding. EMAIL_FROM must be a verified sender address.

@@ -2077,56 +2077,6 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
   });
 });
 
-describe('public RSVP', () => {
-  it('renders public RSVP controls at 16px to avoid iOS focus zoom', async () => {
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
-      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
-      if (url.pathname === '/__cms/pages/9') return Response.json({ page: { id: 9, page_type: 'guest', page_id: 8, name: 'Ada', lect: { plus_guests: '0' } } });
-      return new Response('not found', { status: 404 });
-    });
-    vi.stubGlobal('fetch', cmsFetch);
-    const signature = await signPayload('shared-secret', 'rsvp:7:8:9');
-
-    const response = await plugin.fetch(request(`/rsvp/7/8/9/${signature}`), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
-    const html = await response.text();
-
-    expect(response.status).toBe(200);
-    expect(html).toContain('font-size:16px');
-    expect(html).toContain('input,select,textarea');
-  });
-
-  it('accepts a signed RSVP and records the response against the guest', async () => {
-    let updateRequest: RequestInit | undefined;
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
-      if (url.pathname === '/__cms/pages/9' && init?.method === 'PUT') {
-        updateRequest = init;
-        return Response.json({ page: { id: 9 } });
-      }
-      if (url.pathname === '/__cms/pages/9') return Response.json({ page: { id: 9, page_type: 'guest', page_id: 8, name: 'Ada', lect: { plus_guests: '0', response: [] } } });
-      return new Response('not found', { status: 404 });
-    });
-    vi.stubGlobal('fetch', cmsFetch);
-    const signature = await signPayload('shared-secret', 'rsvp:7:8:9');
-
-    const response = await plugin.fetch(request(`/rsvp/7/8/9/${signature}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ status: 'confirmed', plus_guests: '1', message: 'Looking forward to it' }),
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
-
-    expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toContain('/rsvp/thank-you?status=confirmed');
-    expect(JSON.parse(String(updateRequest?.body))).toMatchObject({
-      lect: { status: 'confirmed', plus_guests: '1', response: [{ status: 'confirmed', message: 'Looking forward to it' }] },
-    });
-  });
-});
-
 describe('event tooling (reorder, import, all-guests, QR)', () => {
   it('persists guest-list order by writing each list weight', async () => {
     const updates: Array<{ id: string; body: unknown }> = [];
