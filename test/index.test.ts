@@ -109,7 +109,11 @@ describe('plugin contract', () => {
 
     expect(response.status).toBe(200);
     const manifest = await response.json() as {
-      contentTypes: { blueprint: { guest: string[] } };
+      contentTypes: {
+        blueprint: { guest: string[] };
+        taxonomies: Record<string, string>;
+        taxonomyLists: Record<string, string[]>;
+      };
     };
     expect(manifest).toMatchObject({
       id: 'events',
@@ -123,6 +127,13 @@ describe('plugin contract', () => {
       ],
       contentTypes: {
         blueprint: { event: expect.any(Array), guest: expect.any(Array) },
+        taxonomies: {
+          'event-type': 'Event Type',
+          'event-categories': 'Event Categories',
+        },
+        taxonomyLists: {
+          event: ['event-type', 'event-categories'],
+        },
       },
     });
     expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');

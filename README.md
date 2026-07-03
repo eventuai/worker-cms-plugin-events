@@ -17,6 +17,7 @@ assembled from constants. Edit the JSON to change content types, blocks, nav, et
 
 - **Blueprints:** `event` (sessions, capacity, RFID, kiosk), `guest`, `label`,
   `edm`, `mail_list`, `mail_preview_list`.
+- **Taxonomies:** `event-type` and `event-categories` shown on `event` pages.
 - **Event grouping:** `edm` and `mail_list` pages belong to an event via their
   `lect._pointers.event` (their CMS parent page may be a different page type), so
   the plugin lists them with `listByEvent()` and filters on that pointer rather
@@ -82,7 +83,8 @@ No `wrangler.toml` change or CMS redeploy needed.
 
 ## Status
 
-- [x] All event/RSVP/EDM blueprints + blocks + block lists; 3-section admin
+- [x] All event/RSVP/EDM blueprints + blocks + block lists + event taxonomies;
+      3-section admin
 - [x] Signed QR `/qr` + `/sign` (real QR matrix, HMAC via Web Crypto)
 - [x] Bespoke EDM editor as a plugin edit view (`editViews: ['edm']`)
 - [x] Guest lists, guest management, CSV import/export, label designer

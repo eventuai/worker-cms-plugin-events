@@ -132,6 +132,13 @@
       "event": ["picture", "paragraph", "table", "button", "rsvp-location", "rsvp-date-time", "rsvp-plus-one", "rsvp-meal-preferences", "rsvp-travel-hotel", "rsvp-custom", "rsvp-public-form", "rsvp-accept", "rsvp-sessions", "rsvp-qrcode", "rsvp-pickup", "rsvp-button"],
       "edm": ["picture", "paragraph", "table", "button", "spacer", "edm-attachments", "edm-unsubscribe", "rsvp-location", "rsvp-date-time", "rsvp-plus-one", "rsvp-meal-preferences", "rsvp-travel-hotel", "rsvp-custom", "rsvp-public-form", "rsvp-accept", "rsvp-sessions", "rsvp-qrcode", "rsvp-pickup", "rsvp-button"],
       "mail_list": ["rsvp-location", "rsvp-date-time", "rsvp-plus-one", "rsvp-meal-preferences", "rsvp-travel-hotel", "rsvp-custom", "rsvp-public-form", "rsvp-accept", "rsvp-sessions", "rsvp-qrcode", "rsvp-pickup", "rsvp-button"]
+    },
+    "taxonomies": {
+      "event-type": "Event Type",
+      "event-categories": "Event Categories"
+    },
+    "taxonomyLists": {
+      "event": ["event-type", "event-categories"]
     }
   }
 }
