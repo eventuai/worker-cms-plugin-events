@@ -54,10 +54,11 @@ import {
 } from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
+import { handleEventEditView } from './event';
 import { redirect, requirePluginSecret, serveViewAsset } from '@lionrockjs/worker-cms-plugin';
-// The plugin manifest (content types, blocks, nav, hooks, editViews) is plain
-// data, so it lives as a static JSON file served verbatim at /__plugin/manifest
-// rather than being assembled from constants here.
+// The plugin manifest (content types, blocks, nav, hooks, page-view overrides)
+// is plain data, so it lives as a static JSON file served verbatim at
+// /__plugin/manifest rather than being assembled from constants here.
 import MANIFEST from './manifest.json';
 
 interface PluginEnv extends EdmEnv {
@@ -94,6 +95,13 @@ export default {
       return serveViewAsset(env.VIEWS, assetPath);
     }
 
+    // Static assets declared in the plugin manifest. The CMS proxies these
+    // through its admin-approved, hash-pinned plugin asset endpoint before
+    // allowing them to run under CMS chrome.
+    if (path.startsWith('/assets/')) {
+      return serveViewAsset(env.VIEWS, path);
+    }
+
     if (path.startsWith('/__plugin/hooks/')) {
       const event = path.split('/').pop();
       const payload = await request.json().catch(() => ({}));
@@ -101,9 +109,9 @@ export default {
       return new Response('ok');
     }
 
-    // Plugin-rendered page edit view (manifest `editViews`). The CMS POSTs the
-    // editor context; we return a bespoke editor as an HTML fragment the CMS
-    // wraps in its admin chrome.
+    // Plugin-rendered page views (manifest `editViews` / `newViews`). The CMS
+    // POSTs the editor context; we return a bespoke editor as an HTML fragment
+    // the CMS wraps in its admin chrome.
     if (path === '/__plugin/edit' && request.method === 'POST') {
       const access = eventAdminAccessForRequest(request);
       if (!access.canEdit) return forbidden();
@@ -116,7 +124,9 @@ export default {
       }
       const edmResponse = await handleEdmEditView(request.clone(), cms, env.VIEWS, env);
       if (edmResponse.status !== 404) return edmResponse;
-      return handleGuestEditView(request, cms, env.VIEWS);
+      const guestResponse = await handleGuestEditView(request.clone(), cms, env.VIEWS);
+      if (guestResponse.status !== 404) return guestResponse;
+      return handleEventEditView(request);
     }
 
     if (path.startsWith('/__plugin/admin')) {
@@ -327,6 +337,8 @@ interface Rollup {
 }
 
 function statTiles(r: Rollup): Array<{ label: string; value: number; color?: string }> {
+  if(r.guests === 0) return [];
+
   return [
     { label: 'Guests', value: r.guests },
     { label: 'Headcount', value: r.total },

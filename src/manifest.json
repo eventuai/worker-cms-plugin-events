@@ -11,7 +11,11 @@
     { "value": "events:write", "label": "Events: edit and delete events, guest lists, guests and EDM templates" },
     { "value": "events:checkin", "label": "Events: check in guests" }
   ],
+  "assets": [
+    { "path": "/assets/event-new.js", "label": "New event auto slug" }
+  ],
   "editViews": ["edm", "guest"],
+  "newViews": ["event"],
   "contentTypes": {
     "readTypes": ["contact"],
     "blueprint": {

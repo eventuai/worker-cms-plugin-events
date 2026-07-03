@@ -25,9 +25,9 @@ assembled from constants. Edit the JSON to change content types, blocks, nav, et
 - **Blocks + block lists:** content blocks, EDM blocks, all `rsvp-*` blocks;
   `events` / `edm` / `rsvp` block lists.
 - **Nav (3 items):** Events, RSVP, EDM — each a section of the same plugin admin.
-- **Edit view:** `editViews: ['edm']` — `edm` pages open the bespoke EDM editor
-  (ported from the legacy Eventuai admin) instead of the CMS's generic structured
-  editor. See [EDM editor](#edm-editor).
+- **Page views:** `editViews: ['edm', 'guest']`, `newViews: ['event']` — EDM and
+  guest pages open bespoke editors, and new event pages open a simple event setup
+  view before falling back to the CMS editor for existing events. See [EDM editor](#edm-editor).
 - **Hooks:** `publish`, `unpublish`, `delete`.
 - **Public routes (own domain):** `/qr` + `/sign` (signed QR). The guest-facing
   RSVP form lives in the standalone [`worker-rsvp`](../worker-rsvp) Worker —
@@ -37,8 +37,8 @@ assembled from constants. Edit the JSON to change content types, blocks, nav, et
 
 ## EDM editor
 
-Because the manifest lists `editViews: ['edm']`, the CMS hands the whole edit/new
-view for an `edm` page to this plugin: it `POST`s the editor context to
+Because the manifest lists plugin page-view overrides, the CMS hands the whole
+edit/new view for configured page types to this plugin: it `POST`s the editor context to
 `/__plugin/edit`, and the plugin returns the bespoke EDM editor
 ([`src/edm.ts` → `handleEdmEditView`](src/edm.ts),
 [`views/sections/edm-edit.liquid`](views/sections/edm-edit.liquid)) as an HTML
@@ -86,7 +86,7 @@ No `wrangler.toml` change or CMS redeploy needed.
 - [x] All event/RSVP/EDM blueprints + blocks + block lists + event taxonomies;
       3-section admin
 - [x] Signed QR `/qr` + `/sign` (real QR matrix, HMAC via Web Crypto)
-- [x] Bespoke EDM editor as a plugin edit view (`editViews: ['edm']`)
+- [x] Bespoke EDM and guest editors plus a new-event setup view as plugin page views
 - [x] Guest lists, guest management, CSV import/export, label designer
 - [x] Signed RSVP links (multilingual, `?edm=`) — the form itself is served by
       the standalone `worker-rsvp` Worker from the published DB

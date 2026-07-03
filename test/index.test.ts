@@ -125,6 +125,9 @@ describe('plugin contract', () => {
         { value: 'events:write', label: 'Events: edit and delete events, guest lists, guests and EDM templates' },
         { value: 'events:checkin', label: 'Events: check in guests' },
       ],
+      assets: [
+        { path: '/assets/event-new.js', label: 'New event auto slug' },
+      ],
       contentTypes: {
         blueprint: { event: expect.any(Array), guest: expect.any(Array) },
         taxonomies: {
@@ -137,6 +140,13 @@ describe('plugin contract', () => {
       },
     });
     expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');
+  });
+
+  it('serves declared plugin assets for CMS approval', async () => {
+    const response = await plugin.fetch(request('/assets/event-new.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("document.getElementById('event-name')");
   });
 
   it('requires the shared secret for admin routes and renders RSVP guest lists when authorized', async () => {
@@ -1793,9 +1803,12 @@ describe('EDM and labels', () => {
 });
 
 describe('EDM edit view (plugin-rendered page editor)', () => {
-  it('declares the plugin-rendered edit views in the manifest', async () => {
+  it('declares plugin-rendered edit and new views in the manifest', async () => {
     const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
-    await expect(response.json()).resolves.toMatchObject({ editViews: ['edm', 'guest'] });
+    await expect(response.json()).resolves.toMatchObject({
+      editViews: ['edm', 'guest'],
+      newViews: ['event'],
+    });
   });
 
   it('links the EDM list straight to the page editor (no intermediate page)', async () => {
@@ -1929,6 +1942,51 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(htmlWithPresence).toContain('id="presence-bar"');
     expect(htmlWithPresence).toContain('data-page-id="50"');
     expect(htmlWithPresence).toContain('data-editor-form');
+  });
+
+  it('renders the new event override with simple details and use cases', async () => {
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({
+        mode: 'new',
+        action: '/admin/pages',
+        backHref: '/admin/plugins/events/events',
+        pageType: 'event',
+        page: {
+          id: '',
+          name: '',
+          slug: '',
+          pageType: 'event',
+          weight: 0,
+          start: '2026-09-01T18:00:00',
+          end: '2026-09-01T21:00:00',
+          timezone: '+0800',
+          editors: null,
+          lect: JSON.stringify({ event_use_case: 'rsvp_plus_one' }),
+        },
+      })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-cms-chrome')).toBe('1');
+    expect(response.headers.get('x-cms-view-path')).toBe('/sections/event-new.liquid');
+    const html = await renderedText(response);
+    expect(html).toContain('action="/admin/pages"');
+    expect(html).toContain('data-editor-form');
+    expect(html).toContain('name="page_type" value="event"');
+    expect(html).toContain('id="event-name"');
+    expect(html).toContain('id="event-slug"');
+    expect(html).toContain('name="slug"');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/event-new.js" defer></script>');
+    expect(html).toContain('name="start" type="datetime-local" value="2026-09-01T18:00"');
+    expect(html).toContain('name="end" type="datetime-local" value="2026-09-01T21:00"');
+    expect(html).toContain('name="timezone"');
+    expect(html).toContain('<option value="+0800" selected>Hong Kong (UTC+08:00)</option>');
+    expect(html).toContain('name="@event_use_case" value="manual_qr_single"');
+    expect(html).toContain('Guest list, single session, manually send QR code for checkin');
+    expect(html).toContain('name="@event_use_case" value="rsvp_plus_one" checked');
+    expect(html).toContain('Label Printing with RFID tracking');
   });
 
   it('renders the bespoke guest editor with RSVP custom fields from the event', async () => {
@@ -2149,14 +2207,21 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(post.status).toBe(404);
   });
 
-  it('falls back (404) for a non-edm and non-guest page type', async () => {
+  it('falls back (404) for existing events and unrelated page types', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
-    const response = await plugin.fetch(request('/__plugin/edit', {
+    const eventEdit = await plugin.fetch(request('/__plugin/edit', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
       body: JSON.stringify(editContext({ pageType: 'event' })),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
-    expect(response.status).toBe(404);
+    expect(eventEdit.status).toBe(404);
+
+    const other = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({ pageType: 'article' })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    expect(other.status).toBe(404);
   });
 
   it('rejects the edit view without the shared secret', async () => {
