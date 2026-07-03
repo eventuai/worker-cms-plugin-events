@@ -286,6 +286,31 @@ describe('events admin', () => {
     expect(cmsFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('shows events that are pending background deletion and hides repeat delete actions', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      expect(url.pathname).toBe('/__cms/pages');
+      expect(url.searchParams.get('page_type')).toBe('event');
+      return Response.json({
+        pages: [
+          { id: 12, name: 'Town & Country', start: '2026-10-12T09:00', timezone: '+0800', lect: { deleting: 'yes' } },
+        ],
+        total: 1,
+      });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('Deleting');
+    expect(html).not.toContain('title="Duplicate event"');
+    expect(html).not.toContain('title="Delete event"');
+  });
+
   it('shows every event guest list with its RSVP summary', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -368,6 +393,38 @@ describe('events admin', () => {
     expect(html).toContain('<div data-privacy-control hidden></div>');
     expect(html).toContain('Ada');
     expect(html).toContain('2026-09-01');
+  });
+
+  it('shows a deleting notice on the event dashboard without creating adhoc lists', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: { id: 12, page_type: 'event', name: 'Town & Country', lect: { deleting: 'yes' } } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        throw new Error('dashboard should not create an adhoc list while deleting');
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/12', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('This event is being deleted in the background.');
+    expect(html).toContain('Deleting');
+    expect(html).not.toContain('title="Edit event"');
+    expect(html).not.toContain('title="Delete event"');
+    expect(cmsFetch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'POST' }));
   });
 
   it('paginates event guest responses at 25 rows per page', async () => {
@@ -1355,10 +1412,15 @@ describe('event deletion', () => {
     const removed: number[] = [];
     const batchRemoved: number[][] = [];
     const deleteChildrenCalls: Array<Record<string, unknown>> = [];
+    let deletingUpdate: Record<string, unknown> | undefined;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
-        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { venue: 'Hall' } } });
+      }
+      if (url.pathname === '/__cms/pages/7' && init?.method === 'PUT') {
+        deletingUpdate = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: deletingUpdate.lect } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         return Response.json({ pages: [
@@ -1394,6 +1456,8 @@ describe('event deletion', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20started.%20It%20may%20take%20a%20moment%20to%20finish.');
+    expect(deletingUpdate).toMatchObject({ lect: { venue: 'Hall', deleting: 'yes' } });
+    expect((deletingUpdate?.lect as Record<string, unknown>).deleting_at).toEqual(expect.any(String));
     // Each list's guests are trashed by a server-side delete call selecting on the
     // canonical mail_list pointer (one per list), not by parent page.
     expect(deleteChildrenCalls).toEqual([

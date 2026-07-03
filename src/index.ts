@@ -405,23 +405,31 @@ async function eventsList(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = f
     showArchived,
     archivedHref: `${ADMIN_BASE}/events?archived=1`,
     activeHref: `${ADMIN_BASE}/events`,
-    events: visible.map((event) => ({
-      name: event.name,
-      // `start` and `timezone` are native CMS page columns (the F1 API returns
-      // them top-level, not in lect). Timezone is an offset like "+0800", so we
-      // show the raw values rather than reformatting against an IANA zone.
-      start: [(event.start ?? '').replace('T', ' '), event.timezone ?? ''].filter(Boolean).join(' '),
-      archived: isArchived(event.lect),
-      dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
-      editHref: canEdit ? editHrefReturningTo(event.id, `${ADMIN_BASE}/events`) : '',
-      duplicateHref: canEdit ? `${ADMIN_BASE}/events/${event.id}/duplicate` : '',
-      deleteHref: canDelete ? `${ADMIN_BASE}/events/${event.id}/delete` : '',
-    })),
+    events: visible.map((event) => {
+      const deleting = isDeleting(event.lect);
+      return {
+        name: event.name,
+        // `start` and `timezone` are native CMS page columns (the F1 API returns
+        // them top-level, not in lect). Timezone is an offset like "+0800", so we
+        // show the raw values rather than reformatting against an IANA zone.
+        start: [(event.start ?? '').replace('T', ' '), event.timezone ?? ''].filter(Boolean).join(' '),
+        archived: isArchived(event.lect),
+        deleting,
+        dashboardHref: `${ADMIN_BASE}/events/${event.id}`,
+        editHref: canEdit && !deleting ? editHrefReturningTo(event.id, `${ADMIN_BASE}/events`) : '',
+        duplicateHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${event.id}/duplicate` : '',
+        deleteHref: canDelete && !deleting ? `${ADMIN_BASE}/events/${event.id}/delete` : '',
+      };
+    }),
   }, jsonOnly);
 }
 
 function isArchived(lect: Record<string, unknown>): boolean {
   return attr(lect, 'archived').trim().toLowerCase() === 'yes';
+}
+
+function isDeleting(lect: Record<string, unknown>): boolean {
+  return attr(lect, 'deleting').trim().toLowerCase() === 'yes';
 }
 
 // ── Event archive (legacy Event.archive) ──────────────────────────────────────
@@ -652,6 +660,7 @@ async function deleteEventForm(cms: CmsClient, views: Fetcher, eventId: number, 
 async function deleteEvent(request: Request, cms: CmsClient, eventId: number, ctx?: ExecutionContext): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  await cms.update(eventId, { lect: { ...event.lect, deleting: 'yes', deleting_at: new Date().toISOString() } });
 
   if (request.headers.get('x-cms-background-job') === '1') {
     await deleteEventCascade(cms, eventId);
@@ -704,7 +713,8 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     listByEvent(cms, 'mail_list', eventId),
     listByEvent(cms, 'edm', eventId),
   ]);
-  if (!guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId));
+  const deleting = isDeleting(event.lect);
+  if (!deleting && !guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId));
   // The CMS page API is generic, so the plugin tallies each list's guests itself
   // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
   // The same fetch also yields the guests who have responded, so the dashboard's
@@ -733,6 +743,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
   return adminView(views, event.name, 'event-dashboard', {
     flash: url.searchParams.get('flash') ?? '',
     eventName: event.name,
+    deleting,
     eventsHref: `${ADMIN_BASE}/events`,
     canEdit,
     canDelete,
@@ -749,11 +760,11 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     guestSearchHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
     guestSearchColorOptions: colorTagOptions(),
     statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
-    editHref: canEdit ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
-    duplicateHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
-    archiveHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/archive` : '',
-    deleteHref: canDelete ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
-    reorderAction: canEdit ? CMS_BATCH_WEIGHT_ACTION : '',
+    editHref: canEdit && !deleting ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
+    duplicateHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
+    archiveHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/archive` : '',
+    deleteHref: canDelete && !deleting ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
+    reorderAction: canEdit && !deleting ? CMS_BATCH_WEIGHT_ACTION : '',
     reorderEventId: eventId,
     stats: statTiles(r),
     guestLists: orderedLists.map((list) => {
