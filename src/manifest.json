@@ -2,7 +2,7 @@
   "id": "events",
   "name": "Events Suite",
   "version": "0.1.0",
-  "hooks": ["publish", "unpublish", "delete"],
+  "hooks": ["create", "publish", "unpublish", "delete"],
   "nav": [
     { "label": "Events", "href": "events", "roles": ["admin", "editor", "moderator", "event-helper"] }
   ],

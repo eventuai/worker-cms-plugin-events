@@ -54,7 +54,7 @@ import {
 } from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
-import { handleEventEditView } from './event';
+import { createSampleEdmsForEvent, handleEventEditView } from './event';
 import { redirect, requirePluginSecret, serveViewAsset } from '@lionrockjs/worker-cms-plugin';
 // The plugin manifest (content types, blocks, nav, hooks, page-view overrides)
 // is plain data, so it lives as a static JSON file served verbatim at
@@ -103,9 +103,10 @@ export default {
     }
 
     if (path.startsWith('/__plugin/hooks/')) {
-      const event = path.split('/').pop();
+      const hookEvent = path.split('/').pop();
       const payload = await request.json().catch(() => ({}));
-      console.log(`[events-suite] hook ${event}:`, JSON.stringify(payload));
+      console.log(`[events-suite] hook ${hookEvent}:`, JSON.stringify(payload));
+      if (hookEvent === 'create') await handleCreateHook(payload, env);
       return new Response('ok');
     }
 
@@ -171,6 +172,30 @@ export default {
     ctx.waitUntil(dispatchDueMailLists(new CmsClient(env), env.VIEWS, env));
   },
 };
+
+interface CmsHookPayload {
+  page?: {
+    id?: number | string;
+    page_type?: string | null;
+  };
+}
+
+async function handleCreateHook(payload: unknown, env: PluginEnv): Promise<void> {
+  const hook = payload as CmsHookPayload;
+  if (hook?.page?.page_type !== 'event') return;
+  const eventId = parseHookPageId(hook.page.id);
+  if (eventId == null) return;
+  try {
+    await createSampleEdmsForEvent(new CmsClient(env), eventId);
+  } catch (error) {
+    console.error('[events-suite] create hook sample EDM creation failed', error);
+  }
+}
+
+function parseHookPageId(value: number | string | undefined): number | null {
+  const id = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
 
 function placeholderQrSvg(views: Fetcher, data: string): Promise<string> {
   return renderLiquid(views, '/templates/qr.liquid', { label: data.slice(0, 40) });
@@ -770,6 +795,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     exportAllHref: canImportExport ? `${ADMIN_BASE}/events/${eventId}/export` : '',
     labelsHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/labels` : '',
     guestSearchHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    hasGuests: r.guests > 0,
     guestSearchColorOptions: colorTagOptions(),
     statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
     editHref: canEdit && !deleting ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',

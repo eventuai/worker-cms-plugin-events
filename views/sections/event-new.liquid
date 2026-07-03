@@ -21,33 +21,30 @@
   <input type="hidden" name="return_to" value="{{ backHref | escape }}">
   <input type="hidden" name="@type" value="event">
 
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-      <label class="block">
-        <input id="event-name" class="{{ cls_input }}" name="name" value="{{ name | escape }}" required autocomplete="off" placeholder="Event name *">
-        <div class="text-gray-500 font-mono text-xs mt-1">/<input id="event-slug" class="font-mono text-xs border-0" name="slug" value="{{ slug | escape }}" required autocomplete="off" placeholder="slug"></div>
-      </label>
-
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <label class="flex items-center gap-2">
-        <span class="{{ cls_label }}">From</span>
-        <input class="{{ cls_input }}" name="start" type="datetime-local" value="{{ start | escape }}">
-      </label>
-      <label class="flex items-center gap-2">
-        <span class="{{ cls_label }}">Until</span>
-        <input class="{{ cls_input }}" name="end" type="datetime-local" value="{{ end | escape }}">
-      </label>
-      <label class="flex items-center gap-2">
-        <select class="{{ cls_input }}" name="timezone">
-          {% for option in timezoneOptions %}
-            <option value="{{ option.value | escape }}"{% if option.selected %} selected{% endif %}>{{ option.label | escape }}</option>
-          {% endfor %}
-        </select>
-      </label>
-    </div>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  <label class="flex items-center gap-2">
+    <span class="{{ cls_label }}">From</span>
+    <input class="{{ cls_input }}" name="start" type="datetime-local" value="{{ start | escape }}">
+  </label>
+  <label class="flex items-center gap-2">
+    <span class="{{ cls_label }}">Until</span>
+    <input class="{{ cls_input }}" name="end" type="datetime-local" value="{{ end | escape }}">
+  </label>
+  <label class="flex items-center gap-2">
+    <select class="{{ cls_input }}" name="timezone">
+      {% for option in timezoneOptions %}
+        <option value="{{ option.value | escape }}"{% if option.selected %} selected{% endif %}>{{ option.label | escape }}</option>
+      {% endfor %}
+    </select>
+  </label>
   </div>
 
+  <label class="block">
+    <input id="event-name" class="{{ cls_input }}" name="name" value="{{ name | escape }}" required autocomplete="off" placeholder="Event name *">
+    <div class="text-gray-500 font-mono text-xs mt-1 w-full flex">/<input id="event-slug" class="font-mono text-xs border-0 w-full" name="slug" value="{{ slug | escape }}" required autocomplete="off" placeholder="slug"></div>
+  </label>
+
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-3">
-    <h2 class="text-lg font-bold text-gray-900">Use case</h2>
     <div class="space-y-2">
       {% for option in useCases %}
         <label class="flex items-start gap-3 rounded-lg border border-gray-300 p-3 cursor-pointer hover:bg-gray-50">

@@ -120,6 +120,7 @@ describe('plugin contract', () => {
       nav: [
         { label: 'Events', href: 'events', roles: ['admin', 'editor', 'moderator', 'event-helper'] },
       ],
+      hooks: ['create', 'publish', 'unpublish', 'delete'],
       permissions: [
         { value: 'events:view', label: 'Events: view events, guest lists and guests' },
         { value: 'events:write', label: 'Events: edit and delete events, guest lists, guests and EDM templates' },
@@ -140,6 +141,62 @@ describe('plugin contract', () => {
       },
     });
     expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');
+  });
+
+  it('creates sample RSVP and QR EDMs for a new RSVP/QR event', async () => {
+    const creates: Array<Record<string, unknown>> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({
+          page: {
+            id: 7,
+            page_type: 'event',
+            name: 'Launch',
+            lect: { event_use_case: 'rsvp_qr_single' },
+          },
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        creates.push(JSON.parse(String(init.body)));
+        return Response.json({ page: { id: 100 + creates.length, page_type: 'edm' } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/hooks/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-plugin-secret': 'shared-secret' },
+      body: JSON.stringify({ event: 'create', page: { id: 7, page_type: 'event', name: 'Launch' } }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('ok');
+    expect(creates).toHaveLength(2);
+    expect(creates[0]).toMatchObject({
+      page_type: 'edm',
+      name: 'Sample RSVP EDM',
+      lect: {
+        sample_kind: 'sample-rsvp',
+        subject: { en: 'RSVP for Launch' },
+        rsvp_button: { en: 'RSVP now' },
+        quick_confirm: 'yes',
+        _pointers: { event: '7' },
+      },
+    });
+    expect(creates[1]).toMatchObject({
+      page_type: 'edm',
+      name: 'Sample QR code confirmation EDM',
+      lect: {
+        sample_kind: 'sample-qr',
+        subject: { en: 'QR code confirmation for Launch' },
+        _pointers: { event: '7' },
+      },
+    });
   });
 
   it('serves declared plugin assets for CMS approval', async () => {
@@ -369,6 +426,8 @@ describe('events admin', () => {
     expect(response.status).toBe(200);
     const html = await renderedText(response);
     expect(html).toContain('Guest lists');
+    expect(html).toContain('aria-label="Search guests"');
+    expect(html).toContain('aria-label="Export guests"');
     expect(html).toContain('VIP');
     expect(html).toContain('6 people');
     expect(html).toContain('Confirmed 1');
@@ -537,6 +596,9 @@ describe('events admin', () => {
     expect(response.status).toBe(200);
     const html = await renderedText(response);
     expect(html.indexOf('General')).toBeLessThan(html.indexOf('VIP'));
+    expect(html).not.toContain('aria-label="Search guests"');
+    expect(html).not.toContain('aria-label="Export guests"');
+    expect(html).toContain('aria-label="Import guests"');
     expect(html).toContain('data-reorder="/admin/pages/batch-weight"');
     expect(html).toContain('data-reorder-key="updates"');
     expect(html).toContain('data-reorder-event-id="7"');

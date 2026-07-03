@@ -1,7 +1,9 @@
-import { attr } from './cms';
+import { attr, type CmsClient, type CmsPage, listByEvent } from './cms';
 import { clientViewResponse } from './templates/views';
 
 const ADMIN_BASE = '/admin/plugins/events';
+const RSVP_SAMPLE_NAME = 'Sample RSVP EDM';
+const QR_SAMPLE_NAME = 'Sample QR code confirmation EDM';
 
 interface EditViewContext {
   mode: 'new' | 'edit';
@@ -78,6 +80,86 @@ export async function handleEventEditView(request: Request): Promise<Response> {
     timezoneOptions: TIMEZONE_OPTIONS.map((option) => ({ ...option, selected: option.value === timezone })),
     useCases: EVENT_USE_CASES.map((option) => ({ ...option, selected: option.value === selectedUseCase })),
   });
+}
+
+export async function createSampleEdmsForEvent(cms: CmsClient, eventId: number): Promise<void> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return;
+
+  const useCase = attr(event.lect, 'event_use_case');
+  const samples = sampleEdmsForUseCase(event, useCase);
+  if (samples.length === 0) return;
+
+  const existing = await listByEvent(cms, 'edm', event.id);
+  const existingKeys = new Set(existing.map((edm) => `${attr(edm.lect, 'sample_kind') || edm.name}`));
+  for (const sample of samples) {
+    if (existingKeys.has(sample.kind) || existingKeys.has(sample.name)) continue;
+    await cms.create({
+      page_type: 'edm',
+      name: sample.name,
+      lect: sample.lect,
+    });
+  }
+}
+
+function sampleEdmsForUseCase(event: CmsPage, useCase: string): Array<{ kind: string; name: string; lect: Record<string, unknown> }> {
+  const samples: Array<{ kind: string; name: string; lect: Record<string, unknown> }> = [];
+  if (createsRsvpSample(useCase)) samples.push(sampleRsvpEdm(event));
+  if (createsQrSample(useCase)) samples.push(sampleQrEdm(event));
+  return samples;
+}
+
+function createsRsvpSample(useCase: string): boolean {
+  return new Set(['rsvp_qr_single', 'rsvp_plus_one', 'multi_session_labels', 'multi_session_rfid']).has(useCase);
+}
+
+function createsQrSample(useCase: string): boolean {
+  return new Set(['manual_qr_single', 'rsvp_qr_single', 'rsvp_plus_one', 'multi_session_labels', 'multi_session_rfid']).has(useCase);
+}
+
+function sampleRsvpEdm(event: CmsPage): { kind: string; name: string; lect: Record<string, unknown> } {
+  const name = RSVP_SAMPLE_NAME;
+  return {
+    kind: 'sample-rsvp',
+    name,
+    lect: {
+      _type: 'edm',
+      sample_kind: 'sample-rsvp',
+      name: { en: name },
+      subject: { en: `RSVP for ${event.name}` },
+      heading: { en: `You're invited to ${event.name}` },
+      body: { en: 'Hi {{prefer_name||name}},<br><br>Please let us know if you can join us.' },
+      rsvp_button: { en: 'RSVP now' },
+      rsvp_form_button: { en: 'Confirm RSVP' },
+      rsvp_form_decline_button: { en: 'Decline' },
+      thankyou_heading: { en: 'Thank you for your RSVP' },
+      thankyou_body: { en: 'We have received your response.' },
+      decline_heading: { en: 'Thank you for letting us know' },
+      decline_body: { en: 'We are sorry you cannot join us this time.' },
+      quick_confirm: 'yes',
+      _pointers: { event: String(event.id) },
+    },
+  };
+}
+
+function sampleQrEdm(event: CmsPage): { kind: string; name: string; lect: Record<string, unknown> } {
+  const name = QR_SAMPLE_NAME;
+  return {
+    kind: 'sample-qr',
+    name,
+    lect: {
+      _type: 'edm',
+      sample_kind: 'sample-qr',
+      name: { en: name },
+      subject: { en: `QR code confirmation for ${event.name}` },
+      heading: { en: 'Your QR code confirmation' },
+      body: {
+        en: 'Hi {{prefer_name||name}},<br><br>Your RSVP is confirmed. Please bring this QR code or code with you for check-in:<br><br><strong>{{qrcode||barcode||rsvp_code}}</strong>',
+      },
+      rsvp_button: { en: 'View RSVP' },
+      _pointers: { event: String(event.id) },
+    },
+  };
 }
 
 function parseLect(value: string): Record<string, unknown> {
