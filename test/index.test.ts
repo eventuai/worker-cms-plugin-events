@@ -1846,6 +1846,14 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('name="#0.body|mis"');
     expect(html).toContain('data-picture-url type="text" name="#1@picture"');
     expect(html).not.toContain('type="url" name="#1@picture"');
+
+    const htmlWithPresence = await renderView(views(), '/sections/edm-edit.liquid', {
+      ...payload,
+      cmsEditPresence: { pageId: '50', currentUserId: '42', userAvatar: '' },
+    });
+    expect(htmlWithPresence).toContain('id="presence-bar"');
+    expect(htmlWithPresence).toContain('data-page-id="50"');
+    expect(htmlWithPresence).toContain('data-editor-form');
   });
 
   it('renders the bespoke guest editor with RSVP custom fields from the event', async () => {
@@ -1935,6 +1943,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-cms-chrome')).toBe('1');
+    const payload = await response.clone().json() as Record<string, unknown>;
     const html = await renderedText(response);
     expect(html).toContain('action="/admin/pages/9"');
     expect(html).toContain('name="page_type" value="guest"');
@@ -1973,6 +1982,14 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('Additional information');
     expect(html).toContain('name="@rsvp_custom_diet"');
     expect(html).toContain('<option value="vegan" selected>Vegan</option>');
+
+    const htmlWithPresence = await renderView(views(), '/sections/guest-form.liquid', {
+      ...payload,
+      cmsEditPresence: { pageId: '9', currentUserId: '42', userAvatar: '' },
+    });
+    expect(htmlWithPresence).toContain('id="presence-bar"');
+    expect(htmlWithPresence).toContain('data-page-id="9"');
+    expect(htmlWithPresence).toContain('data-editor-form');
   });
 
   it('renders guest Activity from RSVP, check-in and sent EDM history', async () => {
