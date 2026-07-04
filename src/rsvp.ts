@@ -48,13 +48,13 @@ const IMPORT_CREATE_BATCH = 5;
 /** Guest value fields the import compares and can add/update on an existing guest. */
 const IMPORT_FIELDS = [
   'last_name', 'email', 'phone', 'organization', 'job_title',
-  'plus_guests', 'status', 'prefer_language', 'cc', 'remarks',
+  'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode',
 ] as const;
 
 const IMPORT_FIELD_LABELS: Record<string, string> = {
   last_name: 'Last name', email: 'Email', phone: 'Phone', organization: 'Organisation',
   job_title: 'Job title', plus_guests: 'Plus guests', status: 'Status',
-  prefer_language: 'Language', cc: 'CC', remarks: 'Remarks', checked_in: 'Check-in',
+  prefer_language: 'Language', cc: 'CC', remarks: 'Remarks', paired_qrcode: 'Paired badge QR code', checked_in: 'Check-in',
 };
 
 interface GuestListContext {
@@ -232,6 +232,10 @@ export async function handleRsvpAdmin(
     if (segments[3] === 'checkin' && request.method === 'POST') {
       if (!canCheckIn) return forbidden();
       return checkInGuest(request, cms, listId, guestId);
+    }
+    if (segments[3] === 'pair-qrcode' && request.method === 'POST') {
+      if (!canCheckIn) return forbidden();
+      return pairGuestQrCode(request, cms, listId, guestId);
     }
     if (segments[3] === 'move' && request.method === 'POST') {
       if (!canEdit) return forbidden();
@@ -763,13 +767,32 @@ async function checkInGuest(request: Request, cms: CmsClient, listId: number, gu
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   const form = await request.formData();
   const returnTo = safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`;
+  await ensureGuestCheckedIn(cms, guest, 'checked in by event admin');
+  return redirect(returnTo);
+}
+
+async function ensureGuestCheckedIn(cms: CmsClient, guest: CmsPage, message: string): Promise<void> {
+  if (checkins(guest.lect).length) return;
+  await cms.update(guest.id, {
+    lect: {
+      checkin: [{ status: 'checked-in', date: new Date().toISOString(), message }],
+    },
+  });
+}
+
+async function pairGuestQrCode(request: Request, cms: CmsClient, listId: number, guestId: number): Promise<Response> {
+  const guest = await cms.get(guestId);
+  if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  const form = await request.formData();
+  const returnTo = safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/qrcode`;
+  const pairedQrCode = firstFormText(form, ['paired_qrcode', 'paired_qr_code', 'badge_qrcode', 'badge_qr_code', 'qrcode', 'code']);
+  if (!pairedQrCode) return redirect(returnTo);
+
+  const lect: Record<string, unknown> = { paired_qrcode: pairedQrCode };
   if (!checkins(guest.lect).length) {
-    await cms.update(guestId, {
-      lect: {
-        checkin: [{ status: 'checked-in', date: new Date().toISOString(), message: 'checked in by event admin' }],
-      },
-    });
+    lect.checkin = [{ status: 'checked-in', date: new Date().toISOString(), message: 'checked in by badge QR pairing' }];
   }
+  await cms.update(guestId, { lect });
   return redirect(returnTo);
 }
 
@@ -1081,6 +1104,8 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     editHref: access?.canEdit === false ? '' : guestEditHref(guestId, listId),
     checkedIn: checkins(guest.lect).length > 0,
+    pairedQrCode: values.paired_qrcode,
+    pairAction: access?.canCheckIn === false ? '' : `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/pair-qrcode`,
     payload,
     qrSvg: qrSvg(payload, { size: 240 }),
     plusGuestQrs,
@@ -1536,6 +1561,7 @@ function importGuestFromValue(value: (...names: string[]) => string): IncomingGu
     prefer_language: v('prefer_language', 'language'),
     cc: v('cc', 'cc_email'),
     remarks: v('remarks', 'notes'),
+    paired_qrcode: v('paired_qrcode', 'paired_qr_code', 'badge_qrcode', 'badge_qr_code', 'rfid_badge_qrcode'),
   };
   const checkin = importedCheckin(
     v('checkin_status', 'rsvp_custom_checkin_status'),
@@ -1767,13 +1793,13 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
-  const headers = ['id', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
+  const headers = ['id', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];
   const rows = pages.map((guest) => {
     const values = guestValues(guest);
     return [
       String(guest.id),
       values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
-      values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks,
+      values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks, values.paired_qrcode,
       checkins(guest.lect).length ? 'yes' : 'no',
     ];
   });
@@ -1800,7 +1826,7 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
     lists.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 }).then((res) => res.pages)),
   );
 
-  const headers = ['id', 'mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'checked_in'];
+  const headers = ['id', 'mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];
   const rows: string[][] = [];
   lists.forEach((list, index) => {
     for (const guest of guestsByList[index] ?? []) {
@@ -1808,7 +1834,7 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
       rows.push([
         String(guest.id),
         list.name, values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
-        values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks,
+        values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks, values.paired_qrcode,
         checkins(guest.lect).length ? 'yes' : 'no',
       ]);
     }
@@ -1861,6 +1887,9 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
   const canManageEmail = access?.canManageEmail ?? true;
   const values = guestValues(guest);
   const quality = emailQuality(values.email);
+  const searchTextParts = [String(guest.id), values.name, values.last_name, values.email, values.phone];
+  if (values.paired_qrcode) searchTextParts.push(values.paired_qrcode);
+  searchTextParts.push(searchQuery);
   return {
     ...values,
     id: guest.id,
@@ -1875,7 +1904,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     colorAction: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/color` : '',
     statusClass: statusClass(values.status),
     statusColor: statusColor(values.status),
-    searchText: [String(guest.id), values.name, values.last_name, values.email, values.phone, searchQuery].join(' '),
+    searchText: searchTextParts.join(' '),
     customFieldValue: customField ? guestCustomFieldValue(guest, customField) : '',
     checkinAction: canCheckIn ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin` : '',
     checkedIn: checkins(guest.lect).length > 0,
@@ -1897,7 +1926,7 @@ function emptyGuestValues(): Record<string, string> {
     picture: '', contact: '', email: '', phone: '', cc: '', organization: '', job_title: '', wechat: '',
     nationality: '', parent: '', allow_refill: '', primary_guest: '', not_send: '', plus_guests: '0',
     total_guests: '', max_main_checkin: '', status: 'to be invited', prefer_language: '', color_tag: '',
-    remarks: '', checkin_remark: '', qrcode_remark: '', rsvp_code: '', qrcode: '', barcode: '', no: '',
+    remarks: '', checkin_remark: '', qrcode_remark: '', rsvp_code: '', qrcode: '', paired_qrcode: '', barcode: '', no: '',
   };
 }
 
@@ -1933,6 +1962,7 @@ function guestValues(guest: CmsPage): Record<string, string> {
     qrcode_remark: attr(guest.lect, 'qrcode_remark'),
     rsvp_code: attr(guest.lect, 'rsvp_code'),
     qrcode: attr(guest.lect, 'qrcode'),
+    paired_qrcode: attr(guest.lect, 'paired_qrcode') || attr(guest.lect, 'paired_qr_code'),
     barcode: attr(guest.lect, 'barcode'),
     no: attr(guest.lect, 'no'),
   };
@@ -2019,6 +2049,7 @@ function guestTicketFields(values: Record<string, string>): GuestFormField[] {
   return [
     guestFormField('@rsvp_code', 'RSVP code', values.rsvp_code),
     guestFormField('@qrcode', 'Ticket QR code', values.qrcode, 'text', { placeholder: 'Third-party QR code text' }),
+    guestFormField('@paired_qrcode', 'Paired badge QR code', values.paired_qrcode, 'text', { placeholder: 'RFID badge QR code text' }),
     guestFormField('@barcode', 'Ticket barcode', values.barcode, 'text', { placeholder: 'Third-party Code128 barcode number' }),
     guestFormField('@no', 'Guest number', values.no),
   ];
@@ -2105,6 +2136,7 @@ function guestMatchesSearch(guest: CmsPage, q: string): boolean {
     values.last_name,
     values.email,
     values.phone,
+    values.paired_qrcode,
   ].some((value) => value.toLowerCase().includes(needle));
 }
 
@@ -2379,6 +2411,7 @@ function guestInput(
     ['qrcode_remark', formText(form, 'qrcode_remark') || formText(form, '@qrcode_remark')],
     ['rsvp_code', formText(form, 'rsvp_code') || formText(form, '@rsvp_code')],
     ['qrcode', formText(form, 'qrcode') || formText(form, '@qrcode')],
+    ['paired_qrcode', formText(form, 'paired_qrcode') || formText(form, '@paired_qrcode') || formText(form, 'paired_qr_code') || formText(form, '@paired_qr_code')],
     ['barcode', formText(form, 'barcode') || formText(form, '@barcode')],
     ['no', formText(form, 'no') || formText(form, '@no')],
   ]);
@@ -2424,6 +2457,7 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
       qrcode_remark: fields.get('qrcode_remark') ?? '',
       rsvp_code: fields.get('rsvp_code') ?? '',
       qrcode: fields.get('qrcode') ?? '',
+      paired_qrcode: fields.get('paired_qrcode') ?? '',
       barcode: fields.get('barcode') ?? '',
       no: fields.get('no') ?? '',
       _pointers: { ...(eventId ? { event: String(eventId) } : {}), mail_list: String(listId), ...(contactId ? { contact: contactId } : {}) },
@@ -2493,6 +2527,14 @@ function stripExcelFormula(raw: string): string {
 function formText(form: FormData, key: string): string {
   const value = form.get(key);
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function firstFormText(form: FormData, keys: string[]): string {
+  for (const key of keys) {
+    const value = formText(form, key);
+    if (value) return value;
+  }
+  return '';
 }
 
 function formLocalizedText(form: FormData, key: string): string {

@@ -141,6 +141,7 @@ describe('plugin contract', () => {
       },
     });
     expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');
+    expect(manifest.contentTypes.blueprint.guest).toContain('@paired_qrcode');
   });
 
   it('creates sample RSVP and QR EDMs for a new RSVP/QR event', async () => {
@@ -182,8 +183,8 @@ describe('plugin contract', () => {
       name: 'Sample RSVP EDM',
       lect: {
         sample_kind: 'sample-rsvp',
-        subject: { en: 'RSVP for Launch' },
-        rsvp_button: { en: 'RSVP now' },
+        subject: { mis: 'RSVP for Launch' },
+        rsvp_button: { mis: 'RSVP now' },
         quick_confirm: 'yes',
         _pointers: { event: '7' },
       },
@@ -193,7 +194,7 @@ describe('plugin contract', () => {
       name: 'Sample QR code confirmation EDM',
       lect: {
         sample_kind: 'sample-qr',
-        subject: { en: 'QR code confirmation for Launch' },
+        subject: { mis: 'QR code confirmation for Launch' },
         _pointers: { event: '7' },
       },
     });
@@ -1603,7 +1604,7 @@ describe('EDM and labels', () => {
     // Grouped to the event by the pointer, not a parent page.
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
       page_type: 'edm', name: 'Launch invitation',
-      lect: { _type: 'edm', name: { en: 'Launch invitation' }, subject: { en: 'Launch invitation' }, _pointers: { event: '7' } },
+      lect: { _type: 'edm', name: { mis: 'Launch invitation' }, subject: { mis: 'Launch invitation' }, _pointers: { event: '7' } },
     });
   });
 
@@ -2128,6 +2129,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
             color_tag: 'blue',
             remarks: 'VIP guest',
             qrcode: 'ticket-qr-123',
+            paired_qrcode: 'BADGE-QR-789',
             barcode: 'BAR-456',
             _pointers: { event: '7', mail_list: '8' },
             rsvp_custom_diet: 'vegan',
@@ -2171,6 +2173,8 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('name="@qrcode"');
     expect(html).toContain('value="ticket-qr-123"');
+    expect(html).toContain('name="@paired_qrcode"');
+    expect(html).toContain('value="BADGE-QR-789"');
     expect(html).toContain('name="@barcode"');
     expect(html).toContain('value="BAR-456"');
     expect(html).toContain('name=".last_name|mis"');
@@ -2615,7 +2619,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { plus_guests: '2', _pointers: { mail_list: '8' } } } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { plus_guests: '2', paired_qrcode: 'BADGE-OLD', _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
@@ -2629,6 +2633,8 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       data: {
         payload: string;
         qrSvg: string;
+        pairAction: string;
+        pairedQrCode: string;
         plusGuestQrs: Array<{ label: string; payload: string; qrSvg: string }>;
       };
     };
@@ -2636,6 +2642,8 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(view.data.qrSvg).toContain('<rect'); // QR modules rendered
     const sig = await signPayload('shared-secret', '8.55');
     expect(view.data.payload).toBe(`8.55.${sig}`);
+    expect(view.data.pairAction).toBe('/admin/plugins/events/rsvp/8/guests/55/pair-qrcode');
+    expect(view.data.pairedQrCode).toBe('BADGE-OLD');
     const firstPlusSig = await signPayload('shared-secret', '8.55.0');
     const secondPlusSig = await signPayload('shared-secret', '8.55.1');
     expect(view.data.plusGuestQrs).toMatchObject([
@@ -2643,6 +2651,41 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       { label: 'Plus guest 2', payload: `8.55.1.${secondPlusSig}` },
     ]);
     expect(view.data.plusGuestQrs[0].qrSvg).toContain('<svg');
+  });
+
+  it('pairs a badge QR code to a guest and checks them in when needed', async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/55' && init?.method === 'PUT') {
+        updates.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return Response.json({ page: { id: 55 } });
+      }
+      if (url.pathname === '/__cms/pages/55') {
+        return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { _pointers: { mail_list: '8' } } } });
+      }
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/pair-qrcode', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ paired_qrcode: 'BADGE-QR-001' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8/guests/55/qrcode');
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      lect: {
+        paired_qrcode: 'BADGE-QR-001',
+        checkin: [{ status: 'checked-in', message: 'checked in by badge QR pairing' }],
+      },
+    });
   });
 });
 

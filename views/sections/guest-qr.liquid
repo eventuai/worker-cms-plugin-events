@@ -20,6 +20,21 @@
   <div style="width:240px;height:240px;margin:0 auto">{{ qrSvg }}</div>
   <p class="text-sm text-gray-500" style="margin-top:1rem;word-break:break-all">{{ payload | escape }}</p>
 </div>
+{% if pairAction != blank %}
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-4" style="max-width:32rem">
+  <h2 class="text-lg font-bold text-gray-900">Badge pairing</h2>
+  <form method="post" action="{{ pairAction | escape }}" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+    <label class="block flex-1" style="margin:0">
+      <span class="block text-sm text-gray-700 mb-1">Paired badge QR code</span>
+      <input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" type="text" name="paired_qrcode" value="{{ pairedQrCode | escape }}" autocomplete="off" autofocus>
+    </label>
+    <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="Pair badge QR code" aria-label="Pair badge QR code">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#document"></use></svg>
+      <span class="hidden lg:inline">Pair badge</span>
+    </button>
+  </form>
+</div>
+{% endif %}
 {% if hasPlusGuestQrs %}
 <div class="mt-6">
   <h2 class="text-lg font-bold text-gray-900">Plus guest QR codes</h2>

@@ -62,6 +62,7 @@
         "@total_guests", 
         "@color_tag", 
         "@qrcode", 
+        "@paired_qrcode",
         "@barcode",
         "name", 
         "last_name",

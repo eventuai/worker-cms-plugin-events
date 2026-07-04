@@ -579,7 +579,7 @@ async function createEdm(request: Request, cms: CmsClient, views: Fetcher, jsonO
   const edm = await cms.create({
     page_type: 'edm',
     name,
-    lect: { _type: 'edm', name: { en: name }, subject: { en: name }, _pointers: { event: String(eventId) } },
+    lect: { _type: 'edm', name: { mis: name }, subject: { mis: name }, _pointers: { event: String(eventId) } },
   });
   return redirect(editorHref(edm.id));
 }
