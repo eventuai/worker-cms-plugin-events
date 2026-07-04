@@ -376,15 +376,19 @@ async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = fa
 async function guestListForm(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false): Promise<Response> {
   const { pages } = await cms.list('event', { limit: 500 });
   const selectedEventId = pageId(url.searchParams.get('event_id'));
-  const selectedEvent = selectedEventId && !pages.some((event) => event.id === selectedEventId)
+  const listedEvent = selectedEventId ? pages.find((event) => event.id === selectedEventId) : undefined;
+  const fetchedEvent = selectedEventId && !listedEvent
     ? await cms.get(selectedEventId).catch(() => null)
     : null;
-  const events = selectedEvent?.page_type === 'event' ? [selectedEvent, ...pages] : pages;
-  return adminView(views, 'New guest list', 'guest-list-form', {
+  const selectedEvent = listedEvent ?? (fetchedEvent?.page_type === 'event' ? fetchedEvent : null);
+  const title = selectedEvent ? `New guest list — ${selectedEvent.name}` : 'New guest list';
+  return adminView(views, title, 'guest-list-form', {
+    title,
     action: selectedEventId ? `${ADMIN_BASE}/rsvp/new?event_id=${selectedEventId}` : `${ADMIN_BASE}/rsvp/new`,
     backHref: selectedEventId ? `${ADMIN_BASE}/events/${selectedEventId}` : `${ADMIN_BASE}/rsvp`,
     selectedEventId,
-    events: events.map((event) => ({ id: event.id, name: event.name, selected: event.id === selectedEventId })),
+    selectedEventName: selectedEvent?.name ?? '',
+    events: selectedEvent ? [] : pages.map((event) => ({ id: event.id, name: event.name, selected: false })),
   }, jsonOnly);
 }
 
@@ -408,7 +412,7 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
       _type: 'mail_list',
       name: { en: name },
       _pointers: { event: String(eventId) },
-      allow_checkin: formText(form, 'allow_checkin') || 'yes',
+      allow_checkin: 'yes',
     },
   });
   // Return to the event the list belongs to. Reading the just-created list back

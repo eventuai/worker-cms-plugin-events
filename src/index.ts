@@ -54,7 +54,7 @@ import {
 } from './rsvp';
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
-import { createSampleEdmsForEvent, handleEventEditView } from './event';
+import { createEventFromForm, createSampleEdmsForEvent, handleEventEditView } from './event';
 import { redirect, requirePluginSecret, serveViewAsset } from '@lionrockjs/worker-cms-plugin';
 // The plugin manifest (content types, blocks, nav, hooks, page-view overrides)
 // is plain data, so it lives as a static JSON file served verbatim at
@@ -290,6 +290,11 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
 
     // section === 'events'
     // /events/:id/...
+    if (segments[1] === 'new' && request.method === 'POST') {
+      if (!access.canEdit) return forbidden();
+      return await createEventFromForm(request, cms);
+    }
+
     const eventId = segments[1] ? Number(segments[1]) : null;
     const sub = segments[2] ?? '';
 

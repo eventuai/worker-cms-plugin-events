@@ -672,7 +672,7 @@ describe('events admin', () => {
     const response = await plugin.fetch(request('/__plugin/admin/rsvp/new?event_id=7', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
-      body: new URLSearchParams({ name: 'VIP guests', allow_checkin: 'yes' }),
+      body: new URLSearchParams({ name: 'VIP guests', allow_checkin: 'no' }),
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
@@ -707,7 +707,12 @@ describe('events admin', () => {
     expect(response.status).toBe(200);
     const html = await renderedText(response);
     expect(html).toContain(`action="/admin/plugins/events/rsvp/new?event_id=${eventId}"`);
-    expect(html).toContain(`<option value="${eventId}" selected>Launch</option>`);
+    expect(html).toContain('New guest list — Launch');
+    expect(html).toContain(`type="hidden" name="event_id" value="${eventId}"`);
+    expect(html).not.toContain('name="event_id" required');
+    expect(html).not.toContain('<option value="">Select an event</option>');
+    expect(html).toContain('type="hidden" name="allow_checkin" value="yes"');
+    expect(html).not.toContain('name="allow_checkin"><option value="yes">Enabled</option>');
     expect(html).toContain(`/admin/plugins/events/events/${eventId}`);
   });
 
@@ -2035,7 +2040,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(response.headers.get('x-cms-chrome')).toBe('1');
     expect(response.headers.get('x-cms-view-path')).toBe('/sections/event-new.liquid');
     const html = await renderedText(response);
-    expect(html).toContain('action="/admin/pages"');
+    expect(html).toContain('action="/admin/plugins/events/events/new"');
     expect(html).toContain('data-editor-form');
     expect(html).toContain('name="page_type" value="event"');
     expect(html).toContain('id="event-name"');
@@ -2050,6 +2055,69 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('Guest list, single session, manually send QR code for checkin');
     expect(html).toContain('name="@event_use_case" value="rsvp_plus_one" checked');
     expect(html).toContain('Label Printing with RFID tracking');
+  });
+
+  it('creates an event through the plugin route and redirects to the new event dashboard', async () => {
+    const creates: Array<Record<string, unknown>> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        expect(init.headers).toMatchObject({
+          'x-plugin-secret': 'shared-secret',
+          'x-plugin-id': 'events',
+        });
+        creates.push(JSON.parse(String(init.body)));
+        return Response.json({
+          page: {
+            id: 77,
+            page_type: 'event',
+            name: 'Launch',
+            slug: 'launch',
+            lect: { event_use_case: 'rsvp_qr_single' },
+          },
+        }, { status: 201 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/new', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-plugin-secret': 'shared-secret',
+        'x-cms-user': cmsUser('admin'),
+      },
+      body: new URLSearchParams({
+        page_type: 'event',
+        name: 'Launch',
+        slug: 'launch',
+        weight: '7',
+        start: '2026-09-01T18:00',
+        end: '2026-09-01T21:00',
+        timezone: '+0800',
+        '@type': 'event',
+        '@event_use_case': 'rsvp_qr_single',
+      }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/77');
+    expect(creates).toEqual([
+      {
+        page_type: 'event',
+        name: 'Launch',
+        slug: 'launch',
+        weight: 7,
+        start: '2026-09-01T18:00',
+        end: '2026-09-01T21:00',
+        timezone: '+0800',
+        lect: {
+          type: 'event',
+          event_use_case: 'rsvp_qr_single',
+        },
+      },
+    ]);
   });
 
   it('renders the bespoke guest editor with RSVP custom fields from the event', async () => {

@@ -1,5 +1,6 @@
 import { attr, type CmsClient, type CmsPage, listByEvent } from './cms';
 import { clientViewResponse } from './templates/views';
+import { redirect } from '@lionrockjs/worker-cms-plugin';
 
 const ADMIN_BASE = '/admin/plugins/events';
 const RSVP_SAMPLE_NAME = 'Sample RSVP EDM';
@@ -67,7 +68,7 @@ export async function handleEventEditView(request: Request): Promise<Response> {
   const selectedUseCase = attr(lect, 'event_use_case') || EVENT_USE_CASES[0].value;
 
   return clientViewResponse('New event', '/sections/event-new.liquid', {
-    action: ctx.action,
+    action: `${ADMIN_BASE}/events/new`,
     backHref: ctx.backHref || `${ADMIN_BASE}/events`,
     flash: ctx.flash ?? '',
     errors: ctx.errors ?? [],
@@ -80,6 +81,29 @@ export async function handleEventEditView(request: Request): Promise<Response> {
     timezoneOptions: TIMEZONE_OPTIONS.map((option) => ({ ...option, selected: option.value === timezone })),
     useCases: EVENT_USE_CASES.map((option) => ({ ...option, selected: option.value === selectedUseCase })),
   });
+}
+
+export async function createEventFromForm(request: Request, cms: CmsClient): Promise<Response> {
+  const form = await request.formData();
+  const name = formText(form, 'name');
+  const slug = formText(form, 'slug');
+  if (!name || !slug) return redirect(`${ADMIN_BASE}/events`);
+
+  const event = await cms.create({
+    page_type: 'event',
+    name,
+    slug,
+    weight: formNumber(form, 'weight', 5),
+    start: nullableFormText(form, 'start'),
+    end: nullableFormText(form, 'end'),
+    timezone: nullableFormText(form, 'timezone') ?? '+0800',
+    lect: {
+      type: formText(form, '@type') || 'event',
+      event_use_case: formText(form, '@event_use_case') || EVENT_USE_CASES[0].value,
+    },
+  });
+
+  return redirect(`${ADMIN_BASE}/events/${event.id}`);
 }
 
 export async function createSampleEdmsForEvent(cms: CmsClient, eventId: number): Promise<void> {
@@ -174,4 +198,19 @@ function parseLect(value: string): Record<string, unknown> {
 function toDatetimeLocal(value: string | null): string {
   if (!value) return '';
   return value.slice(0, 16);
+}
+
+function formText(form: FormData, key: string): string {
+  const value = form.get(key);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function nullableFormText(form: FormData, key: string): string | null {
+  const value = formText(form, key);
+  return value || null;
+}
+
+function formNumber(form: FormData, key: string, fallback: number): number {
+  const parsed = Number.parseInt(formText(form, key), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
