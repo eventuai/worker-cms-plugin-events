@@ -5,6 +5,7 @@ import { redirect } from '@lionrockjs/worker-cms-plugin';
 const ADMIN_BASE = '/admin/plugins/events';
 const RSVP_SAMPLE_NAME = 'Sample RSVP EDM';
 const QR_SAMPLE_NAME = 'Sample QR code confirmation EDM';
+const SAMPLE_EDMS_SEEDED = 'sample_edms_seeded';
 
 interface EditViewContext {
   mode: 'new' | 'edit';
@@ -100,15 +101,23 @@ export async function createEventFromForm(request: Request, cms: CmsClient): Pro
     lect: {
       type: formText(form, '@type') || 'event',
       event_use_case: formText(form, '@event_use_case') || EVENT_USE_CASES[0].value,
+      [SAMPLE_EDMS_SEEDED]: 'yes',
     },
   });
+
+  await createSampleEdmsForPage(cms, event, { force: true });
 
   return redirect(`${ADMIN_BASE}/events/${event.id}`);
 }
 
-export async function createSampleEdmsForEvent(cms: CmsClient, eventId: number): Promise<void> {
+export async function createSampleEdmsForEvent(cms: CmsClient, eventId: number, options: { force?: boolean } = {}): Promise<void> {
   const event = await cms.get(eventId);
+  await createSampleEdmsForPage(cms, event, options);
+}
+
+async function createSampleEdmsForPage(cms: CmsClient, event: CmsPage, options: { force?: boolean } = {}): Promise<void> {
   if (event.page_type !== 'event') return;
+  if (!options.force && attr(event.lect, SAMPLE_EDMS_SEEDED) === 'yes') return;
 
   const useCase = attr(event.lect, 'event_use_case');
   const samples = sampleEdmsForUseCase(event, useCase);

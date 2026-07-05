@@ -405,7 +405,7 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
   // Grouped to its event by the `event` pointer (not parent page).
-  await cms.create({
+  const list = await cms.create({
     page_type: 'mail_list',
     name,
     lect: {
@@ -415,10 +415,7 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
       allow_checkin: 'yes',
     },
   });
-  // Return to the event the list belongs to. Reading the just-created list back
-  // here (to render its page) can 404 on the read-after-write path; the event
-  // page is where the new list shows up anyway.
-  return redirect(`${ADMIN_BASE}/events/${eventId}`);
+  return redirect(`${ADMIN_BASE}/rsvp/${list.id}`);
 }
 
 async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: URL, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
@@ -2001,6 +1998,7 @@ function guestDetailFields(values: Record<string, string>, language: string): Gu
         { value: 'zh-hans', label: '简体中文', selected: values.prefer_language === 'zh-hans' },
       ],
     }),
+    guestFormField('@nationality', 'Nationality', values.nationality),
     guestFormField('@organization', 'Organisation', values.organization),
     guestFormField('@job_title', 'Job title', values.job_title),
     guestFormField(`.first_name|${language}`, 'First name', values.first_name),
@@ -2012,8 +2010,7 @@ function guestDetailFields(values: Record<string, string>, language: string): Gu
 
 function guestContactFields(values: Record<string, string>): GuestFormField[] {
   return [
-    guestFormField('*contact', 'Source Contact ID', values.contact, 'page'),
-    guestFormField('@nationality', 'Nationality', values.nationality),
+//    guestFormField('*contact', 'Source Contact ID', values.contact, 'page'),
     guestFormField('@email', 'Email', values.email, 'email'),
     guestFormField('@cc', 'CC email', values.cc),
     guestFormField('@phone', 'Phone', values.phone),

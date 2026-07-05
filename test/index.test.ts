@@ -676,9 +676,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    // Returns to the event the list belongs to (not the freshly created list,
-    // whose read-back can 404 on the read-after-write path).
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7');
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
     // Grouped to the event by the pointer, not a parent page.
     expect(JSON.parse(String(createRequest?.body))).toMatchObject({
       page_type: 'mail_list', name: 'VIP guests',
@@ -2066,16 +2064,20 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
           'x-plugin-secret': 'shared-secret',
           'x-plugin-id': 'events',
         });
-        creates.push(JSON.parse(String(init.body)));
+        const body = JSON.parse(String(init.body));
+        creates.push(body);
         return Response.json({
           page: {
-            id: 77,
-            page_type: 'event',
-            name: 'Launch',
-            slug: 'launch',
-            lect: { event_use_case: 'rsvp_qr_single' },
+            id: body.page_type === 'event' ? 77 : 100 + creates.length,
+            page_type: body.page_type,
+            name: body.name,
+            slug: body.slug ?? body.name,
+            lect: body.lect ?? {},
           },
         }, { status: 201 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
       }
       return new Response('not found', { status: 404 });
     });
@@ -2115,8 +2117,27 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
         lect: {
           type: 'event',
           event_use_case: 'rsvp_qr_single',
+          sample_edms_seeded: 'yes',
         },
       },
+      expect.objectContaining({
+        page_type: 'edm',
+        name: 'Sample RSVP EDM',
+        lect: expect.objectContaining({
+          sample_kind: 'sample-rsvp',
+          subject: { mis: 'RSVP for Launch' },
+          _pointers: { event: '77' },
+        }),
+      }),
+      expect.objectContaining({
+        page_type: 'edm',
+        name: 'Sample QR code confirmation EDM',
+        lect: expect.objectContaining({
+          sample_kind: 'sample-qr',
+          subject: { mis: 'QR code confirmation for Launch' },
+          _pointers: { event: '77' },
+        }),
+      }),
     ]);
   });
 
