@@ -350,6 +350,16 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
     return await eventsList(cms, env.VIEWS, url, jsonOnly, access);
   } catch (error) {
     if (error instanceof CmsApiError) {
+      // The host rejects creates that would cross an admin-configured quota
+      // (Plugins → Limits) with 409 limit_exceeded. Nothing was written.
+      if (error.code === 'limit_exceeded') {
+        return errorPanel(
+          env.VIEWS,
+          'A configured limit has been reached, so nothing was created. Remove existing items, or ask an administrator to raise the limit under Plugins → Limits.',
+          false,
+          jsonOnly,
+        );
+      }
       const target = error.method && error.path ? ` ${error.method} ${error.path}` : '';
       return errorPanel(env.VIEWS, `CMS responded${target} ${error.status} (${error.code}).`, false, jsonOnly);
     }

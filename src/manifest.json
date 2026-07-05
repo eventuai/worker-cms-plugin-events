@@ -11,6 +11,13 @@
     { "value": "events:write", "label": "Events: edit and delete events, guest lists, guests and EDM templates" },
     { "value": "events:checkin", "label": "Events: check in guests" }
   ],
+  "limits": [
+    { "key": "max_events", "label": "Maximum events", "description": "Total number of events.", "page_type": "event", "scope": "total" },
+    { "key": "max_guest_lists", "label": "Maximum guest lists", "description": "Total guest lists across all events.", "page_type": "mail_list", "scope": "total" },
+    { "key": "max_lists_per_event", "label": "Guest lists per event", "description": "Guest lists attached to a single event.", "page_type": "mail_list", "scope": "per_pointer", "pointer_key": "event" },
+    { "key": "max_guests", "label": "Maximum guests", "description": "Total guests across all guest lists.", "page_type": "guest", "scope": "total" },
+    { "key": "max_guests_per_list", "label": "Guests per guest list", "description": "Guests in a single guest list, including imports.", "page_type": "guest", "scope": "per_pointer", "pointer_key": "mail_list" }
+  ],
   "assets": [
     { "path": "/assets/event-new.js", "label": "New event auto slug" }
   ],

@@ -80,6 +80,22 @@ export interface DuplicateChildrenInput {
   dropLect?: string[];
 }
 
+/** One quota from the host's `GET /__cms/limits` — declared in this plugin's
+ *  manifest, configured (or defaulted) host-side, and enforced by the host on
+ *  every create. `value: null` means unlimited; scoped `usage` is only present
+ *  when the matching query param (pointer_value / page_id) was sent. */
+export interface CmsLimit {
+  key: string;
+  label: string;
+  description: string;
+  page_type: string;
+  scope: 'total' | 'per_parent' | 'per_pointer';
+  pointer_key: string | null;
+  value: number | null;
+  configured: boolean;
+  usage: number | null;
+}
+
 /** Expands a selector into the CMS request fields, e.g. prefix 'source_' → source_pointer_key. */
 function selectorFields(selector: CollectionSelector, prefix: 'source_' | ''): Record<string, unknown> {
   return 'pointerKey' in selector
@@ -99,6 +115,28 @@ export class CmsClient extends BaseCmsClient {
       fetcher: (input, init) => globalThis.fetch(input, init),
     });
     this.link = { base: (env.CMS_URL ?? '').replace(/\/+$/, ''), secret: env.PLUGIN_SECRET ?? '' };
+  }
+
+  /**
+   * This plugin's declared limits with effective values and current usage
+   * (CMS `GET /__cms/limits`). Pass `pointerValue` to get per_pointer usage
+   * (e.g. a guest list id for max_guests_per_list) or `pageId` for per_parent
+   * usage. Read-only UX helper — the host enforces regardless.
+   */
+  async limits(opts: { pointerValue?: string | number; pageId?: number } = {}): Promise<CmsLimit[]> {
+    const params = new URLSearchParams();
+    if (opts.pointerValue !== undefined) params.set('pointer_value', String(opts.pointerValue));
+    if (opts.pageId !== undefined) params.set('page_id', String(opts.pageId));
+    const query = params.size ? `?${params}` : '';
+    const response = await globalThis.fetch(`${this.link.base}/__cms/limits${query}`, {
+      headers: { 'x-plugin-secret': this.link.secret, 'x-plugin-id': PLUGIN_ID },
+    });
+    if (!response.ok) {
+      const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+      throw new CmsApiError(response.status, code, 'GET', '/limits');
+    }
+    const result = await response.json() as { limits: CmsLimit[] };
+    return result.limits;
   }
 
   /**

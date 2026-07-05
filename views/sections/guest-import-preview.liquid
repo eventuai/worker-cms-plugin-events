@@ -12,6 +12,10 @@
   <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{{ unchangedCount }} no change</span>
 </div>
 
+{% if limitWarning != '' %}
+  <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">{{ limitWarning | escape }}</div>
+{% endif %}
+
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto mb-4">
   <table class="w-full min-w-[560px] text-left relative" data-privacy-table>
     <thead class="bg-gray-50 border-b border-gray-200"><tr>

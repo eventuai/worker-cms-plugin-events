@@ -3044,6 +3044,43 @@ describe('per-list import preview', () => {
     expect(sink.updates).toHaveLength(0);
   });
 
+  it('warns in the preview when planned creates would cross a host quota', async () => {
+    const base = listFetch();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/limits') {
+        expect(url.searchParams.get('pointer_value')).toBe('8');
+        return Response.json({
+          limits: [{
+            key: 'max_guests_per_list', label: 'Guests per guest list', description: '',
+            page_type: 'guest', scope: 'per_pointer', pointer_key: 'mail_list',
+            value: 1, configured: true, usage: 1,
+          }],
+        });
+      }
+      return base(input, init);
+    }));
+
+    const csv = 'name,email\nBob,bob@x.io\nCara,cara@x.io\n';
+    const response = await importCsv('/__plugin/admin/rsvp/8/import', csv);
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('Guests per guest list');
+    expect(html).toContain('Confirming will fail');
+  });
+
+  it('previews without a warning when the host has no limits endpoint', async () => {
+    // listFetch 404s /__cms/limits — the quota lookup is best-effort UX and
+    // must never block the preview.
+    vi.stubGlobal('fetch', listFetch());
+    const response = await importCsv('/__plugin/admin/rsvp/8/import', 'name,email\nBob,bob@x.io\n');
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('Preview import');
+    expect(html).not.toContain('Confirming will fail');
+  });
+
   // The confirm step carries the raw CSV (not an expanded payload) and re-derives
   // the plan server-side against the list's current guests.
   const confirmCsv = 'name,email,phone\nAda,ada@x.io,555-1234\nBob,bob@x.io,555-9999\n';

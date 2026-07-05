@@ -1757,7 +1757,30 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
     unchangedCount: plan.rows.filter((row) => row.state === 'unchanged').length,
     guests: plan.rows,
     csv,
+    limitWarning: await importLimitWarning(cms, listId, plan.create.length),
   }, jsonOnly);
+}
+
+/**
+ * Pre-confirm warning when the planned creates would cross a host-configured
+ * guest quota (Plugins → Limits). Best-effort UX only: the host enforces on
+ * confirm regardless, rejecting the whole batch — so warn here, before the
+ * user clicks through. A failed lookup never blocks the preview.
+ */
+async function importLimitWarning(cms: CmsClient, listId: number, toCreate: number): Promise<string> {
+  if (!toCreate) return '';
+  try {
+    for (const limit of await cms.limits({ pointerValue: listId })) {
+      if (limit.page_type !== 'guest' || limit.value === null || limit.usage === null) continue;
+      if (limit.usage + toCreate > limit.value) {
+        const room = Math.max(limit.value - limit.usage, 0);
+        return `${limit.label}: ${limit.usage} of ${limit.value} in use, but this import adds ${toCreate} new guests and only ${room} more fit. Confirming will fail — reduce the file or ask an administrator to raise the limit.`;
+      }
+    }
+  } catch {
+    // Quota display is optional; enforcement stays host-side.
+  }
+  return '';
 }
 
 /**
