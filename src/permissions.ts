@@ -25,6 +25,24 @@ const NO_ACCESS: EventAdminAccess = {
   canManageEmail: false,
 };
 
+/**
+ * The signed-in CMS user's id from the forwarded `x-cms-user` summary, or
+ * null on direct/anonymous calls. Echoed back to the host on CMS writes
+ * (x-acting-user-id) so credit costs are charged to the right user.
+ */
+export function cmsUserId(request: Request): string | null {
+  const raw = request.headers.get('x-cms-user');
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { id?: unknown };
+    if (typeof parsed.id === 'string' && parsed.id.trim()) return parsed.id.trim();
+    if (typeof parsed.id === 'number' && Number.isFinite(parsed.id)) return String(parsed.id);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function eventAdminAccessForRequest(request: Request): EventAdminAccess {
   const roles = cmsUserRoles(request);
   const permissions = cmsUserPermissions(request);

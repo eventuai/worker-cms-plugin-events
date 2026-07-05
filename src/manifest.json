@@ -11,6 +11,12 @@
     { "value": "events:write", "label": "Events: edit and delete events, guest lists, guests and EDM templates" },
     { "value": "events:checkin", "label": "Events: check in guests" }
   ],
+  "credits": [
+    { "key": "create_event", "label": "Create an event", "description": "Charged when a new event page is created.", "charge": "page_create", "page_type": "event", "default": 100 },
+    { "key": "create_guest_list", "label": "Create a guest list", "description": "Charged when a new guest list is created.", "charge": "page_create", "page_type": "mail_list", "default": 25 },
+    { "key": "import_guest", "label": "Import or add a guest", "description": "Charged per guest created, including CSV imports. Free until priced.", "charge": "page_create", "page_type": "guest" },
+    { "key": "send_edm", "label": "Send EDM email", "description": "Charged per recipient when sending an EDM to a guest list. Free until priced.", "charge": "metered", "unit": "recipient" }
+  ],
   "limits": [
     { "key": "max_events", "label": "Maximum events", "description": "Total number of events.", "page_type": "event", "scope": "total" },
     { "key": "max_guest_lists", "label": "Maximum guest lists", "description": "Total guest lists across all events.", "page_type": "mail_list", "scope": "total" },

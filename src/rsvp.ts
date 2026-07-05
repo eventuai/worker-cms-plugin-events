@@ -1758,7 +1758,28 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
     guests: plan.rows,
     csv,
     limitWarning: await importLimitWarning(cms, listId, plan.create.length),
+    creditWarning: await importCreditWarning(cms, plan.create.length),
   }, jsonOnly);
+}
+
+/**
+ * Pre-confirm warning when the planned creates would cost more credits than
+ * the acting user has (guests are priced by the host via the manifest
+ * `import_guest` cost — free unless an admin sets a price). Best-effort UX:
+ * the host charges/rejects on confirm regardless.
+ */
+async function importCreditWarning(cms: CmsClient, toCreate: number): Promise<string> {
+  if (!toCreate || !cms.hasActingUser) return '';
+  try {
+    const info = await cms.credits();
+    const price = info.credits.find((credit) => credit.key === 'import_guest')?.value ?? 0;
+    if (price > 0 && info.balance !== null && price * toCreate > info.balance) {
+      return `Importing ${toCreate} new guests costs ${price * toCreate} credits but you have ${info.balance}. Confirming will fail — reduce the file or ask an administrator to top up your credits.`;
+    }
+  } catch {
+    // Billing display is optional; the host still charges on confirm.
+  }
+  return '';
 }
 
 /**

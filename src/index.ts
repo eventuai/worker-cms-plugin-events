@@ -32,7 +32,7 @@ import {
 import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
-import { eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
+import { cmsUserId, eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
 import {
   contactToGuestFields,
   guestContactId,
@@ -118,7 +118,7 @@ export default {
       if (!access.canEdit) return forbidden();
       let cms: CmsClient;
       try {
-        cms = new CmsClient(env);
+        cms = new CmsClient(env).actAs(cmsUserId(request));
       } catch (error) {
         if (error instanceof CmsNotConfiguredError) return new Response('not found', { status: 404 });
         throw error;
@@ -266,7 +266,9 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
 
   let cms: CmsClient;
   try {
-    cms = new CmsClient(env);
+    // Attribute all CMS writes in this request to the signed-in admin, so
+    // host-side credit costs land on their balance.
+    cms = new CmsClient(env).actAs(cmsUserId(request));
   } catch (error) {
     if (error instanceof CmsNotConfiguredError) return errorPanel(env.VIEWS, error.message, true, jsonOnly);
     throw error;
@@ -356,6 +358,14 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
         return errorPanel(
           env.VIEWS,
           'A configured limit has been reached, so nothing was created. Remove existing items, or ask an administrator to raise the limit under Plugins → Limits.',
+          false,
+          jsonOnly,
+        );
+      }
+      if (error.code === 'insufficient_credits') {
+        return errorPanel(
+          env.VIEWS,
+          'You do not have enough credits for this action, so nothing was changed. Check your balance on your profile page, or ask an administrator to top it up.',
           false,
           jsonOnly,
         );

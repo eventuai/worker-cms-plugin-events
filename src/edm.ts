@@ -686,6 +686,25 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
     );
     deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id, ...headers });
   }
+
+  // Metered credit charge (manifest key `send_edm`, priced host-side; free
+  // until an admin sets a price). Charged before queueing so an insufficient
+  // balance blocks the blast — a 402 propagates to the friendly error panel.
+  // Any other billing failure (older host, transient error) must never block
+  // sending, so it only logs.
+  if (deliveries.length && cms.hasActingUser) {
+    try {
+      await cms.chargeUsage('send_edm', deliveries.length, {
+        entityType: 'edm',
+        entityId: edmId,
+        note: `Send to guest list ${listId}`,
+      });
+    } catch (error) {
+      if (error instanceof CmsApiError && error.status === 402) throw error;
+      console.error('[events-suite] send_edm charge failed (non-blocking)', error);
+    }
+  }
+
   for (const chunk of chunks(deliveries, 100)) await env.MAIL_QUEUE.sendBatch(chunk.map((body) => ({ body })));
   return deliveries.length;
 }

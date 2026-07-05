@@ -15,6 +15,9 @@
 {% if limitWarning != '' %}
   <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">{{ limitWarning | escape }}</div>
 {% endif %}
+{% if creditWarning != '' %}
+  <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">{{ creditWarning | escape }}</div>
+{% endif %}
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto mb-4">
   <table class="w-full min-w-[560px] text-left relative" data-privacy-table>

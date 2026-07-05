@@ -3070,6 +3070,44 @@ describe('per-list import preview', () => {
     expect(html).toContain('Confirming will fail');
   });
 
+  it('warns when the import would cost more credits than the balance, echoing the acting user', async () => {
+    const base = listFetch();
+    const actingHeaders: Array<string | null> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      actingHeaders.push(new Headers(init?.headers).get('x-acting-user-id'));
+      if (url.pathname === '/__cms/credits') {
+        return Response.json({
+          balance: 10,
+          credits: [{
+            key: 'import_guest', label: 'Import a guest', description: '', charge: 'page_create',
+            page_type: 'guest', unit: 'action', value: 25, configured: true,
+          }],
+        });
+      }
+      return base(input, init);
+    }));
+
+    const form = new FormData();
+    form.set('file', new File(['name,email\nBob,bob@x.io\nCara,cara@x.io\n'], 'g.csv', { type: 'text/csv' }));
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/import', {
+      method: 'POST',
+      headers: {
+        'x-plugin-secret': 'shared-secret',
+        'x-cms-user': JSON.stringify({ id: 42, email: 'a@b.c', name: 'Admin', role: 'admin' }),
+      },
+      body: form,
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('costs 50 credits');
+    expect(html).toContain('you have 10');
+    // Every CMS call in the request carries the echoed acting user id.
+    expect(actingHeaders).toContain('42');
+    expect(actingHeaders).not.toContain(null);
+  });
+
   it('previews without a warning when the host has no limits endpoint', async () => {
     // listFetch 404s /__cms/limits — the quota lookup is best-effort UX and
     // must never block the preview.

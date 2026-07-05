@@ -96,6 +96,34 @@ export interface CmsLimit {
   usage: number | null;
 }
 
+/** One cost from the host's `GET /__cms/credits` — declared in this plugin's
+ *  manifest, priced host-side. `value` is credits per page create / per unit. */
+export interface CmsCredit {
+  key: string;
+  label: string;
+  description: string;
+  charge: 'page_create' | 'metered';
+  page_type: string | null;
+  unit: string;
+  value: number;
+  configured: boolean;
+}
+
+export interface CmsCreditsInfo {
+  /** Acting user's balance, or null when no acting user is set. */
+  balance: number | null;
+  credits: CmsCredit[];
+}
+
+export interface CmsCreditQuote {
+  key: string;
+  unit_cost: number;
+  quantity: number;
+  total: number;
+  balance: number | null;
+  affordable: boolean;
+}
+
 /** Expands a selector into the CMS request fields, e.g. prefix 'source_' → source_pointer_key. */
 function selectorFields(selector: CollectionSelector, prefix: 'source_' | ''): Record<string, unknown> {
   return 'pointerKey' in selector
@@ -106,15 +134,52 @@ function selectorFields(selector: CollectionSelector, prefix: 'source_' | ''): R
 export class CmsClient extends BaseCmsClient {
   /** The base `call`/`json` are private, so duplicateChildren keeps its own copy of the link config. */
   private readonly link: { base: string; secret: string };
+  private actingUserId: string | null = null;
 
   constructor(env: CmsClientEnv) {
     super({
       cmsUrl: env.CMS_URL,
       pluginSecret: env.PLUGIN_SECRET,
       pluginId: PLUGIN_ID,
-      fetcher: (input, init) => globalThis.fetch(input, init),
+      // The wrapper adds x-acting-user-id (when set) to every base-client
+      // call, so the host can charge credit costs to the signed-in admin.
+      fetcher: (input, init) => globalThis.fetch(input, this.withActingUser(init)),
     });
     this.link = { base: (env.CMS_URL ?? '').replace(/\/+$/, ''), secret: env.PLUGIN_SECRET ?? '' };
+  }
+
+  /**
+   * Attributes subsequent CMS calls to the signed-in admin (from the
+   * `x-cms-user` summary the host forwards), so host-side credit costs are
+   * charged to them. Flows with no user (public RSVP, kiosk) stay unset and
+   * uncharged.
+   */
+  actAs(userId: string | number | null | undefined): this {
+    this.actingUserId = userId === null || userId === undefined || userId === '' ? null : String(userId);
+    return this;
+  }
+
+  get hasActingUser(): boolean {
+    return this.actingUserId !== null;
+  }
+
+  private withActingUser(init?: RequestInit): RequestInit {
+    if (!this.actingUserId) return init ?? {};
+    const headers = new Headers(init?.headers);
+    headers.set('x-acting-user-id', this.actingUserId);
+    // Plain object (not a Headers instance) so callers and tests that inspect
+    // init.headers by key keep working.
+    return { ...init, headers: Object.fromEntries(headers.entries()) };
+  }
+
+  /** Auth + attribution headers for this class's own raw /__cms fetches. */
+  private linkHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return {
+      'x-plugin-secret': this.link.secret,
+      'x-plugin-id': PLUGIN_ID,
+      ...(this.actingUserId ? { 'x-acting-user-id': this.actingUserId } : {}),
+      ...extra,
+    };
   }
 
   /**
@@ -129,7 +194,7 @@ export class CmsClient extends BaseCmsClient {
     if (opts.pageId !== undefined) params.set('page_id', String(opts.pageId));
     const query = params.size ? `?${params}` : '';
     const response = await globalThis.fetch(`${this.link.base}/__cms/limits${query}`, {
-      headers: { 'x-plugin-secret': this.link.secret, 'x-plugin-id': PLUGIN_ID },
+      headers: this.linkHeaders(),
     });
     if (!response.ok) {
       const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
@@ -137,6 +202,72 @@ export class CmsClient extends BaseCmsClient {
     }
     const result = await response.json() as { limits: CmsLimit[] };
     return result.limits;
+  }
+
+  /**
+   * This plugin's declared credit costs with effective prices, plus the acting
+   * user's balance when one is set (CMS `GET /__cms/credits`). Read-only UX
+   * helper — the host charges regardless.
+   */
+  async credits(): Promise<CmsCreditsInfo> {
+    const response = await globalThis.fetch(`${this.link.base}/__cms/credits`, {
+      headers: this.linkHeaders(),
+    });
+    if (!response.ok) {
+      const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+      throw new CmsApiError(response.status, code, 'GET', '/credits');
+    }
+    return await response.json() as CmsCreditsInfo;
+  }
+
+  /**
+   * Affordability pre-check for a declared cost (CMS `GET /__cms/credits/quote`)
+   * — verify a long job fits the balance BEFORE starting it. Deducts nothing.
+   */
+  async creditQuote(key: string, quantity: number): Promise<CmsCreditQuote> {
+    const params = new URLSearchParams({ key, quantity: String(quantity) });
+    const response = await globalThis.fetch(`${this.link.base}/__cms/credits/quote?${params}`, {
+      headers: this.linkHeaders(),
+    });
+    if (!response.ok) {
+      const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+      throw new CmsApiError(response.status, code, 'GET', '/credits/quote');
+    }
+    return await response.json() as CmsCreditQuote;
+  }
+
+  /**
+   * Reports metered usage for a manifest-declared cost (CMS `POST
+   * /__cms/credits/charge`). The host prices it from its own configuration and
+   * deducts from the acting user; throws CmsApiError 402 (insufficient_credits)
+   * when the balance is short.
+   */
+  async chargeUsage(
+    key: string,
+    quantity: number,
+    opts: { entityType?: string; entityId?: string | number; note?: string } = {},
+  ): Promise<{ charged: number; balance: number | null }> {
+    const response = await globalThis.fetch(`${this.link.base}/__cms/credits/charge`, {
+      method: 'POST',
+      headers: this.linkHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({
+        key,
+        quantity,
+        entity_type: opts.entityType,
+        entity_id: opts.entityId,
+        note: opts.note,
+      }),
+    });
+    if (!response.ok) {
+      const code = await response.text()
+        .then((text) => {
+          try { return (JSON.parse(text) as { error?: string }).error || 'error'; } catch { return text.trim().slice(0, 160) || 'error'; }
+        })
+        .catch(() => 'error');
+      throw new CmsApiError(response.status, code, 'POST', '/credits/charge');
+    }
+    const result = await response.json() as { charged: number; balance: number | null };
+    return result;
   }
 
   /**
@@ -153,11 +284,7 @@ export class CmsClient extends BaseCmsClient {
     for (;;) {
       const response = await globalThis.fetch(`${this.link.base}/__cms/pages/duplicate`, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-plugin-secret': this.link.secret,
-          'x-plugin-id': PLUGIN_ID,
-        },
+        headers: this.linkHeaders({ 'content-type': 'application/json' }),
         body: JSON.stringify({
           ...selectorFields(input.source, 'source_'),
           source_page_type: input.sourcePageType,
@@ -193,11 +320,7 @@ export class CmsClient extends BaseCmsClient {
     for (;;) {
       const response = await globalThis.fetch(`${this.link.base}/__cms/pages/children`, {
         method: 'DELETE',
-        headers: {
-          'content-type': 'application/json',
-          'x-plugin-secret': this.link.secret,
-          'x-plugin-id': PLUGIN_ID,
-        },
+        headers: this.linkHeaders({ 'content-type': 'application/json' }),
         body: JSON.stringify({ ...selectorFields(selector, ''), page_type: pageType }),
       });
       if (!response.ok) {
