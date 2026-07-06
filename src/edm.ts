@@ -1,4 +1,4 @@
-import { CmsApiError, CmsClient, attr, blocks, items, localized, pointer, type CmsPage } from './cms';
+import { CmsApiError, CmsClient, attr, blocks, chargeCreditAction, items, localized, pointer, type CmsPage } from './cms';
 import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { renderLiquid } from './templates/liquid';
@@ -621,6 +621,11 @@ async function sendTest(request: Request, cms: CmsClient, views: Fetcher, env: E
   if (!recipient || !isEmail(recipient)) return mailError(views, 'Enter a valid test-recipient email address.', jsonOnly);
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.', jsonOnly);
+  await chargeCreditAction(cms, 'send_test_edm', 1, {
+    entityType: 'edm',
+    entityId: edmId,
+    note: recipient,
+  });
   try {
     await deliverQueuedEmail(env, {
       ...await emailFor(views, edm, recipient, env, { server: env.PUBLIC_BASE_URL, tokenValues: { unsubscribe_url: '#' } }),
@@ -641,6 +646,11 @@ async function assignGuestList(request: Request, cms: CmsClient, views: Fetcher,
   // The list and EDM must belong to the same event (by their `event` pointer).
   const eventId = pointer(edm.lect, 'event');
   if (list.page_type !== 'mail_list' || pointer(list.lect, 'event') !== eventId) return notFoundView(views, 'Guest list not found.', jsonOnly);
+  await chargeCreditAction(cms, 'assign_edm_to_guest_list', 1, {
+    entityType: 'mail_list',
+    entityId: list.id,
+    note: `Assign EDM ${edmId}`,
+  });
   await cms.update(list.id, {
     lect: { ...list.lect, _pointers: { ...pointers(list), edm: String(edmId) } },
   });

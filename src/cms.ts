@@ -336,6 +336,21 @@ export class CmsClient extends BaseCmsClient {
   }
 }
 
+export async function chargeCreditAction(
+  cms: CmsClient,
+  key: string,
+  quantity = 1,
+  opts: { entityType?: string; entityId?: string | number; note?: string } = {},
+): Promise<void> {
+  if (!cms.hasActingUser || quantity <= 0) return;
+  try {
+    await cms.chargeUsage(key, quantity, opts);
+  } catch (error) {
+    if (error instanceof CmsApiError && error.status === 402) throw error;
+    console.error(`[events-suite] ${key} charge failed (non-blocking)`, error);
+  }
+}
+
 /**
  * Lists the pages of a type that belong to an event. `edm` and `mail_list` pages
  * group under their event by `lect._pointers.event`, not by parent page.

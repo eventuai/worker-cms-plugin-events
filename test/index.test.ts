@@ -144,6 +144,48 @@ describe('plugin contract', () => {
     expect(manifest.contentTypes.blueprint.guest).toContain('@paired_qrcode');
   });
 
+  it('declares the full admin credit action list', async () => {
+    const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    const manifest = await response.json() as {
+      credits: Array<{ key: string; charge: string; page_type?: string; unit?: string }>;
+    };
+
+    expect(manifest.credits.map((credit) => credit.key)).toEqual([
+      'create_event',
+      'create_guest_list',
+      'import_guest',
+      'create_edm',
+      'create_label',
+      'send_edm',
+      'send_test_edm',
+      'duplicate_event',
+      'archive_event',
+      'delete_event',
+      'delete_guest_list',
+      'delete_guest',
+      'export_guests',
+      'assign_edm_to_guest_list',
+      'update_guest_status',
+      'assign_guest_color',
+      'check_in_guest',
+      'pair_guest_qrcode',
+      'move_guest',
+      'sync_guest_from_contact',
+      'remove_contact_guests',
+      'reorder_event_guest_lists',
+      'reorder_event_sessions',
+      'reorder_guest_list_guests',
+    ]);
+    expect(manifest.credits.filter((credit) => credit.charge === 'page_create').map((credit) => credit.page_type)).toEqual([
+      'event',
+      'mail_list',
+      'guest',
+      'edm',
+      'label',
+    ]);
+    expect(manifest.credits.filter((credit) => credit.charge === 'metered').every((credit) => Boolean(credit.unit))).toBe(true);
+  });
+
   it('creates sample RSVP and QR EDMs for a new RSVP/QR event', async () => {
     const creates: Array<Record<string, unknown>> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

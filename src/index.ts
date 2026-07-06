@@ -19,6 +19,7 @@ import {
   CMS_BATCH_WEIGHT_ACTION,
   PLUGIN_ID,
   attr,
+  chargeCreditAction,
   checkins,
   compareByWeightThenName,
   computeGuestListSummary,
@@ -596,6 +597,11 @@ async function archiveEvent(request: Request, cms: CmsClient, eventId: number): 
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   const form = await request.formData();
   const unarchive = String(form.get('action') ?? '') === 'unarchive';
+  await chargeCreditAction(cms, 'archive_event', 1, {
+    entityType: 'event',
+    entityId: eventId,
+    note: unarchive ? 'Restore event' : 'Archive event',
+  });
   await cms.update(eventId, { lect: { archived: unarchive ? '' : 'yes' } });
   const flash = unarchive ? `Event “${event.name}” restored` : `Event “${event.name}” archived`;
   return redirect(`${ADMIN_BASE}/events?flash=${encodeURIComponent(flash)}${unarchive ? '' : '&archived=1'}`);
@@ -630,6 +636,12 @@ async function duplicateEvent(request: Request, cms: CmsClient, eventId: number,
 
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+
+  await chargeCreditAction(cms, 'duplicate_event', 1, {
+    entityType: 'event',
+    entityId: eventId,
+    note: `Duplicate event (${scope})`,
+  });
 
   // The event's native date columns and full lect (sessions, kiosk settings, …)
   // ride along so the copy is a faithful starting point the admin can edit.
@@ -722,6 +734,11 @@ async function deleteEventForm(cms: CmsClient, views: Fetcher, eventId: number, 
 async function deleteEvent(request: Request, cms: CmsClient, eventId: number, ctx?: ExecutionContext): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  await chargeCreditAction(cms, 'delete_event', 1, {
+    entityType: 'event',
+    entityId: eventId,
+    note: 'Delete event cascade',
+  });
   await cms.update(eventId, { lect: { ...event.lect, deleting: 'yes', deleting_at: new Date().toISOString() } });
 
   if (request.headers.get('x-cms-background-job') === '1') {

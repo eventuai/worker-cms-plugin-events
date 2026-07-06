@@ -4,6 +4,7 @@ import {
   CMS_BATCH_WEIGHT_ACTION,
   attr,
   blocks,
+  chargeCreditAction,
   checkins,
   compareByWeightThenName,
   items,
@@ -584,6 +585,7 @@ async function createGuest(request: Request, cms: CmsClient, listId: number): Pr
 async function deleteGuest(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  await chargeCreditAction(cms, 'delete_guest', 1, { entityType: 'guest', entityId: guestId });
   await cms.remove(guestId);
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
@@ -595,6 +597,11 @@ async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response
 
   // Fetch guests while they are still in draft_pages (queryable by pointer).
   const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  await chargeCreditAction(cms, 'delete_guest_list', 1, {
+    entityType: 'mail_list',
+    entityId: listId,
+    note: `${guests.length} guests`,
+  });
 
   // Trash guests BEFORE the list. The schema has ON DELETE CASCADE on page_id,
   // so removing the list row would instantly wipe all guest rows — nothing left
@@ -649,6 +656,11 @@ async function setListEdm(request: Request, cms: CmsClient, listId: number): Pro
   const pointers = lectPointers(list);
   if (edmId) pointers.edm = String(edmId);
   else pointers.edm = '';
+  await chargeCreditAction(cms, 'assign_edm_to_guest_list', 1, {
+    entityType: 'mail_list',
+    entityId: listId,
+    note: edmId ? `Assign EDM ${edmId}` : 'Clear EDM assignment',
+  });
   await cms.update(listId, { lect: { ...list.lect, _pointers: pointers } });
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
@@ -663,6 +675,11 @@ async function sendGuestEdm(request: Request, cms: CmsClient, views: Fetcher, en
   if (!edm) return listFlash(listId, 'Select an EDM for this list first', returnTo);
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  await chargeCreditAction(cms, 'send_edm', 1, {
+    entityType: 'guest',
+    entityId: guestId,
+    note: `Send EDM ${edm.id}`,
+  });
   try {
     await sendEdmToGuest(views, env, edm, context.eventId, listId, guest);
     await recordSentEdm(cms, guest, edm.id);
@@ -682,6 +699,17 @@ async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env
 
   const quality = new URL(request.url).searchParams.get('quality') === 'risky' ? 'risky' : 'good';
   const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const candidates = guests.filter((guest) => {
+    const paused = truthyAttr(guest.lect, 'not_send');
+    const matches = emailQuality(attr(guest.lect, 'email')) === quality;
+    return !paused && matches && !guestWasSentEdm(guest, edm.id);
+  });
+
+  await chargeCreditAction(cms, 'send_edm', candidates.length, {
+    entityType: 'mail_list',
+    entityId: listId,
+    note: `Auto-send ${quality} EDM ${edm.id}`,
+  });
 
   let sent = 0;
   let skipped = 0;
@@ -730,6 +758,11 @@ async function updateGuestStatus(request: Request, cms: CmsClient, listId: numbe
   const status = normalizeStatus(formText(form, 'status'));
   if (!status) return redirect(returnTo);
 
+  await chargeCreditAction(cms, 'update_guest_status', 1, {
+    entityType: 'guest',
+    entityId: guestId,
+    note: status,
+  });
   await cms.update(guestId, {
     lect: {
       status,
@@ -756,6 +789,11 @@ async function updateGuestColor(request: Request, cms: CmsClient, listId: number
       : redirect(returnTo);
   }
 
+  await chargeCreditAction(cms, 'assign_guest_color', 1, {
+    entityType: 'guest',
+    entityId: guestId,
+    note: color || 'clear',
+  });
   await cms.update(guestId, { lect: { color_tag: color } });
   if (wantsJsonResponse(request)) {
     return Response.json({ status: 'success', action: 'assign_color', payload: { id: guestId, color } });
@@ -768,6 +806,8 @@ async function checkInGuest(request: Request, cms: CmsClient, listId: number, gu
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   const form = await request.formData();
   const returnTo = safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`;
+  if (checkins(guest.lect).length) return redirect(returnTo);
+  await chargeCreditAction(cms, 'check_in_guest', 1, { entityType: 'guest', entityId: guestId });
   await ensureGuestCheckedIn(cms, guest, 'checked in by event admin');
   return redirect(returnTo);
 }
@@ -789,6 +829,11 @@ async function pairGuestQrCode(request: Request, cms: CmsClient, listId: number,
   const pairedQrCode = firstFormText(form, ['paired_qrcode', 'paired_qr_code', 'badge_qrcode', 'badge_qr_code', 'qrcode', 'code']);
   if (!pairedQrCode) return redirect(returnTo);
 
+  await chargeCreditAction(cms, 'pair_guest_qrcode', 1, {
+    entityType: 'guest',
+    entityId: guestId,
+    note: pairedQrCode,
+  });
   const lect: Record<string, unknown> = { paired_qrcode: pairedQrCode };
   if (!checkins(guest.lect).length) {
     lect.checkin = [{ status: 'checked-in', date: new Date().toISOString(), message: 'checked in by badge QR pairing' }];
@@ -818,6 +863,11 @@ async function moveGuest(request: Request, cms: CmsClient, listId: number, guest
     return new Response('not found', { status: 404 });
   }
 
+  await chargeCreditAction(cms, 'move_guest', 1, {
+    entityType: 'guest',
+    entityId: guestId,
+    note: `Move to list ${targetId}`,
+  });
   await cms.update(guestId, {
     page_id: targetId,
     lect: { _pointers: { ...(guest.lect._pointers as Record<string, unknown> ?? {}), mail_list: String(targetId) } },
@@ -1051,11 +1101,17 @@ async function removeContactsFromList(request: Request, cms: CmsClient, listId: 
   const q = formText(form, 'q');
   const ids = new Set(form.getAll('contact_ids').map((value) => String(value)));
   const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
-
-  let removed = 0;
-  for (const guest of guests) {
+  const removable = guests.filter((guest) => {
     const contactId = guestContactId(guest);
-    if (!contactId || !ids.has(contactId)) continue;
+    return contactId && ids.has(contactId);
+  });
+
+  await chargeCreditAction(cms, 'remove_contact_guests', removable.length, {
+    entityType: 'mail_list',
+    entityId: listId,
+  });
+  let removed = 0;
+  for (const guest of removable) {
     await cms.remove(guest.id);
     removed += 1;
   }
@@ -1067,6 +1123,7 @@ async function removeContactsFromList(request: Request, cms: CmsClient, listId: 
 async function updateGuestFromContact(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  await chargeCreditAction(cms, 'sync_guest_from_contact', 1, { entityType: 'guest', entityId: guestId });
   await applyContactToGuest(cms, guest);
   return redirect(guestEditHref(guestId, listId));
 }
@@ -1076,7 +1133,13 @@ async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Prom
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
-  for (const guest of pages) await applyContactToGuest(cms, guest);
+  const linkedGuests = pages.filter((guest) => guestContactId(guest));
+  await chargeCreditAction(cms, 'sync_guest_from_contact', linkedGuests.length, {
+    entityType: 'mail_list',
+    entityId: listId,
+    note: 'Bulk contact refresh',
+  });
+  for (const guest of linkedGuests) await applyContactToGuest(cms, guest);
   return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 }
 
@@ -1146,6 +1209,7 @@ export async function reorderGuestLists(request: Request, cms: CmsClient, eventI
   const body = await request.json().catch(() => null) as { reorder?: Array<{ id?: unknown; weight?: unknown }> } | null;
   if (!body || !Array.isArray(body.reorder)) return Response.json({ success: false, error: 'invalid_request' }, { status: 400 });
 
+  await chargeCreditAction(cms, 'reorder_event_guest_lists', 1, { entityType: 'event', entityId: eventId });
   for (const item of body.reorder) {
     const id = pageId(item.id);
     const weight = Number(item.weight);
@@ -1161,6 +1225,7 @@ async function reorderGuests(request: Request, cms: CmsClient, listId: number): 
   const body = await request.json().catch(() => null) as { reorder?: Array<{ id?: unknown; weight?: unknown }> } | null;
   if (!body || !Array.isArray(body.reorder)) return Response.json({ success: false, error: 'invalid_request' }, { status: 400 });
 
+  await chargeCreditAction(cms, 'reorder_guest_list_guests', 1, { entityType: 'mail_list', entityId: listId });
   for (const item of body.reorder) {
     const id = pageId(item.id);
     const weight = Number(item.weight);
@@ -1200,6 +1265,7 @@ export async function reorderSessions(request: Request, cms: CmsClient, eventId:
 
   // Patch only `_weight` per existing row, so index-wise merge leaves the rest intact.
   const patch = weightByIndex.map((weight) => ({ _weight: weight }));
+  await chargeCreditAction(cms, 'reorder_event_sessions', 1, { entityType: 'event', entityId: eventId });
   await cms.update(eventId, { lect: { session: patch } });
   return Response.json({ success: true });
 }
@@ -1837,6 +1903,7 @@ async function confirmImportGuests(request: Request, cms: CmsClient, listId: num
 async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
+  await chargeCreditAction(cms, 'export_guests', 1, { entityType: 'mail_list', entityId: listId });
   const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
   const headers = ['id', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];
   const rows = pages.map((guest) => {
@@ -1865,6 +1932,7 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
 export async function exportEventGuests(cms: CmsClient, eventId: number): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  await chargeCreditAction(cms, 'export_guests', 1, { entityType: 'event', entityId: eventId });
 
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const guestsByList = await Promise.all(
