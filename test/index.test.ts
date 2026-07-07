@@ -1162,9 +1162,18 @@ describe('events admin', () => {
     expect(html).not.toContain('/admin/plugins/events/rsvp/35/delete');
   });
 
-  it('deletes a guest list and returns to its event lists', async () => {
+  it('deletes a guest list via the server-side children delete, looping until done', async () => {
+    // The host tears the guests down itself (DELETE /pages/children) in
+    // bounded slices — the plugin repeats while done=false, then removes the
+    // list row. No per-guest ids ever stream back to the plugin.
+    const childrenCalls: Array<Record<string, unknown>> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/children' && init?.method === 'DELETE') {
+        childrenCalls.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        // First slice fills the per-call bound; the second drains the rest.
+        return Response.json(childrenCalls.length === 1 ? { trashed: 1000, done: false } : { trashed: 234, done: true });
+      }
       if (url.pathname === '/__cms/pages/8' && init?.method === 'DELETE') return Response.json({ ok: true, id: 8 });
       if (url.pathname === '/__cms/pages/8') {
         return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
@@ -1175,7 +1184,7 @@ describe('events admin', () => {
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         expect(url.searchParams.get('pointer_key')).toBe('mail_list');
         expect(url.searchParams.get('pointer_value')).toBe('8');
-        return Response.json({ pages: [], total: 0 });
+        return Response.json({ pages: [], total: 1234 });
       }
       return new Response('not found', { status: 404 });
     });
@@ -1188,6 +1197,10 @@ describe('events admin', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp?event=7');
+    expect(childrenCalls).toEqual([
+      { pointer_key: 'mail_list', pointer_value: '8', page_type: 'guest' },
+      { pointer_key: 'mail_list', pointer_value: '8', page_type: 'guest' },
+    ]);
     expect(cmsFetch).toHaveBeenLastCalledWith(
       'https://cms.test/__cms/pages/8',
       expect.objectContaining({ method: 'DELETE' }),

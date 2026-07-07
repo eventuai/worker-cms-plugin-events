@@ -614,19 +614,24 @@ async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response
   if (!context) return new Response('not found', { status: 404 });
   if (isAdhocList(context.list)) return new Response('cannot delete the default Adhoc list', { status: 403 });
 
-  // Fetch guests while they are still in draft_pages (queryable by pointer).
-  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
+  // Count for the audit note without reading any rows (total rides along).
+  const { total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 1 });
   await chargeCreditAction(cms, 'delete_guest_list', 1, {
     entityType: 'mail_list',
     entityId: listId,
-    note: `${guests.length} guests`,
+    note: `${total} guests`,
   });
 
   // Trash guests BEFORE the list. The schema has ON DELETE CASCADE on page_id,
   // so removing the list row would instantly wipe all guest rows — nothing left
   // to copy into trash_pages. Trashing guests first removes them from draft_pages
   // cleanly, then trashing the list has no children left to cascade-delete.
-  await cms.batchRemove(guests.map((guest) => guest.id));
+  //
+  // Server-side children delete (same path the event delete uses): the host
+  // trashes bounded slices per call with no per-page unpublish fanout, so a
+  // thousands-strong list tears down in a few cheap calls — the old per-100
+  // batchRemove made the host unpublish each guest and hung on big lists.
+  await cms.deleteChildren({ pointerKey: 'mail_list', pointerValue: String(listId) }, 'guest');
   await cms.remove(listId);
 
   return redirect(context.event ? `${ADMIN_BASE}/rsvp?event=${context.event.id}` : `${ADMIN_BASE}/rsvp`);
