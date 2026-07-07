@@ -23,6 +23,7 @@ import {
   sendEdmToGuest,
   type EdmEnv,
 } from './edm';
+import { chineseSearchVariants } from './chinese';
 import { forbidden, type EventAdminAccess } from './permissions';
 import { adminView } from './templates/views';
 import { redirect } from '@lionrockjs/worker-cms-plugin';
@@ -2165,7 +2166,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     colorAction: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/color` : '',
     statusClass: statusClass(values.status),
     statusColor: statusColor(values.status),
-    searchText: searchTextParts.join(' '),
+    searchText: searchTextVariants(searchTextParts),
     customFieldValue: customField ? guestCustomFieldValue(guest, customField) : '',
     checkinAction: canCheckIn ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin` : '',
     checkedIn: checkins(guest.lect).length > 0,
@@ -2179,6 +2180,16 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     sendAction: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/send` : '',
     previewHref: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/preview` : '',
   };
+}
+
+function searchTextVariants(parts: string[]): string {
+  const variants = new Set<string>();
+  for (const part of parts) {
+    for (const variant of chineseSearchVariants(part)) {
+      variants.add(variant);
+    }
+  }
+  return [...variants].join(' ');
 }
 
 function emptyGuestValues(): Record<string, string> {

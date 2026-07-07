@@ -832,7 +832,7 @@ describe('events admin', () => {
     expect(html).not.toContain('aria-label="Search guests"');
     expect(html).toContain('data-table-filter-form');
     expect(html).toContain('data-table-filter="guests"');
-    expect(html).toContain('data-filter-search="55 苏生  su@example.com +852 5555 0000 蘇"');
+    expect(html).toContain('data-filter-search="55 苏生 蘇生  su@example.com +852 5555 0000 蘇 苏"');
     expect(html).toContain('data-filter-status="confirmed"');
     expect(html).toContain('data-filter-color="blue"');
     expect(html).toContain('data-color-tag-picker');
@@ -2633,7 +2633,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         const listId = url.searchParams.get('page_id') ?? url.searchParams.get('pointer_value');
         if (listId === '8') {
           return Response.json({ pages: [
-            { id: 1, name: 'Ada', lect: { email: 'ada@x.io', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue', rsvp_custom_diet: 'vegan' } },
+            { id: 1, name: '苏生', lect: { email: 'ada@x.io', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue', rsvp_custom_diet: 'vegan' } },
             { id: 3, name: 'Lin', lect: { email: 'lin@x.io', phone: '+852 5555 1111', status: 'confirmed', color_tag: 'red' } },
           ], total: 2 });
         }
@@ -2650,7 +2650,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(response.status).toBe(200);
     const html = await renderedText(response);
     expect(html).toContain('All guests');
-    expect(html).toContain('Ada');
+    expect(html).toContain('苏生');
     expect(html).not.toContain('Lin');
     expect(html).not.toContain('Grace'); // filtered out
     expect(html).toContain('value="5555"');
@@ -2660,7 +2660,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<option value="gray"');
     expect(html).toContain('data-table-filter-form');
     expect(html).toContain('data-table-filter="guests"');
-    expect(html).toContain('data-filter-search="1 Ada  ada@x.io +852 5555 0000 5555"');
+    expect(html).toContain('data-filter-search="1 苏生 蘇生  ada@x.io +852 5555 0000 5555"');
     expect(html).toContain('data-filter-status="confirmed"');
     expect(html).toContain('data-filter-color="blue"');
     expect(html).toContain('<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">List</th>');
