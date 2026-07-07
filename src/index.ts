@@ -56,6 +56,13 @@ import {
 import { renderLiquid } from './templates/liquid';
 import { adminView } from './templates/views';
 import { createEventFromForm, createSampleEdmsForEvent, handleEventEditView } from './event';
+import {
+  applyResponsePage,
+  convertRegistration,
+  discardRegistration,
+  pullSubmissions,
+  registrationsView,
+} from './submissions';
 import { redirect, requirePluginSecret, serveViewAsset } from '@lionrockjs/worker-cms-plugin';
 // The plugin manifest (content types, blocks, nav, hooks, page-view overrides)
 // is plain data, so it lives as a static JSON file served verbatim at
@@ -64,7 +71,7 @@ import MANIFEST from './manifest.json';
 
 interface PluginEnv extends EdmEnv {
   PLUGIN_SECRET?: string;
-  /** Base URL of the CMS Worker (for the F1 write-back API), e.g. https://cms.eventuai.com */
+  /** Base URL of the CMS Worker (for the Plugin API write-back API), e.g. https://cms.eventuai.com */
   CMS_URL?: string;
   /** Plugin-owned Liquid templates and other view assets. */
   VIEWS: Fetcher;
@@ -183,11 +190,24 @@ interface CmsHookPayload {
 
 async function handleCreateHook(payload: unknown, env: PluginEnv): Promise<void> {
   const hook = payload as CmsHookPayload;
+  const pageId = parseHookPageId(hook?.page?.id);
+  if (pageId == null) return;
+
+  // Ingested public RSVP response (worker-rsvp row pulled into draft by the
+  // host) — apply it to the guest page. Idempotent, so a re-fired hook or an
+  // overlapping manual sweep can't double-log.
+  if (hook?.page?.page_type === 'rsvp_response') {
+    try {
+      await applyResponsePage(new CmsClient(env), pageId);
+    } catch (error) {
+      console.error('[events-suite] create hook response apply failed', error);
+    }
+    return;
+  }
+
   if (hook?.page?.page_type !== 'event') return;
-  const eventId = parseHookPageId(hook.page.id);
-  if (eventId == null) return;
   try {
-    await createSampleEdmsForEvent(new CmsClient(env), eventId);
+    await createSampleEdmsForEvent(new CmsClient(env), pageId);
   } catch (error) {
     console.error('[events-suite] create hook sample EDM creation failed', error);
   }
@@ -343,6 +363,17 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
       if (request.method === 'POST') return await archiveEvent(request, cms, eventId);
       return await archiveReview(cms, env.VIEWS, eventId, jsonOnly);
     }
+    if (eventId && sub === 'registrations') {
+      if (request.method === 'POST') {
+        if (!access.canEdit) return forbidden();
+        if (segments[3] === 'pull') return await pullSubmissions(cms, eventId);
+        const registrationId = segments[3] ? Number(segments[3]) : null;
+        if (registrationId && segments[4] === 'convert') return await convertRegistration(cms, eventId, registrationId);
+        if (registrationId && segments[4] === 'discard') return await discardRegistration(cms, eventId, registrationId);
+        return new Response('not found', { status: 404 });
+      }
+      return await registrationsView(cms, env.VIEWS, eventId, url, jsonOnly);
+    }
     if (eventId && sub === 'sessions') {
       if (!access.canEdit) return forbidden();
       return await eventSessions(cms, env.VIEWS, eventId, jsonOnly);
@@ -472,7 +503,7 @@ async function eventsList(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = f
       const deleting = isDeleting(event.lect);
       return {
         name: event.name,
-        // `start` and `timezone` are native CMS page columns (the F1 API returns
+        // `start` and `timezone` are native CMS page columns (the Plugin API returns
         // them top-level, not in lect). Timezone is an offset like "+0800", so we
         // show the raw values rather than reformatting against an IANA zone.
         start: [(event.start ?? '').replace('T', ' '), event.timezone ?? ''].filter(Boolean).join(' '),
@@ -842,6 +873,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
     editHref: canEdit && !deleting ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
     duplicateHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
+    registrationsHref: `${ADMIN_BASE}/events/${eventId}/registrations`,
     archiveHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/archive` : '',
     deleteHref: canDelete && !deleting ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
     reorderAction: canEdit && !deleting ? CMS_BATCH_WEIGHT_ACTION : '',

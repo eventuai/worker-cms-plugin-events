@@ -123,6 +123,15 @@
       ],
       "mail_preview_list": [
         "@name", { "user": ["@name", "@email"] }
+      ],
+      "rsvp_response": [
+        "@guest_uuid", "@event_id", "@list_id", "@edm_id", "@status", "@plus_guests",
+        "@message", "@language", "@submitted_at", "@applied_at", "@applied_guest_id"
+      ],
+      "rsvp_registration": [
+        "@name", "@first_name", "@last_name", "@email", "@salutation", "@organization",
+        "@job_title", "@plus_guests", "@language", "@event_id", "@edm_id",
+        "@submitted_at", "@converted_guest_id", "@converted_at"
       ]
     },
     "blocks": {

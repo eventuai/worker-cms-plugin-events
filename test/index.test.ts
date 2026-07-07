@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 describe('plugin contract', () => {
-  it('binds Worker fetch when the CMS bridge calls F1', async () => {
+  it('binds Worker fetch when the CMS bridge calls the Plugin API', async () => {
     let fetchThis: unknown;
     vi.stubGlobal('fetch', function (this: unknown, input: RequestInfo | URL): Promise<Response> {
       fetchThis = this;

@@ -1,7 +1,7 @@
 // ============================================================
 // Events Suite CMS bridge.
 //
-// Shared F1 client/types and neutral lect readers live in @lionrockjs/worker-cms-plugin.
+// Shared Plugin API client/types and neutral lect readers live in @lionrockjs/worker-cms-plugin.
 // This file keeps the events plugin's existing imports stable and adds only the
 // event-specific helpers that do not belong in the generic SDK.
 // ============================================================
@@ -202,6 +202,24 @@ export class CmsClient extends BaseCmsClient {
     }
     const result = await response.json() as { limits: CmsLimit[] };
     return result.limits;
+  }
+
+  /**
+   * Asks the host to pull new worker-rsvp submission rows (published DB →
+   * draft pages) NOW instead of waiting for its cron tick (CMS
+   * `POST /__cms/ingest/submissions`). Idempotent and bounded per call; each
+   * created page fires this plugin's `create` hook.
+   */
+  async ingestSubmissions(): Promise<{ scanned: number; created: number; more: boolean }> {
+    const response = await globalThis.fetch(`${this.link.base}/__cms/ingest/submissions`, {
+      method: 'POST',
+      headers: this.linkHeaders(),
+    });
+    if (!response.ok) {
+      const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+      throw new CmsApiError(response.status, code, 'POST', '/ingest/submissions');
+    }
+    return await response.json() as { scanned: number; created: number; more: boolean };
   }
 
   /**

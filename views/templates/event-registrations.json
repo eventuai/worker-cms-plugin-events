@@ -1,0 +1,4 @@
+{
+  "sections": { "main": { "type": "event-registrations" } },
+  "order": ["main"]
+}

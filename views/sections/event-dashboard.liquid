@@ -230,6 +230,10 @@
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
       <span class="hidden lg:inline">Duplicate</span>
     </a>{% endif %}
+    {% if registrationsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Public registrations" aria-label="Public registrations" href="{{ registrationsHref | escape }}">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
+      <span class="hidden lg:inline">Registrations</span>
+    </a>{% endif %}
     {% if archiveHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Archive event" aria-label="Archive event" href="{{ archiveHref | escape }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>
       <span class="hidden lg:inline">Archive</span>

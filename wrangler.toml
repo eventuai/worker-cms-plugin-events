@@ -15,14 +15,14 @@ run_worker_first = true
 binding = "CF_VERSION_METADATA"
 
 # The CMS forwards this secret on every hook / admin / publish call, and this
-# plugin sends it back on every F1 write-back call. Set it to THIS plugin's
+# plugin sends it back on every Plugin API write-back call. Set it to THIS plugin's
 # dedicated secret — shown in the CMS admin under Plugins → (this plugin) → Edit
 # → Shared secret (each plugin has its own, so one can be rotated/revoked alone):
 #   wrangler secret put PLUGIN_SECRET
 
 [vars]
-# Base URL of the CMS Worker — where this plugin reaches the F1 page read/write
-# API ({CMS_URL}/__cms/*) to read events and create/update guest pages.
+# Base URL of the CMS Worker — where this plugin reaches the Plugin API
+# ({CMS_URL}/__cms/*, page read/write) to read events and create/update guest pages.
 CMS_URL = "https://cms.eventuai.com"
 # Public origin of the worker-rsvp site — signed RSVP links in queued EDMs point
 # there (it verifies them with a copy of this plugin's PLUGIN_SECRET).
