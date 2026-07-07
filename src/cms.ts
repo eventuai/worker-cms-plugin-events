@@ -168,31 +168,76 @@ export class CmsClient extends BaseCmsClient {
    * Every page matching the query. The host clamps `/__cms/pages` to 500 rows
    * per call no matter what `limit` asks, so a plain `list()` silently
    * truncates collections past 500 (large guest lists) — this pages by offset
-   * until `total` is covered. Costs one extra subrequest per additional page.
+   * until the set is exhausted. Costs one extra subrequest per page.
    *
    * Serializing 500 fat rows (guests carry response logs and check-ins) can
    * blow the host's per-request CPU budget on big lists (Cloudflare 1102,
    * surfaced as a 503) — on a transient host failure the page size halves
    * (500 → 250 → … → 50) and the same offset retries, trading more calls for
-   * lighter ones. Only a failure at the 50-row floor propagates.
+   * lighter ones. Only a failure at the 50-row floor propagates. Follow-up
+   * pages send `count=0` so the host skips re-counting the filtered set.
    */
   async listAll(pageType: string, opts: { parentId?: number; pointer?: CmsListPointer; q?: string } = {}): Promise<CmsPage[]> {
     const pages: CmsPage[] = [];
     let pageSize = 500;
+    let total: number | null = null; // fetched with the first page only
     for (;;) {
-      let chunk: BaseCmsPage[];
-      let total: number;
+      let chunk: CmsPage[];
       try {
-        ({ pages: chunk, total } = await this.list(pageType, { ...opts, limit: pageSize, offset: pages.length }));
+        const result = await this.listPage(pageType, opts, pageSize, pages.length, total === null);
+        if (total === null) total = result.total;
+        chunk = result.pages;
       } catch (error) {
         const transient = error instanceof CmsApiError && [429, 500, 502, 503, 504].includes(error.status);
         if (!transient || pageSize <= 50) throw error;
         pageSize = Math.max(50, Math.floor(pageSize / 2));
         continue;
       }
-      pages.push(...(chunk as CmsPage[]));
-      if (!chunk.length || pages.length >= total) return pages;
+      pages.push(...chunk);
+      if (!chunk.length || chunk.length < pageSize || (total >= 0 && pages.length >= total)) return pages;
     }
+  }
+
+  /**
+   * One raw GET /__cms/pages call. Exists because the SDK's `list()` cannot
+   * send `count=0` (skip the host's COUNT(*) — itself a scan of the filtered
+   * set) on follow-up pages; mirrors its parameter encoding.
+   */
+  private async listPage(
+    pageType: string,
+    opts: { parentId?: number; pointer?: CmsListPointer; q?: string },
+    limit: number,
+    offset: number,
+    wantCount: boolean,
+  ): Promise<{ pages: CmsPage[]; total: number }> {
+    const params = new URLSearchParams({ page_type: pageType });
+    if (opts.parentId != null) params.set('page_id', String(opts.parentId));
+    if (opts.pointer) {
+      params.set('pointer_key', opts.pointer.key);
+      if ('values' in opts.pointer) params.set('pointer_values', opts.pointer.values.map(String).join(','));
+      else params.set('pointer_value', String(opts.pointer.value));
+    }
+    if (opts.q) params.set('q', opts.q);
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    if (!wantCount) params.set('count', '0');
+
+    const path = `/pages?${params}`;
+    const response = await globalThis.fetch(`${this.link.base}/__cms${path}`, { headers: this.linkHeaders() });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      let code = 'error';
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as { error?: unknown };
+          code = typeof parsed.error === 'string' && parsed.error ? parsed.error : 'error';
+        } catch {
+          code = text.replace(/\s+/g, ' ').trim().slice(0, 160) || 'error';
+        }
+      }
+      throw new CmsApiError(response.status, code, 'GET', path);
+    }
+    return response.json();
   }
 
   private withActingUser(init?: RequestInit): RequestInit {

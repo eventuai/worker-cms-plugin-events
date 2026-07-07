@@ -3548,7 +3548,7 @@ describe('guest lists past the host 500-row page cap', () => {
       name: `G${i + 1}`,
       lect: { name: { en: `G${i + 1}` }, email: `g${i + 1}@x.io`, phone: `555-${i}` },
     }));
-    const listCalls: number[] = [];
+    const listCalls: Array<{ offset: number; count: string | null }> = [];
     const writes: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -3559,8 +3559,9 @@ describe('guest lists past the host 500-row page cap', () => {
       if (url.pathname === '/__cms/pages' && (init?.method ?? 'GET') === 'GET' && url.searchParams.get('page_type') === 'guest') {
         const offset = Number(url.searchParams.get('offset') ?? 0);
         const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 500); // the host's clamp
-        listCalls.push(offset);
-        return Response.json({ pages: all.slice(offset, offset + limit), total: TOTAL });
+        const count = url.searchParams.get('count');
+        listCalls.push({ offset, count });
+        return Response.json({ pages: all.slice(offset, offset + limit), total: count === '0' ? -1 : TOTAL });
       }
       if (init?.method === 'POST' || init?.method === 'PUT') {
         writes.push(`${init.method} ${url.pathname}`);
@@ -3579,7 +3580,11 @@ describe('guest lists past the host 500-row page cap', () => {
 
     expect(response.status).toBe(302); // unchanged → nothing to write
     expect(writes).toHaveLength(0);
-    expect(listCalls).toEqual([0, 500]); // paged through the whole list
+    // Paged through the whole list; only the first page pays for the COUNT(*).
+    expect(listCalls).toEqual([
+      { offset: 0, count: null },
+      { offset: 500, count: '0' },
+    ]);
   });
 
   it('halves the page size when a page blows the host CPU budget (1102/503)', async () => {
