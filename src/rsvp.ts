@@ -1439,12 +1439,17 @@ export async function confirmEventGuestImport(request: Request, cms: CmsClient, 
   const form = await request.formData();
   const mode = formText(form, 'mode') || 'new_and_update';
   const csv = formText(form, 'csv');
+  const assignNewIds = formText(form, 'assign_new_ids') === '1';
   const groups = parseEventImportGroups(csv);
   if (!groups.length) return redirect(`${ADMIN_BASE}/events/${eventId}/import`);
 
   // Existing lists, keyed by lower-cased name, so repeated rows reuse one list.
   const existing = await listByEvent(cms, 'mail_list', eventId);
   const listByName = new Map(existing.map((list) => [list.name.trim().toLowerCase(), list]));
+
+  const heading = event.name;
+  const confirmAction = `${ADMIN_BASE}/events/${eventId}/import/confirm`;
+  const backHref = `${ADMIN_BASE}/events/${eventId}/all-guests`;
 
   const pass = new ImportPass();
   let remaining = 0; // rows with pending writes in groups this pass classified
@@ -1484,21 +1489,28 @@ export async function confirmEventGuestImport(request: Request, cms: CmsClient, 
     const plan = classifyImport(group.guests, existingGuests, eventId, list.id);
     const creates = mode !== 'update_only' ? plan.create : [];
     const updates = mode !== 'new_only' ? plan.update : [];
-    const applied = await applyImportPlan(cms, pass, creates, updates);
+    let applied;
+    try {
+      applied = await applyImportPlan(cms, pass, creates, updates, assignNewIds);
+    } catch (error) {
+      if (!(error instanceof ImportIdConflictError)) throw error;
+      return importIdConflictView(views, jsonOnly, error, { heading, confirmAction, backHref, csv, mode });
+    }
     remaining += creates.length - applied.created + (updates.length - applied.updated);
   }
 
-  if (!remaining && !pendingGroups) return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
+  if (!remaining && !pendingGroups) return redirect(backHref);
 
   const remainingParts = [];
   if (remaining) remainingParts.push(`${remaining} record(s)`);
   if (pendingGroups) remainingParts.push(`${pendingGroups} list(s)`);
   return importProgressView(views, jsonOnly, {
-    heading: event.name,
-    confirmAction: `${ADMIN_BASE}/events/${eventId}/import/confirm`,
-    backHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    heading,
+    confirmAction,
+    backHref,
     csv,
     mode,
+    assignNewIds,
     pass,
     remainingLabel: `${remainingParts.join(' and ')} left`,
   });
@@ -1795,28 +1807,49 @@ function classifyImport(incoming: IncomingGuest[], existingGuests: CmsPage[], ev
   return { create, update, rows };
 }
 
-export async function createImportedGuests(cms: CmsClient, inputs: CmsPageInput[]): Promise<void> {
-  for (const chunk of chunks(inputs, IMPORT_CREATE_BATCH)) await createImportedGuestBatch(cms, chunk);
+/**
+ * A create carried a CSV `id` that is already taken in the CMS (or repeated in
+ * the file). Surfaced as its own type so the confirm handlers can offer
+ * "assign new IDs" instead of dumping the raw batch error in the error panel.
+ */
+class ImportIdConflictError extends Error {
+  constructor(public readonly guestName: string, public readonly requestedId: number | undefined) {
+    super(`id_conflict${requestedId ? `:${requestedId}` : ''}`);
+  }
 }
 
-async function createImportedGuestBatch(cms: CmsClient, inputs: CmsPageInput[]): Promise<void> {
+async function createImportedGuestBatch(cms: CmsClient, inputs: CmsPageInput[], assignNewIds = false): Promise<void> {
   if (!inputs.length) return;
   if (inputs.length === 1) {
-    await cms.create(inputs[0]);
+    try {
+      await cms.create(inputs[0]);
+    } catch (error) {
+      if (!(error instanceof CmsApiError) || error.code !== 'id_conflict' || inputs[0].id === undefined) throw error;
+      if (!assignNewIds) throw new ImportIdConflictError(inputs[0].name ?? '', inputs[0].id);
+      await cms.create({ ...inputs[0], id: undefined });
+    }
     return;
   }
 
   try {
     const result = await cms.batchCreate(inputs);
     if (result.errors.length) {
-      const first = result.errors[0];
-      throw new CmsApiError(400, `batch_item_${first.index}:${first.error}`, 'POST', '/pages/batch');
+      // Rows the host did not reject were created by the call above; only the
+      // errored ones are outstanding.
+      const conflicts = result.errors.filter((entry) => entry.error === 'id_conflict');
+      const other = result.errors.find((entry) => entry.error !== 'id_conflict');
+      if (other) throw new CmsApiError(400, `batch_item_${other.index}:${other.error}`, 'POST', '/pages/batch');
+      if (!assignNewIds) {
+        const first = inputs[conflicts[0].index];
+        throw new ImportIdConflictError(first?.name ?? '', first?.id);
+      }
+      await createImportedGuestBatch(cms, conflicts.map((entry) => ({ ...inputs[entry.index], id: undefined })));
     }
   } catch (error) {
     if (error instanceof CmsApiError && shouldSplitImportBatch(error)) {
       const midpoint = Math.ceil(inputs.length / 2);
-      await createImportedGuestBatch(cms, inputs.slice(0, midpoint));
-      await createImportedGuestBatch(cms, inputs.slice(midpoint));
+      await createImportedGuestBatch(cms, inputs.slice(0, midpoint), assignNewIds);
+      await createImportedGuestBatch(cms, inputs.slice(midpoint), assignNewIds);
       return;
     }
     throw error;
@@ -1868,13 +1901,14 @@ async function applyImportPlan(
   pass: ImportPass,
   creates: CmsPageInput[],
   updates: ImportPlan['update'],
+  assignNewIds = false,
 ): Promise<{ created: number; updated: number }> {
   const result = { created: 0, updated: 0 };
   try {
     for (const chunk of chunks(creates, IMPORT_CREATE_BATCH)) {
       if (pass.done) return result;
       pass.spent += 1;
-      await createImportedGuestBatch(cms, chunk);
+      await createImportedGuestBatch(cms, chunk, assignNewIds);
       result.created += chunk.length;
       pass.created += chunk.length;
     }
@@ -1907,6 +1941,7 @@ function importProgressView(views: Fetcher, jsonOnly: boolean, data: {
   mode: string;
   pass: ImportPass;
   remainingLabel: string;
+  assignNewIds: boolean;
 }): Promise<Response> {
   return adminView(views, 'Importing guests…', 'guest-import-progress', {
     heading: data.heading,
@@ -1914,10 +1949,35 @@ function importProgressView(views: Fetcher, jsonOnly: boolean, data: {
     backHref: data.backHref,
     csv: data.csv,
     mode: data.mode,
+    assignNewIds: data.assignNewIds ? '1' : '',
     createdCount: data.pass.created,
     updatedCount: data.pass.updated,
     remainingLabel: data.remainingLabel,
     auto: data.pass.progressed,
+  }, jsonOnly);
+}
+
+/**
+ * Shown when a create asked for a CSV `id` the CMS already uses. The retry
+ * button resubmits the same CSV with `assign_new_ids=1`, which lets the host
+ * generate fresh ids for just the conflicting rows (rows whose id is free
+ * still keep it).
+ */
+function importIdConflictView(views: Fetcher, jsonOnly: boolean, error: ImportIdConflictError, data: {
+  heading: string;
+  confirmAction: string;
+  backHref: string;
+  csv: string;
+  mode: string;
+}): Promise<Response> {
+  return adminView(views, 'Import ID conflict', 'guest-import-conflict', {
+    heading: data.heading,
+    confirmAction: data.confirmAction,
+    backHref: data.backHref,
+    csv: data.csv,
+    mode: data.mode,
+    guestName: error.guestName,
+    requestedId: error.requestedId ? String(error.requestedId) : '',
   }, jsonOnly);
 }
 
@@ -2025,6 +2085,7 @@ async function confirmImportGuests(request: Request, cms: CmsClient, views: Fetc
   const form = await request.formData();
   const mode = formText(form, 'mode') || 'new_and_update';
   const csv = formText(form, 'csv');
+  const assignNewIds = formText(form, 'assign_new_ids') === '1';
   const incoming = parseImportRows(csv);
   if (!incoming.length) return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
 
@@ -2033,17 +2094,28 @@ async function confirmImportGuests(request: Request, cms: CmsClient, views: Fetc
   const creates = mode !== 'update_only' ? plan.create : [];
   const updates = mode !== 'new_only' ? plan.update : [];
 
+  const heading = `${context.list.name} · ${context.event?.name ?? 'Event'}`;
+  const confirmAction = `${ADMIN_BASE}/rsvp/${listId}/import/confirm`;
+  const backHref = `${ADMIN_BASE}/rsvp/${listId}`;
+
   const pass = new ImportPass();
-  const applied = await applyImportPlan(cms, pass, creates, updates);
+  let applied;
+  try {
+    applied = await applyImportPlan(cms, pass, creates, updates, assignNewIds);
+  } catch (error) {
+    if (!(error instanceof ImportIdConflictError)) throw error;
+    return importIdConflictView(views, jsonOnly, error, { heading, confirmAction, backHref, csv, mode });
+  }
   const remaining = creates.length - applied.created + (updates.length - applied.updated);
-  if (!remaining) return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+  if (!remaining) return redirect(backHref);
 
   return importProgressView(views, jsonOnly, {
-    heading: `${context.list.name} · ${context.event?.name ?? 'Event'}`,
-    confirmAction: `${ADMIN_BASE}/rsvp/${listId}/import/confirm`,
-    backHref: `${ADMIN_BASE}/rsvp/${listId}`,
+    heading,
+    confirmAction,
+    backHref,
     csv,
     mode,
+    assignNewIds,
     pass,
     remainingLabel: `${remaining} record(s) left`,
   });

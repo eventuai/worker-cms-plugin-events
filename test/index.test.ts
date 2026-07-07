@@ -3449,6 +3449,91 @@ describe('resumable import confirm', () => {
   });
 });
 
+// CSV rows may carry an `id` column (preserved from legacy exports). When a
+// requested id is already taken the host rejects it (id_conflict); the confirm
+// now offers "assign new IDs" instead of dumping the raw batch error.
+describe('import id conflict recovery', () => {
+  type Sink = { creates: Array<Record<string, unknown>>; batches: Array<{ pages: Array<Record<string, unknown>> }> };
+
+  // Host where guest id 555 is already taken: batch items requesting it error
+  // with id_conflict (the rest of the batch is created); a single POST /pages
+  // requesting it gets a 409.
+  const conflictFetch = (sink: Sink) =>
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { pages: Array<Record<string, unknown>> };
+        sink.batches.push(body);
+        const errors = body.pages.flatMap((page, index) => (page.id === 555 ? [{ index, error: 'id_conflict' }] : []));
+        const created = body.pages.filter((page) => page.id !== 555).map((page, index) => ({ id: 300 + index, ...page }));
+        return Response.json({ created, errors });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        if (body.id === 555) return Response.json({ error: 'id_conflict' }, { status: 409 });
+        sink.creates.push(body);
+        return Response.json({ page: { id: 900, ...body } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+  const conflictCsv = 'id,name,email\n555,Ada,ada@x.io\n556,Bob,bob@x.io\n';
+  const confirmWith = (body: Record<string, string>) => plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+    body: new URLSearchParams(body),
+  }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+  it('offers to assign new IDs when a batch row conflicts', async () => {
+    const sink: Sink = { creates: [], batches: [] };
+    vi.stubGlobal('fetch', conflictFetch(sink));
+
+    const response = await confirmWith({ mode: 'new_and_update', csv: conflictCsv });
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('Import ID conflict');
+    expect(html).toContain('Ada');
+    expect(html).toContain('555');
+    expect(html).toContain('name="assign_new_ids"');
+    // Bob (id 556, free) was created by the same batch call before the stop.
+    expect(sink.batches).toHaveLength(1);
+  });
+
+  it('retries only the conflicting rows without ids when assign_new_ids is set', async () => {
+    const sink: Sink = { creates: [], batches: [] };
+    vi.stubGlobal('fetch', conflictFetch(sink));
+
+    const response = await confirmWith({ mode: 'new_and_update', csv: conflictCsv, assign_new_ids: '1' });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+    // The retry recreated only Ada, with the id dropped so the host assigns one.
+    expect(sink.creates).toHaveLength(1);
+    expect(sink.creates[0]).toMatchObject({ name: 'Ada' });
+    expect(sink.creates[0].id).toBeUndefined();
+  });
+
+  it('surfaces a single-create conflict the same way', async () => {
+    const sink: Sink = { creates: [], batches: [] };
+    vi.stubGlobal('fetch', conflictFetch(sink));
+
+    const response = await confirmWith({ mode: 'new_and_update', csv: 'id,name,email\n555,Ada,ada@x.io\n' });
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('Import ID conflict');
+    expect(html).toContain('Ada');
+  });
+});
+
 describe('add/remove guests from contacts', () => {
   const CONTACT_ADA = {
     id: 70,
