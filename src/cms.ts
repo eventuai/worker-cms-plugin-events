@@ -168,13 +168,28 @@ export class CmsClient extends BaseCmsClient {
    * Every page matching the query. The host clamps `/__cms/pages` to 500 rows
    * per call no matter what `limit` asks, so a plain `list()` silently
    * truncates collections past 500 (large guest lists) — this pages by offset
-   * until `total` is covered. Costs one extra subrequest per additional 500
-   * rows.
+   * until `total` is covered. Costs one extra subrequest per additional page.
+   *
+   * Serializing 500 fat rows (guests carry response logs and check-ins) can
+   * blow the host's per-request CPU budget on big lists (Cloudflare 1102,
+   * surfaced as a 503) — on a transient host failure the page size halves
+   * (500 → 250 → … → 50) and the same offset retries, trading more calls for
+   * lighter ones. Only a failure at the 50-row floor propagates.
    */
   async listAll(pageType: string, opts: { parentId?: number; pointer?: CmsListPointer; q?: string } = {}): Promise<CmsPage[]> {
     const pages: CmsPage[] = [];
+    let pageSize = 500;
     for (;;) {
-      const { pages: chunk, total } = await this.list(pageType, { ...opts, limit: 500, offset: pages.length });
+      let chunk: BaseCmsPage[];
+      let total: number;
+      try {
+        ({ pages: chunk, total } = await this.list(pageType, { ...opts, limit: pageSize, offset: pages.length }));
+      } catch (error) {
+        const transient = error instanceof CmsApiError && [429, 500, 502, 503, 504].includes(error.status);
+        if (!transient || pageSize <= 50) throw error;
+        pageSize = Math.max(50, Math.floor(pageSize / 2));
+        continue;
+      }
       pages.push(...(chunk as CmsPage[]));
       if (!chunk.length || pages.length >= total) return pages;
     }

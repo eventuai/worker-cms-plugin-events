@@ -215,6 +215,11 @@ export async function handleRsvpAdmin(
     if (!canImportExport) return forbidden();
     return exportGuests(cms, listId);
   }
+  if (segments[1] === 'dedupe') {
+    if (!canDelete) return forbidden();
+    if (request.method === 'POST') return applyGuestDedupe(cms, listId);
+    return previewGuestDedupe(cms, views, listId, jsonOnly);
+  }
   if (segments[1] === 'import') {
     if (!canImportExport) return forbidden();
     if (segments[2] === 'confirm' && request.method === 'POST') return confirmImportGuests(request, cms, views, listId, jsonOnly);
@@ -476,6 +481,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     editHref: canEdit ? `/admin/pages/${listId}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
     importHref: canImportExport ? `${ADMIN_BASE}/rsvp/${listId}/import` : '',
     exportHref: canImportExport ? `${ADMIN_BASE}/rsvp/${listId}/export` : '',
+    dedupeHref: canDelete ? `${ADMIN_BASE}/rsvp/${listId}/dedupe` : '',
     contactsHref: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/contacts` : '',
     updateFromContactsAction: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts` : '',
     deleteAction: canDelete && !isAdhocList(context.list) ? `${ADMIN_BASE}/rsvp/${listId}/delete` : '',
@@ -2119,6 +2125,111 @@ async function confirmImportGuests(request: Request, cms: CmsClient, views: Fetc
     pass,
     remainingLabel: `${remaining} record(s) left`,
   });
+}
+
+/**
+ * Identical-copy duplicate groups. Only rows that agree on the name AND every
+ * imported + custom field group together — legitimate same-email guests with
+ * different names (or any real difference) never match. Within a group, rows
+ * with activity (a check-in, a response, or a registration link) are always
+ * kept — that id was used in the field (QR scans, signed RSVP links); with no
+ * activity anywhere the lowest id (the original) survives.
+ */
+function findDuplicateGuests(guests: CmsPage[]): { total: number; groups: Array<{ name: string; email: string; copies: number; remove: CmsPage[] }> } {
+  const byFingerprint = new Map<string, CmsPage[]>();
+  for (const guest of guests) {
+    const values = guestValues(guest);
+    const custom = Object.keys(guest.lect)
+      .filter((key) => /^(rsvp-custom-|rsvp_custom_)/.test(key))
+      .sort()
+      .map((key) => [key, attr(guest.lect, key)]);
+    const fingerprint = JSON.stringify([
+      values.name.trim().toLowerCase(),
+      ...IMPORT_FIELDS.map((field) => values[field] ?? ''),
+      custom,
+    ]);
+    const bucket = byFingerprint.get(fingerprint);
+    if (bucket) bucket.push(guest);
+    else byFingerprint.set(fingerprint, [guest]);
+  }
+
+  const groups: Array<{ name: string; email: string; copies: number; remove: CmsPage[] }> = [];
+  let total = 0;
+  for (const bucket of byFingerprint.values()) {
+    if (bucket.length < 2) continue;
+    const sorted = [...bucket].sort((a, b) => a.id - b.id);
+    const active = sorted.filter((guest) =>
+      checkins(guest.lect).length > 0
+      || items(guest.lect, 'response').length > 0
+      || attr(guest.lect, 'registration_ref') !== '');
+    const keepIds = new Set((active.length ? active : [sorted[0]]).map((guest) => guest.id));
+    const remove = sorted.filter((guest) => !keepIds.has(guest.id));
+    if (!remove.length) continue;
+    total += remove.length;
+    const values = guestValues(sorted[0]);
+    groups.push({ name: values.name, email: values.email, copies: sorted.length, remove });
+  }
+  return { total, groups };
+}
+
+/**
+ * GET /rsvp/:id/dedupe — shows what a cleanup would remove before touching
+ * anything. Exists because the pre-pagination import re-created the unfetched
+ * tail of >500-guest lists on every pass, mass-producing identical copies.
+ */
+async function previewGuestDedupe(cms: CmsClient, views: Fetcher, listId: number, jsonOnly = false): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
+  const { total, groups } = findDuplicateGuests(guests);
+  return adminView(views, `Remove duplicates — ${context.list.name}`, 'guest-dedupe', {
+    eventName: context.event?.name ?? 'Event',
+    listName: context.list.name,
+    listHref: `${ADMIN_BASE}/rsvp/${listId}`,
+    action: `${ADMIN_BASE}/rsvp/${listId}/dedupe`,
+    guestCount: guests.length,
+    duplicateCount: total,
+    groupCount: groups.length,
+    groups: groups.slice(0, 200).map((group) => ({
+      name: group.name,
+      email: group.email,
+      copies: group.copies,
+      removing: group.remove.length,
+    })),
+    moreGroups: Math.max(0, groups.length - 200),
+  }, jsonOnly);
+}
+
+/**
+ * POST: soft-deletes the identical copies (host batch delete moves them to
+ * trash, so this is recoverable) in budgeted batches; a huge cleanup that
+ * outruns the pass budget reports how many are left for another click.
+ */
+async function applyGuestDedupe(cms: CmsClient, listId: number): Promise<Response> {
+  const context = await guestListContext(cms, listId);
+  if (!context) return new Response('not found', { status: 404 });
+  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
+  const { total, groups } = findDuplicateGuests(guests);
+  const ids = groups.flatMap((group) => group.remove.map((guest) => guest.id));
+
+  let removed = 0;
+  let spent = 0;
+  try {
+    for (const chunk of chunks(ids, 100)) {
+      if (spent >= IMPORT_PASS_WRITE_BUDGET) break;
+      spent += 1;
+      await cms.batchRemove(chunk);
+      removed += chunk.length;
+    }
+  } catch (error) {
+    if (!isSubrequestLimitError(error)) throw error;
+  }
+
+  const remaining = total - removed;
+  const message = remaining > 0
+    ? `Removed ${removed} duplicate guest(s); ${remaining} left — run Remove duplicates again`
+    : `Removed ${removed} duplicate guest(s)`;
+  return redirect(`${ADMIN_BASE}/rsvp/${listId}?flash=${encodeURIComponent(message)}`);
 }
 
 async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {

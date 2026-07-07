@@ -3581,6 +3581,112 @@ describe('guest lists past the host 500-row page cap', () => {
     expect(writes).toHaveLength(0);
     expect(listCalls).toEqual([0, 500]); // paged through the whole list
   });
+
+  it('halves the page size when a page blows the host CPU budget (1102/503)', async () => {
+    const TOTAL = 700;
+    const all = Array.from({ length: TOTAL }, (_, i) => ({
+      id: 100 + i,
+      page_type: 'guest',
+      page_id: 8,
+      name: `G${i + 1}`,
+      lect: { name: { en: `G${i + 1}` }, email: `g${i + 1}@x.io`, phone: `555-${i}` },
+    }));
+    const listCalls: Array<{ offset: number; limit: number }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && (init?.method ?? 'GET') === 'GET' && url.searchParams.get('page_type') === 'guest') {
+        const offset = Number(url.searchParams.get('offset') ?? 0);
+        const limit = Number(url.searchParams.get('limit') ?? 50);
+        listCalls.push({ offset, limit });
+        // Serializing 500 fat rows exceeds the host's per-request CPU.
+        if (limit > 250) return new Response('error code: 1102', { status: 503 });
+        return Response.json({ pages: all.slice(offset, offset + limit), total: TOTAL });
+      }
+      return new Response('not found', { status: 404 });
+    }));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', csv: 'name,email,phone\nG650,g650@x.io,555-649\n' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302); // completed despite the failing 500-row page
+    expect(listCalls).toEqual([
+      { offset: 0, limit: 500 }, // blows up
+      { offset: 0, limit: 250 }, // retried smaller, same offset
+      { offset: 250, limit: 250 },
+      { offset: 500, limit: 250 },
+    ]);
+  });
+});
+
+// Cleanup for lists bloated by the pre-pagination import bug: identical copies
+// (same name + every field) group; copies with activity are kept, the rest are
+// soft-deleted to trash.
+describe('remove duplicate guests', () => {
+  const guests = [
+    // Ada in triplicate — the copy with a check-in wins over the lowest id.
+    { id: 100, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'a@x.io', phone: '1' } },
+    { id: 101, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'a@x.io', phone: '1' } },
+    { id: 102, page_type: 'guest', page_id: 8, name: 'Ada', lect: { name: { en: 'Ada' }, email: 'a@x.io', phone: '1', checkin: [{ status: 'checked-in', date: '2026-07-01T00:00:00Z' }] } },
+    // Same email, different names — legitimate pair, never grouped.
+    { id: 200, page_type: 'guest', page_id: 8, name: 'Bob', lect: { name: { en: 'Bob' }, email: 'shared@x.io' } },
+    { id: 201, page_type: 'guest', page_id: 8, name: 'Bobby', lect: { name: { en: 'Bobby' }, email: 'shared@x.io' } },
+    // Same name+email but a differing field — not identical, never grouped.
+    { id: 300, page_type: 'guest', page_id: 8, name: 'Cara', lect: { name: { en: 'Cara' }, email: 'c@x.io', phone: '1' } },
+    { id: 301, page_type: 'guest', page_id: 8, name: 'Cara', lect: { name: { en: 'Cara' }, email: 'c@x.io', phone: '2' } },
+  ];
+
+  const dedupeFetch = (removed: number[][]) =>
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && (init?.method ?? 'GET') === 'GET' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: guests, total: guests.length });
+      }
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'DELETE') {
+        removed.push((JSON.parse(String(init.body)) as { ids: number[] }).ids);
+        return Response.json({ deleted: true });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+  it('previews only provably identical copies', async () => {
+    vi.stubGlobal('fetch', dedupeFetch([]));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/dedupe', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('2 identical copies in 1 group(s)');
+    expect(html).toContain('Ada');
+    expect(html).not.toContain('Bobby'); // same email, different name — untouched
+    expect(html).not.toContain('Cara'); // differing phone — untouched
+  });
+
+  it('deletes the inactive copies, keeping the checked-in one', async () => {
+    const removed: number[][] = [];
+    vi.stubGlobal('fetch', dedupeFetch(removed));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/dedupe', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toContain('flash=Removed%202%20duplicate%20guest(s)');
+    expect(removed).toEqual([[100, 101]]); // 102 (checked in) survives
+  });
 });
 
 describe('add/remove guests from contacts', () => {
