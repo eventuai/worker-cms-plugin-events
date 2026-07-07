@@ -1526,6 +1526,54 @@ describe('event deletion', () => {
     expect(html).toContain('action="/admin/plugins/events/events/7/delete/start"');
   });
 
+  it('marks an event as deleting before preserving the POST to the queued delete route', async () => {
+    let deletingUpdate: Record<string, unknown> | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { venue: 'Hall' } } });
+      }
+      if (url.pathname === '/__cms/pages/7' && init?.method === 'PUT') {
+        deletingUpdate = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: deletingUpdate.lect } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete/start', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/delete');
+    expect(deletingUpdate).toMatchObject({ lect: { venue: 'Hall', deleting: 'yes' } });
+    expect((deletingUpdate?.lect as Record<string, unknown>).deleting_at).toEqual(expect.any(String));
+  });
+
+  it('does not queue a second delete when the event is already marked deleting', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { deleting: 'yes' } } });
+      }
+      if (url.pathname === '/__cms/pages/7' && init?.method === 'PUT') {
+        throw new Error('already deleting events should not be updated again');
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete/start', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20is%20already%20in%20progress.');
+  });
+
   it('deletes the event, trashing each list\'s guests server-side then the lists and templates', async () => {
     const removed: number[] = [];
     const batchRemoved: number[][] = [];
@@ -1608,7 +1656,7 @@ describe('event deletion', () => {
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete/start', {
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }), ctx);

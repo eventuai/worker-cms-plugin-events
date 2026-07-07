@@ -333,6 +333,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
     }
     if (eventId && sub === 'delete') {
       if (!access.canDelete) return forbidden();
+      if (request.method === 'POST' && segments[3] === 'start') return await startEventDeletion(cms, eventId);
       if (request.method === 'POST') return await deleteEvent(request, cms, eventId, ctx);
       return await deleteEventForm(cms, env.VIEWS, eventId, jsonOnly);
     }
@@ -762,6 +763,16 @@ async function deleteEventForm(cms: CmsClient, views: Fetcher, eventId: number, 
     listCount: guestLists.length,
     edmCount: edms.length,
   }, jsonOnly);
+}
+
+async function startEventDeletion(cms: CmsClient, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  if (isDeleting(event.lect)) {
+    return redirect(withFlash(`${ADMIN_BASE}/events`, 'Event deletion is already in progress.'));
+  }
+  await cms.update(eventId, { lect: { ...event.lect, deleting: 'yes', deleting_at: new Date().toISOString() } });
+  return redirect(`${ADMIN_BASE}/events/${eventId}/delete`, 307);
 }
 
 async function deleteEvent(request: Request, cms: CmsClient, eventId: number, ctx?: ExecutionContext): Promise<Response> {
