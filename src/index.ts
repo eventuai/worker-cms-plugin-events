@@ -551,7 +551,7 @@ async function archiveReview(cms: CmsClient, views: Fetcher, eventId: number, js
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const guests: Array<{ guest: CmsPage; listName: string }> = [];
   for (const list of lists) {
-    const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
+    const pages = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
     for (const guest of pages) guests.push({ guest, listName: list.name });
   }
 
@@ -844,7 +844,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
   // response feed costs no extra subrequests.
   const guestListDetails = await Promise.all(
     guestLists.map(async (list) => {
-      const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
+      const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
       list.guest_summary = computeGuestListSummary(guests);
       return {
         guests,

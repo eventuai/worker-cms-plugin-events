@@ -443,7 +443,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
   const selectedColor = normalizeColor(url.searchParams.get('color'));
-  const { pages, total } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, q, limit: 500 });
+  const pages = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId }, q });
   const filteredGuests = filterGuests(pages, '', selectedStatus ?? undefined, selectedColor);
   const noFilter = !q && !selectedStatus && !selectedColor;
   const guests = noFilter ? sortByWeight(filteredGuests) : filteredGuests;
@@ -503,7 +503,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     })),
     hasCustomFields: customFields.length > 0,
     selectedCustomFieldKey: selectedCustomField?.key ?? '',
-    total: noFilter ? total : filteredGuests.length,
+    total: noFilter ? pages.length : filteredGuests.length,
     guests: guests.map((guest) => guestRow(guest, listId, canManageEmail && hasEdm ? selectedEdm!.id : null, selectedCustomField, '', q, access)),
   }, jsonOnly);
 }
@@ -609,7 +609,7 @@ async function deleteGuestList(cms: CmsClient, listId: number): Promise<Response
   if (isAdhocList(context.list)) return new Response('cannot delete the default Adhoc list', { status: 403 });
 
   // Fetch guests while they are still in draft_pages (queryable by pointer).
-  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   await chargeCreditAction(cms, 'delete_guest_list', 1, {
     entityType: 'mail_list',
     entityId: listId,
@@ -711,7 +711,7 @@ async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env
   if (!edm) return listFlash(listId, 'Select an EDM for this list first');
 
   const quality = new URL(request.url).searchParams.get('quality') === 'risky' ? 'risky' : 'good';
-  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   const candidates = guests.filter((guest) => {
     const paused = truthyAttr(guest.lect, 'not_send');
     const matches = emailQuality(attr(guest.lect, 'email')) === quality;
@@ -1041,7 +1041,7 @@ async function listContactsBrowser(
 
 /** Contacts already represented on a list: linked contact ids + guest emails. */
 async function listMembership(cms: CmsClient, listId: number): Promise<{ contactIds: Set<string>; emails: Set<string> }> {
-  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   const contactIds = new Set<string>();
   const emails = new Set<string>();
   for (const guest of guests) {
@@ -1113,7 +1113,7 @@ async function removeContactsFromList(request: Request, cms: CmsClient, listId: 
   const form = await request.formData();
   const q = formText(form, 'q');
   const ids = new Set(form.getAll('contact_ids').map((value) => String(value)));
-  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   const removable = guests.filter((guest) => {
     const contactId = guestContactId(guest);
     return contactId && ids.has(contactId);
@@ -1145,7 +1145,7 @@ async function updateGuestFromContact(cms: CmsClient, listId: number, guestId: n
 async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
-  const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const pages = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   const linkedGuests = pages.filter((guest) => guestContactId(guest));
   await chargeCreditAction(cms, 'sync_guest_from_contact', linkedGuests.length, {
     entityType: 'mail_list',
@@ -1327,7 +1327,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const ordered = sortByWeight(lists);
   const guestsByList = await Promise.all(
-    ordered.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, q, limit: 500 }).then((res) => res.pages)),
+    ordered.map((list) => cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id }, q })),
   );
 
   const colorOptions = colorTagOptions(selectedColor);
@@ -1477,7 +1477,7 @@ export async function confirmEventGuestImport(request: Request, cms: CmsClient, 
         listByName.set(eventImportListKey(group.listName), list);
       } else {
         pass.spent += 1;
-        existingGuests = (await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 })).pages;
+        existingGuests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
       }
     } catch (error) {
       if (!isSubrequestLimitError(error)) throw error;
@@ -1568,7 +1568,7 @@ async function eventImportPreview(cms: CmsClient, eventId: number, groups: Event
     const list = listByName.get(eventImportListKey(group.listName));
     let rows: ImportRow[];
     if (list) {
-      const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
+      const existingGuests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
       rows = classifyImport(group.guests, existingGuests, eventId, list.id).rows;
     } else {
       preview.newListCount += 1;
@@ -2008,7 +2008,7 @@ async function previewImportGuests(request: Request, cms: CmsClient, views: Fetc
     }, jsonOnly);
   }
 
-  const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const existingGuests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   const plan = classifyImport(incoming, existingGuests, context.eventId, listId);
 
   return adminView(views, `Preview import — ${context.list.name}`, 'guest-import-preview', {
@@ -2089,7 +2089,7 @@ async function confirmImportGuests(request: Request, cms: CmsClient, views: Fetc
   const incoming = parseImportRows(csv);
   if (!incoming.length) return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
 
-  const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const existingGuests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   const plan = classifyImport(incoming, existingGuests, context.eventId, listId);
   const creates = mode !== 'update_only' ? plan.create : [];
   const updates = mode !== 'new_only' ? plan.update : [];
@@ -2125,7 +2125,7 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   await chargeCreditAction(cms, 'export_guests', 1, { entityType: 'mail_list', entityId: listId });
-  const { pages } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
+  const pages = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
   const headers = ['id', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];
   const rows = pages.map((guest) => {
     const values = guestValues(guest);
@@ -2157,7 +2157,7 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
 
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const guestsByList = await Promise.all(
-    lists.map((list) => cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 }).then((res) => res.pages)),
+    lists.map((list) => cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } })),
   );
 
   const headers = ['id', 'mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];

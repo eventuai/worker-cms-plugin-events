@@ -14,6 +14,7 @@ import {
   localized,
   pointer,
   type CmsClientEnv,
+  type CmsListPointer,
   type CmsPage as BaseCmsPage,
   type CmsPageInput,
   CmsApiError,
@@ -161,6 +162,22 @@ export class CmsClient extends BaseCmsClient {
 
   get hasActingUser(): boolean {
     return this.actingUserId !== null;
+  }
+
+  /**
+   * Every page matching the query. The host clamps `/__cms/pages` to 500 rows
+   * per call no matter what `limit` asks, so a plain `list()` silently
+   * truncates collections past 500 (large guest lists) — this pages by offset
+   * until `total` is covered. Costs one extra subrequest per additional 500
+   * rows.
+   */
+  async listAll(pageType: string, opts: { parentId?: number; pointer?: CmsListPointer; q?: string } = {}): Promise<CmsPage[]> {
+    const pages: CmsPage[] = [];
+    for (;;) {
+      const { pages: chunk, total } = await this.list(pageType, { ...opts, limit: 500, offset: pages.length });
+      pages.push(...(chunk as CmsPage[]));
+      if (!chunk.length || pages.length >= total) return pages;
+    }
   }
 
   private withActingUser(init?: RequestInit): RequestInit {

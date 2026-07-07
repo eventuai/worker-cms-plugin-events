@@ -187,7 +187,7 @@ export async function convertRegistration(cms: CmsClient, eventId: number, regis
   }
 
   const list = await ensureAdhocGuestList(cms, eventId);
-  const { pages: guests } = await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 });
+  const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
   const email = attr(registration.lect, 'email').trim().toLowerCase();
   const existing = guests.find((guest) => attr(guest.lect, 'registration_ref') === registration.uuid)
     ?? (email ? guests.find((guest) => attr(guest.lect, 'email').trim().toLowerCase() === email) : undefined);

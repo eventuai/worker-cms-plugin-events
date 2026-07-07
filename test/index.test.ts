@@ -3534,6 +3534,55 @@ describe('import id conflict recovery', () => {
   });
 });
 
+// The host clamps /__cms/pages to 500 rows per call, so a single list() call
+// silently truncates guest lists past 500 — imports then re-created the
+// un-fetched tail as duplicates and views/exports appeared capped at 500.
+// listAll pages by offset until `total` is covered.
+describe('guest lists past the host 500-row page cap', () => {
+  it('classifies an import against the full list, paging by offset', async () => {
+    const TOTAL = 700;
+    const all = Array.from({ length: TOTAL }, (_, i) => ({
+      id: 100 + i,
+      page_type: 'guest',
+      page_id: 8,
+      name: `G${i + 1}`,
+      lect: { name: { en: `G${i + 1}` }, email: `g${i + 1}@x.io`, phone: `555-${i}` },
+    }));
+    const listCalls: number[] = [];
+    const writes: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && (init?.method ?? 'GET') === 'GET' && url.searchParams.get('page_type') === 'guest') {
+        const offset = Number(url.searchParams.get('offset') ?? 0);
+        const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 500); // the host's clamp
+        listCalls.push(offset);
+        return Response.json({ pages: all.slice(offset, offset + limit), total: TOTAL });
+      }
+      if (init?.method === 'POST' || init?.method === 'PUT') {
+        writes.push(`${init.method} ${url.pathname}`);
+        return Response.json({ page: { id: 999 } });
+      }
+      return new Response('not found', { status: 404 });
+    }));
+
+    // This row matches guest #650 — beyond the first 500-row page. Before
+    // pagination it classified as "new" and re-imported as a duplicate.
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', csv: 'name,email,phone\nG650,g650@x.io,555-649\n' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302); // unchanged → nothing to write
+    expect(writes).toHaveLength(0);
+    expect(listCalls).toEqual([0, 500]); // paged through the whole list
+  });
+});
+
 describe('add/remove guests from contacts', () => {
   const CONTACT_ADA = {
     id: 70,

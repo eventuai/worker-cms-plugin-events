@@ -670,7 +670,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   if (!env.MAIL_QUEUE) throw new Error('MAIL_QUEUE is not configured');
   const [edm, list] = await Promise.all([cms.get(edmId), cms.get(listId)]);
   if (edm.page_type !== 'edm' || list.page_type !== 'mail_list' || pointer(list.lect, 'edm') !== String(edmId)) return -1;
-  const { pages: guests } = await cms.list('guest', { parentId: listId, limit: 500 });
+  const guests = await cms.listAll('guest', { parentId: listId });
 
   const eventId = pageId(pointer(edm.lect, 'event'));
   const rsvpEnabled = Boolean(eventId && env.PUBLIC_BASE_URL && env.PLUGIN_SECRET);
