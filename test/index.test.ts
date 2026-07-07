@@ -3264,6 +3264,143 @@ describe('per-list import preview', () => {
   });
 });
 
+// A confirm pass stops at its write budget (or when the runtime subrequest cap
+// fires) and hands back a progress page that resubmits the same CSV, instead of
+// dying with an unhandled "Too many subrequests" (Cloudflare error 1101).
+describe('resumable import confirm', () => {
+  const GUEST_COUNT = 45; // over the 40-call pass budget when every row is an update
+
+  // Existing guests g1..g45; the first `withPhone` already have the CSV's phone.
+  const manyGuests = (withPhone: number) => Array.from({ length: GUEST_COUNT }, (_, i) => ({
+    id: 100 + i,
+    page_type: 'guest',
+    page_id: 8,
+    name: `G${i + 1}`,
+    lect: { name: { en: `G${i + 1}` }, email: `g${i + 1}@x.io`, ...(i < withPhone ? { phone: `555-${1000 + i}` } : {}) },
+  }));
+  const manyCsv = ['name,email,phone', ...Array.from({ length: GUEST_COUNT }, (_, i) => `G${i + 1},g${i + 1}@x.io,555-${1000 + i}`)].join('\n');
+
+  type Sink = { updates: Array<{ id: number; body: unknown }> };
+
+  // Mirrors listFetch, plus an optional PUT count after which the runtime
+  // subrequest cap "fires" (fetch itself throws; no request goes out).
+  const resumableFetch = (guests: Array<Record<string, unknown>>, sink: Sink, capAfterPuts = Infinity) =>
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: guests, total: guests.length });
+      }
+      const updateMatch = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
+      if (updateMatch && init?.method === 'PUT') {
+        if (sink.updates.length >= capAfterPuts) throw new Error('Too many subrequests.');
+        sink.updates.push({ id: Number(updateMatch[1]), body: JSON.parse(String(init.body)) });
+        return Response.json({ page: { id: Number(updateMatch[1]) } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+  const confirmMany = () => plugin.fetch(request('/__plugin/admin/rsvp/8/import/confirm', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+    body: new URLSearchParams({ mode: 'new_and_update', csv: manyCsv }),
+  }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+  it('stops at the pass budget and returns an auto-continuing progress page', async () => {
+    const sink: Sink = { updates: [] };
+    vi.stubGlobal('fetch', resumableFetch(manyGuests(0), sink));
+
+    const response = await confirmMany();
+
+    expect(response.status).toBe(200);
+    expect(sink.updates).toHaveLength(40); // pass budget, not all 45
+    const html = await renderedText(response);
+    expect(html).toContain('40 updated this pass');
+    expect(html).toContain('5 record(s) left');
+    expect(html).toContain('data-auto="1"');
+    expect(html).toContain('name="csv"');
+  });
+
+  it('completes on the follow-up pass once earlier rows re-classify as unchanged', async () => {
+    // Same CSV, but the first 40 guests now carry the imported phone (the
+    // previous pass wrote them) — classify leaves only the last 5 to update.
+    const sink: Sink = { updates: [] };
+    vi.stubGlobal('fetch', resumableFetch(manyGuests(40), sink));
+
+    const response = await confirmMany();
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/rsvp/8');
+    expect(sink.updates.map((entry) => entry.id)).toEqual([140, 141, 142, 143, 144]);
+  });
+
+  it('turns a mid-pass runtime subrequest cap into a progress page instead of crashing', async () => {
+    const sink: Sink = { updates: [] };
+    vi.stubGlobal('fetch', resumableFetch(manyGuests(0), sink, 3));
+
+    const response = await confirmMany();
+
+    expect(response.status).toBe(200);
+    expect(sink.updates).toHaveLength(3);
+    const html = await renderedText(response);
+    expect(html).toContain('3 updated this pass');
+    expect(html).toContain('42 record(s) left');
+    expect(html).toContain('data-auto="1"');
+  });
+
+  it('does not auto-continue a pass that wrote nothing', async () => {
+    const sink: Sink = { updates: [] };
+    vi.stubGlobal('fetch', resumableFetch(manyGuests(0), sink, 0)); // cap fires on the first write
+
+    const response = await confirmMany();
+
+    expect(response.status).toBe(200);
+    expect(sink.updates).toHaveLength(0);
+    const html = await renderedText(response);
+    expect(html).toContain('data-auto="0"');
+    expect(html).toContain('could not apply');
+  });
+
+  it('defers unreached lists of an event import to the next pass', async () => {
+    const guestCreates: Array<Record<string, unknown>> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        // The cap fires while creating the missing "General" list.
+        if (body.page_type === 'mail_list') throw new Error('Too many subrequests.');
+        guestCreates.push(body);
+        return Response.json({ page: { id: 99, name: body.name } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const csv = 'guest_list_name,name,email\nVIP,Ada,ada@x.io\nGeneral,Grace,grace@x.io\n';
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/import/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ mode: 'new_and_update', csv }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(guestCreates.map((guest) => guest.name)).toEqual(['Ada']); // VIP applied before the cap
+    const html = await renderedText(response);
+    expect(html).toContain('1 list(s) left');
+    expect(html).toContain('data-auto="1"'); // Ada counts as progress → safe to auto-continue
+  });
+});
+
 describe('add/remove guests from contacts', () => {
   const CONTACT_ADA = {
     id: 70,

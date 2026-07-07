@@ -346,7 +346,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
     }
     if (eventId && sub === 'import') {
       if (!access.canImportExport) return forbidden();
-      if (segments[3] === 'confirm' && request.method === 'POST') return await confirmEventGuestImport(request, cms, eventId);
+      if (segments[3] === 'confirm' && request.method === 'POST') return await confirmEventGuestImport(request, cms, env.VIEWS, eventId, jsonOnly);
       if (request.method === 'POST') return await previewEventGuestImport(request, cms, env.VIEWS, eventId, jsonOnly);
       return await eventGuestImport(cms, env.VIEWS, eventId, jsonOnly);
     }

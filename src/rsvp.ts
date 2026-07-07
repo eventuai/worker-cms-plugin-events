@@ -41,10 +41,22 @@ const COLOR_TAGS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'
 
 /**
  * Guests per CMS `/pages/batch` call. The host creates each page through the
- * full versioned CMS pipeline, so this stays intentionally smaller than the
- * CMS's hard max and falls back further if the host reports transient pressure.
+ * full versioned CMS pipeline, so this stays well under the CMS's hard max
+ * (200) and falls back further if the host reports transient pressure. Each
+ * batch call is one subrequest for this Worker, so bigger batches stretch the
+ * per-invocation subrequest cap across more guests.
  */
-const IMPORT_CREATE_BATCH = 5;
+const IMPORT_CREATE_BATCH = 25;
+
+/**
+ * Host write calls one import/confirm pass may spend before handing back a
+ * self-resubmitting progress page. Cloudflare caps subrequests per Worker
+ * invocation (50 free / 1000 paid); blowing the cap kills the request with an
+ * unhandled "Too many subrequests" (Cloudflare error 1101), which used to
+ * force users to retry large imports by hand. Kept under the free-plan cap,
+ * leaving headroom for the context/classify reads around the writes.
+ */
+const IMPORT_PASS_WRITE_BUDGET = 40;
 
 /** Guest value fields the import compares and can add/update on an existing guest. */
 const IMPORT_FIELDS = [
@@ -204,7 +216,7 @@ export async function handleRsvpAdmin(
   }
   if (segments[1] === 'import') {
     if (!canImportExport) return forbidden();
-    if (segments[2] === 'confirm' && request.method === 'POST') return confirmImportGuests(request, cms, listId);
+    if (segments[2] === 'confirm' && request.method === 'POST') return confirmImportGuests(request, cms, views, listId, jsonOnly);
     if (request.method === 'POST') return previewImportGuests(request, cms, views, listId, jsonOnly);
     return guestImport(cms, views, listId, jsonOnly);
   }
@@ -1419,43 +1431,76 @@ export async function previewEventGuestImport(request: Request, cms: CmsClient, 
   }, jsonOnly);
 }
 
-export async function confirmEventGuestImport(request: Request, cms: CmsClient, eventId: number): Promise<Response> {
+export async function confirmEventGuestImport(request: Request, cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
   const form = await request.formData();
   const mode = formText(form, 'mode') || 'new_and_update';
-  const groups = parseEventImportGroups(formText(form, 'csv'));
+  const csv = formText(form, 'csv');
+  const groups = parseEventImportGroups(csv);
   if (!groups.length) return redirect(`${ADMIN_BASE}/events/${eventId}/import`);
 
   // Existing lists, keyed by lower-cased name, so repeated rows reuse one list.
   const existing = await listByEvent(cms, 'mail_list', eventId);
   const listByName = new Map(existing.map((list) => [list.name.trim().toLowerCase(), list]));
 
+  const pass = new ImportPass();
+  let remaining = 0; // rows with pending writes in groups this pass classified
+  let pendingGroups = 0; // groups this pass never got to (no reads spent on them)
   for (const group of groups) {
-    let list = listByName.get(eventImportListKey(group.listName));
+    if (pass.done) {
+      pendingGroups += 1;
+      continue;
+    }
+
+    let list: CmsPage | undefined;
     let existingGuests: CmsPage[] = [];
-    if (!list) {
-      if (mode === 'update_only') continue;
-      const listName = group.listName;
-      list = await cms.create({
-        page_type: 'mail_list',
-        name: listName,
-        lect: { _type: 'mail_list', name: { en: listName }, _pointers: { event: String(eventId) } },
-      });
-      listByName.set(eventImportListKey(group.listName), list);
-    } else {
-      existingGuests = (await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 })).pages;
+    try {
+      list = listByName.get(eventImportListKey(group.listName));
+      if (!list) {
+        if (mode === 'update_only') continue;
+        const listName = group.listName;
+        pass.spent += 1;
+        list = await cms.create({
+          page_type: 'mail_list',
+          name: listName,
+          lect: { _type: 'mail_list', name: { en: listName }, _pointers: { event: String(eventId) } },
+        });
+        pass.listsCreated += 1;
+        listByName.set(eventImportListKey(group.listName), list);
+      } else {
+        pass.spent += 1;
+        existingGuests = (await cms.list('guest', { pointer: { key: 'mail_list', value: list.id }, limit: 500 })).pages;
+      }
+    } catch (error) {
+      if (!isSubrequestLimitError(error)) throw error;
+      pass.capped = true;
+      pendingGroups += 1;
+      continue;
     }
 
     const plan = classifyImport(group.guests, existingGuests, eventId, list.id);
-    if (mode !== 'update_only') await createImportedGuests(cms, plan.create);
-    if (mode !== 'new_only') {
-      for (const entry of plan.update) await cms.update(entry.id, { lect: entry.lect });
-    }
+    const creates = mode !== 'update_only' ? plan.create : [];
+    const updates = mode !== 'new_only' ? plan.update : [];
+    const applied = await applyImportPlan(cms, pass, creates, updates);
+    remaining += creates.length - applied.created + (updates.length - applied.updated);
   }
 
-  return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
+  if (!remaining && !pendingGroups) return redirect(`${ADMIN_BASE}/events/${eventId}/all-guests`);
+
+  const remainingParts = [];
+  if (remaining) remainingParts.push(`${remaining} record(s)`);
+  if (pendingGroups) remainingParts.push(`${pendingGroups} list(s)`);
+  return importProgressView(views, jsonOnly, {
+    heading: event.name,
+    confirmAction: `${ADMIN_BASE}/events/${eventId}/import/confirm`,
+    backHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
+    csv,
+    mode,
+    pass,
+    remainingLabel: `${remainingParts.join(' and ')} left`,
+  });
 }
 
 interface EventImportGroup {
@@ -1782,6 +1827,100 @@ function shouldSplitImportBatch(error: CmsApiError): boolean {
 }
 
 /**
+ * One confirm pass over an import plan. Confirm re-parses and re-classifies
+ * the CSV every pass, and classify is idempotent (rows already applied come
+ * back as `unchanged`), so a pass that stops early loses nothing: the progress
+ * page resubmits the same CSV and the next pass continues from wherever this
+ * one stopped. `capped` flips when the runtime subrequest cap fired before the
+ * budget estimate did — after that no further host call can succeed, but a
+ * redirect/progress response needs none.
+ */
+class ImportPass {
+  created = 0;
+  updated = 0;
+  listsCreated = 0;
+  spent = 0;
+  capped = false;
+
+  get done(): boolean {
+    return this.capped || this.spent >= IMPORT_PASS_WRITE_BUDGET;
+  }
+
+  get progressed(): boolean {
+    return this.created + this.updated + this.listsCreated > 0;
+  }
+}
+
+/** The runtime's per-invocation subrequest cap; thrown by fetch itself, so no request went out. */
+function isSubrequestLimitError(error: unknown): boolean {
+  return error instanceof Error && /too many subrequests/i.test(error.message);
+}
+
+/**
+ * Applies as much of one classify plan as the pass budget allows — creates
+ * first (batched), then per-guest updates — and reports what this call
+ * actually wrote. Hitting the runtime subrequest cap marks the pass capped
+ * instead of crashing the request; everything already written stays written.
+ */
+async function applyImportPlan(
+  cms: CmsClient,
+  pass: ImportPass,
+  creates: CmsPageInput[],
+  updates: ImportPlan['update'],
+): Promise<{ created: number; updated: number }> {
+  const result = { created: 0, updated: 0 };
+  try {
+    for (const chunk of chunks(creates, IMPORT_CREATE_BATCH)) {
+      if (pass.done) return result;
+      pass.spent += 1;
+      await createImportedGuestBatch(cms, chunk);
+      result.created += chunk.length;
+      pass.created += chunk.length;
+    }
+    for (const entry of updates) {
+      if (pass.done) return result;
+      pass.spent += 1;
+      await cms.update(entry.id, { lect: entry.lect });
+      result.updated += 1;
+      pass.updated += 1;
+    }
+  } catch (error) {
+    if (!isSubrequestLimitError(error)) throw error;
+    pass.capped = true;
+  }
+  return result;
+}
+
+/**
+ * Shown when a confirm pass ran out of budget with work left. Carries the raw
+ * CSV + mode back in a form that auto-resubmits to the same confirm URL while
+ * the pass is making progress; a pass that wrote nothing (e.g. the overhead
+ * reads alone exhausted the runtime cap) renders a manual retry instead, so a
+ * stuck import can never auto-loop.
+ */
+function importProgressView(views: Fetcher, jsonOnly: boolean, data: {
+  heading: string;
+  confirmAction: string;
+  backHref: string;
+  csv: string;
+  mode: string;
+  pass: ImportPass;
+  remainingLabel: string;
+}): Promise<Response> {
+  return adminView(views, 'Importing guests…', 'guest-import-progress', {
+    heading: data.heading,
+    confirmAction: data.confirmAction,
+    backHref: data.backHref,
+    csv: data.csv,
+    mode: data.mode,
+    createdCount: data.pass.created,
+    updatedCount: data.pass.updated,
+    remainingLabel: data.remainingLabel,
+    auto: data.pass.progressed,
+  }, jsonOnly);
+}
+
+/**
  * Step 1 of import: parse the CSV, classify each row against the list (new /
  * update-with-diff / unchanged), and render the preview — no writes. The raw CSV
  * (not the expanded plan) rides to confirm in a hidden field so the round-trip
@@ -1879,25 +2018,34 @@ async function importLimitWarning(cms: CmsClient, listId: number, toCreate: numb
  * keeps the round-trip body small and means the client can't smuggle writes to
  * other pages.
  */
-async function confirmImportGuests(request: Request, cms: CmsClient, listId: number): Promise<Response> {
+async function confirmImportGuests(request: Request, cms: CmsClient, views: Fetcher, listId: number, jsonOnly = false): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
   const form = await request.formData();
   const mode = formText(form, 'mode') || 'new_and_update';
-  const incoming = parseImportRows(formText(form, 'csv'));
+  const csv = formText(form, 'csv');
+  const incoming = parseImportRows(csv);
   if (!incoming.length) return redirect(`${ADMIN_BASE}/rsvp/${listId}/import`);
 
   const { pages: existingGuests } = await cms.list('guest', { pointer: { key: 'mail_list', value: listId }, limit: 500 });
   const plan = classifyImport(incoming, existingGuests, context.eventId, listId);
+  const creates = mode !== 'update_only' ? plan.create : [];
+  const updates = mode !== 'new_only' ? plan.update : [];
 
-  if (mode !== 'update_only') {
-    await createImportedGuests(cms, plan.create);
-  }
-  if (mode !== 'new_only') {
-    for (const entry of plan.update) await cms.update(entry.id, { lect: entry.lect });
-  }
+  const pass = new ImportPass();
+  const applied = await applyImportPlan(cms, pass, creates, updates);
+  const remaining = creates.length - applied.created + (updates.length - applied.updated);
+  if (!remaining) return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
 
-  return redirect(`${ADMIN_BASE}/rsvp/${listId}`);
+  return importProgressView(views, jsonOnly, {
+    heading: `${context.list.name} · ${context.event?.name ?? 'Event'}`,
+    confirmAction: `${ADMIN_BASE}/rsvp/${listId}/import/confirm`,
+    backHref: `${ADMIN_BASE}/rsvp/${listId}`,
+    csv,
+    mode,
+    pass,
+    remainingLabel: `${remaining} record(s) left`,
+  });
 }
 
 async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
