@@ -756,7 +756,9 @@ async function deleteEventForm(cms: CmsClient, views: Fetcher, eventId: number, 
   return adminView(views, `Delete — ${event.name}`, 'event-delete', {
     eventName: event.name,
     backHref: `${ADMIN_BASE}/events/${eventId}`,
-    action: `${ADMIN_BASE}/events/${eventId}/delete`,
+    // The CMS queues exact /events/:id/delete posts before proxying them. This
+    // start URL lets us mark the event as deleting before the redirect renders.
+    action: `${ADMIN_BASE}/events/${eventId}/delete/start`,
     listCount: guestLists.length,
     edmCount: edms.length,
   }, jsonOnly);

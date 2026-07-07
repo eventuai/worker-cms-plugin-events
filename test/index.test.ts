@@ -1523,7 +1523,7 @@ describe('event deletion', () => {
     const html = await renderedText(response);
     expect(html).toContain('2 guest lists');
     expect(html).toContain('1 email template');
-    expect(html).toContain('action="/admin/plugins/events/events/7/delete"');
+    expect(html).toContain('action="/admin/plugins/events/events/7/delete/start"');
   });
 
   it('deletes the event, trashing each list\'s guests server-side then the lists and templates', async () => {
@@ -1608,7 +1608,7 @@ describe('event deletion', () => {
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete', {
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete/start', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }), ctx);
