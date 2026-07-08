@@ -112,9 +112,15 @@ export default {
 
     if (path.startsWith('/__plugin/hooks/')) {
       const hookEvent = path.split('/').pop();
-      const payload = await request.json().catch(() => ({}));
-      console.log(`[events-suite] hook ${hookEvent}:`, JSON.stringify(payload));
-      if (hookEvent === 'create') await handleCreateHook(payload, env);
+      const payload = await request.json().catch(() => ({})) as { page?: unknown; pages?: unknown[] };
+      // Bulk deliveries (host batch create/delete) carry the chunk in `pages`;
+      // single deliveries only set `page`. Don't stringify the payload — a
+      // 100-page delete chunk is real CPU for a log line nobody reads.
+      const pages = Array.isArray(payload.pages) ? payload.pages : payload.page !== undefined ? [payload.page] : [];
+      console.log(`[events-suite] hook ${hookEvent}: ${pages.length} page(s)`);
+      if (hookEvent === 'create') {
+        for (const page of pages) await handleCreateHook({ ...payload, page }, env);
+      }
       return new Response('ok');
     }
 
@@ -800,24 +806,25 @@ async function deleteEventCascade(cms: CmsClient, eventId: number): Promise<void
   // not children of the event page, so deleting it would orphan them rather than
   // cascade. Remove them explicitly. (The Adhoc list is included here; the
   // individual-delete guard does not apply when tearing down the whole event.)
-  const [guestLists, edms] = await Promise.all([
-    listByEvent(cms, 'mail_list', eventId),
-    listByEvent(cms, 'edm', eventId),
+  // Only the ids are needed to tear down, so skip fetching the pages themselves.
+  const [guestListIds, edmIds] = await Promise.all([
+    cms.listAllIds('mail_list', { pointer: { key: 'event', value: eventId } }),
+    cms.listAllIds('edm', { pointer: { key: 'event', value: eventId } }),
   ]);
 
-  for (const list of guestLists) {
+  for (const listId of guestListIds) {
     // Trash a list's guests before the list itself: the schema cascades on the
     // list's page_id, so removing the list first would wipe guest rows before
     // they could be copied into trash. Guests reference their list by the
     // `mail_list` lect pointer (the canonical link, not parent page), so the CMS
     // trashes them by that pointer server-side — no streaming every guest back
     // here, which is what risked a timeout on a large list.
-    await cms.deleteChildren({ pointerKey: 'mail_list', pointerValue: String(list.id) }, 'guest');
-    await cms.remove(list.id);
+    await cms.deleteChildren({ pointerKey: 'mail_list', pointerValue: String(listId) }, 'guest');
+    await cms.remove(listId);
   }
   // EDMs group by the event pointer (not children), and are few — a single
   // id-batch is fine.
-  await cms.batchRemove(edms.map((edm) => edm.id));
+  await cms.batchRemove(edmIds);
   await cms.remove(eventId);
 }
 

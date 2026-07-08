@@ -1591,6 +1591,7 @@ describe('event deletion', () => {
     const removed: number[] = [];
     const batchRemoved: number[][] = [];
     const deleteChildrenCalls: Array<Record<string, unknown>> = [];
+    const listQueries: Array<{ page_type: string | null; pointer_key: string | null; pointer_value: string | null; fields: string | null }> = [];
     let deletingUpdate: Record<string, unknown> | undefined;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -1601,14 +1602,20 @@ describe('event deletion', () => {
         deletingUpdate = JSON.parse(String(init.body)) as Record<string, unknown>;
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: deletingUpdate.lect } });
       }
+      if (url.pathname === '/__cms/pages' && (init?.method ?? 'GET') === 'GET') {
+        listQueries.push({
+          page_type: url.searchParams.get('page_type'),
+          pointer_key: url.searchParams.get('pointer_key'),
+          pointer_value: url.searchParams.get('pointer_value'),
+          fields: url.searchParams.get('fields'),
+        });
+      }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [
-          { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } },
-          adhocList(9, 7),
-        ], total: 2 });
+        // fields=id projection: the host returns only ids.
+        return Response.json({ pages: [{ id: 8 }, { id: 9 }], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
-        return Response.json({ pages: [{ id: 40, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
+        return Response.json({ pages: [{ id: 40 }], total: 1 });
       }
       // Guests are trashed server-side by parent, not listed back to the plugin.
       if (url.pathname === '/__cms/pages/children' && init?.method === 'DELETE') {
@@ -1637,6 +1644,12 @@ describe('event deletion', () => {
     expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20started.%20It%20may%20take%20a%20moment%20to%20finish.');
     expect(deletingUpdate).toMatchObject({ lect: { venue: 'Hall', deleting: 'yes' } });
     expect((deletingUpdate?.lect as Record<string, unknown>).deleting_at).toEqual(expect.any(String));
+    // Lists and EDMs are found by the indexed event pointer, projected to ids
+    // only — the host never reads or serializes their lect for a teardown.
+    expect(listQueries).toEqual(expect.arrayContaining([
+      { page_type: 'mail_list', pointer_key: 'event', pointer_value: '7', fields: 'id' },
+      { page_type: 'edm', pointer_key: 'event', pointer_value: '7', fields: 'id' },
+    ]));
     // Each list's guests are trashed by a server-side delete call selecting on the
     // canonical mail_list pointer (one per list), not by parent page.
     expect(deleteChildrenCalls).toEqual([

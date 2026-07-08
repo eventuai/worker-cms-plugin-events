@@ -177,7 +177,10 @@ export class CmsClient extends BaseCmsClient {
    * lighter ones. Only a failure at the 50-row floor propagates. Follow-up
    * pages send `count=0` so the host skips re-counting the filtered set.
    */
-  async listAll(pageType: string, opts: { parentId?: number; pointer?: CmsListPointer; q?: string } = {}): Promise<CmsPage[]> {
+  async listAll(
+    pageType: string,
+    opts: { parentId?: number; pointer?: CmsListPointer; q?: string; fields?: string[] } = {},
+  ): Promise<CmsPage[]> {
     const pages: CmsPage[] = [];
     let pageSize = 500;
     let total: number | null = null; // fetched with the first page only
@@ -199,13 +202,24 @@ export class CmsClient extends BaseCmsClient {
   }
 
   /**
+   * Ids of every page matching the query. Same pagination/backoff as listAll
+   * but projected to `fields=id`, so the host never reads or JSON-serializes
+   * lect — use this wherever only ids are needed (bulk deletes, membership
+   * checks), where a full listAll of fat guest rows costs real host CPU.
+   */
+  async listAllIds(pageType: string, opts: { parentId?: number; pointer?: CmsListPointer; q?: string } = {}): Promise<number[]> {
+    const pages = await this.listAll(pageType, { ...opts, fields: ['id'] });
+    return pages.map((page) => page.id);
+  }
+
+  /**
    * One raw GET /__cms/pages call. Exists because the SDK's `list()` cannot
    * send `count=0` (skip the host's COUNT(*) — itself a scan of the filtered
    * set) on follow-up pages; mirrors its parameter encoding.
    */
   private async listPage(
     pageType: string,
-    opts: { parentId?: number; pointer?: CmsListPointer; q?: string },
+    opts: { parentId?: number; pointer?: CmsListPointer; q?: string; fields?: string[] },
     limit: number,
     offset: number,
     wantCount: boolean,
@@ -218,6 +232,10 @@ export class CmsClient extends BaseCmsClient {
       else params.set('pointer_value', String(opts.pointer.value));
     }
     if (opts.q) params.set('q', opts.q);
+    // Column projection: returned pages carry ONLY these fields (the host
+    // whitelists the names). `fields: ['id']` skips reading/serializing lect
+    // entirely — the dominant cost of listing fat guest rows.
+    if (opts.fields?.length) params.set('fields', opts.fields.join(','));
     params.set('limit', String(limit));
     params.set('offset', String(offset));
     if (!wantCount) params.set('count', '0');
@@ -448,17 +466,17 @@ export async function chargeCreditAction(
 
 /**
  * Lists the pages of a type that belong to an event. `edm` and `mail_list` pages
- * group under their event by `lect._pointers.event`, not by parent page.
+ * group under their event by `lect._pointers.event`, not by parent page. The
+ * pointer is filtered host-side (expression-indexed since migration 0011), so
+ * this no longer fetches every page of the type to filter here — which also
+ * silently capped the old version at the host's 500-row clamp.
  */
 export async function listByEvent(
   cms: CmsClient,
   pageType: string,
   eventId: number,
-  opts: { limit?: number } = {},
 ): Promise<CmsPage[]> {
-  const { pages } = await cms.list(pageType, { limit: opts.limit ?? 500 });
-  const target = String(eventId);
-  return pages.filter((page) => pointer(page.lect, 'event') === target);
+  return cms.listAll(pageType, { pointer: { key: 'event', value: eventId } });
 }
 
 /**
