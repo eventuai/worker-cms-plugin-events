@@ -63,7 +63,16 @@ import {
   pullSubmissions,
   registrationsView,
 } from './submissions';
-import { redirect, requirePluginSecret, serveViewAsset } from '@lionrockjs/worker-cms-plugin';
+import {
+  allTenants,
+  redirect,
+  requireTenant,
+  serveViewAsset,
+  soleTenant,
+  tenantById,
+  tenantByRef,
+  tenantClientEnv,
+} from '@lionrockjs/worker-cms-plugin';
 // The plugin manifest (content types, blocks, nav, hooks, page-view overrides)
 // is plain data, so it lives as a static JSON file served verbatim at
 // /__plugin/manifest rather than being assembled from constants here.
@@ -73,22 +82,32 @@ interface PluginEnv extends EdmEnv {
   PLUGIN_SECRET?: string;
   /** Base URL of the CMS Worker (for the Plugin API write-back API), e.g. https://cms.eventuai.com */
   CMS_URL?: string;
+  /** Multi-tenant registry: `tenant:<cms origin>` → TenantConfig JSON. When
+   *  unbound, CMS_URL + PLUGIN_SECRET form the single legacy tenant. */
+  TENANTS?: KVNamespace;
   /** Plugin-owned Liquid templates and other view assets. */
   VIEWS: Fetcher;
 }
 
 export default {
-  async fetch(request: Request, env: PluginEnv, ctx?: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, baseEnv: PluginEnv, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Secret-authenticated host calls resolve their tenant (x-cms-tenant +
+    // x-plugin-secret verified against the SAME registry row), then all
+    // downstream code runs against a tenant-scoped env: CMS_URL/PLUGIN_SECRET
+    // become that tenant's pair, so every CmsClient built from `env` is bound
+    // to the calling CMS and cannot touch another tenant's data.
+    let env = baseEnv;
     const secretRequired = path.startsWith('/__plugin/hooks/')
       || path.startsWith('/__plugin/publish/')
       || path.startsWith('/__plugin/admin')
       || path === '/__plugin/edit';
     if (secretRequired) {
-      const forbidden = requirePluginSecret(request, env.PLUGIN_SECRET);
-      if (forbidden) return forbidden;
+      const tenant = await requireTenant(request, baseEnv);
+      if (tenant instanceof Response) return tenant;
+      env = tenantClientEnv(baseEnv, tenant);
     }
 
     if (path === '/__plugin/manifest') {
@@ -152,24 +171,29 @@ export default {
     // The RSVP form itself lives in the standalone worker-rsvp Worker (this
     // plugin's PUBLIC_BASE_URL points there); only QR signing stays here.
 
-    // QR codes — signed with PLUGIN_SECRET so they can't be forged.
+    // QR codes — signed with the tenant's signKey so they can't be forged.
+    // Public endpoint shared by every tenant: `t=<ref>` picks the verification
+    // key; changing `t` just makes the signature check fail under the other
+    // tenant's key, so refs are routing hints, not authority.
     if (path === '/qr') {
       const data = url.searchParams.get('data') ?? '';
       const sig = url.searchParams.get('sig') ?? '';
       if (!data || !sig) return new Response('missing data/sig', { status: 400 });
-      if (!env.PLUGIN_SECRET) return new Response('server misconfigured', { status: 500 });
-      if (!(await verifyPayload(env.PLUGIN_SECRET, data, sig))) return new Response('bad signature', { status: 403 });
-      return new Response(await placeholderQrSvg(env.VIEWS, data), {
+      const ref = url.searchParams.get('t') ?? '';
+      const tenant = ref ? await tenantByRef(baseEnv, ref) : await soleTenant(baseEnv);
+      if (!tenant) return new Response('server misconfigured', { status: ref ? 403 : 500 });
+      if (!(await verifyPayload(tenant.signKey, data, sig))) return new Response('bad signature', { status: 403 });
+      return new Response(await placeholderQrSvg(baseEnv.VIEWS, data), {
         headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' },
       });
     }
     if (path === '/sign') {
-      const forbidden = requirePluginSecret(request, env.PLUGIN_SECRET);
-      if (forbidden) return forbidden;
+      const tenant = await requireTenant(request, baseEnv);
+      if (tenant instanceof Response) return tenant;
       const data = url.searchParams.get('data') ?? '';
       if (!data) return new Response('missing data', { status: 400 });
-      const sig = await signPayload(env.PLUGIN_SECRET ?? '', data);
-      return Response.json({ data, sig, url: `/qr?data=${encodeURIComponent(data)}&sig=${sig}` });
+      const sig = await signPayload(tenant.signKey, data);
+      return Response.json({ data, sig, url: `/qr?data=${encodeURIComponent(data)}&sig=${sig}&t=${tenant.ref}` });
     }
 
     // TODO public: event check-in (/checkin/...) and EDM unsubscribe (/unsubscribe/:token).
@@ -178,12 +202,35 @@ export default {
   },
 
   async queue(batch: MessageBatch<EmailDelivery>, env: PluginEnv): Promise<void> {
-    for (const message of batch.messages) await deliverQueuedEmail(env, message.body);
+    for (const message of batch.messages) {
+      // Re-scope each delivery to its tenant so per-tenant vars (EMAIL_FROM,
+      // …) apply. Legacy messages without a tenantId use the sole tenant.
+      const tenant = message.body.tenantId
+        ? await tenantById(env, message.body.tenantId)
+        : await soleTenant(env);
+      if (!tenant && message.body.tenantId) {
+        // A queued delivery for a tenant that no longer exists must not fall
+        // back to another tenant's sender configuration.
+        console.error(`[events-suite] dropping queued email for unknown tenant ${message.body.tenantId}`);
+        continue;
+      }
+      await deliverQueuedEmail(tenant ? tenantClientEnv(env, tenant) : env, message.body);
+    }
   },
 
   async scheduled(_controller: ScheduledController, env: PluginEnv, ctx: ExecutionContext): Promise<void> {
-    if (!env.CMS_URL || !env.PLUGIN_SECRET || !env.MAIL_QUEUE) return;
-    ctx.waitUntil(dispatchDueMailLists(new CmsClient(env), env.VIEWS, env));
+    if (!env.MAIL_QUEUE) return;
+    ctx.waitUntil((async () => {
+      for (const tenant of await allTenants(env)) {
+        const tenantEnv = tenantClientEnv(env, tenant);
+        try {
+          await dispatchDueMailLists(new CmsClient(tenantEnv), env.VIEWS, tenantEnv);
+        } catch (error) {
+          // One tenant's failure must not starve the others' scheduled blasts.
+          console.error(`[events-suite] scheduled dispatch failed for tenant ${tenant.id}`, error);
+        }
+      }
+    })());
   },
 };
 
@@ -309,7 +356,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
   // function as an unhandled 500.
   try {
     if (section === 'rsvp') {
-      const qr = { secret: env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL };
+      const qr = { secret: env.SIGN_KEY || env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL, tenantRef: env.CMS_TENANT_REF };
       return await handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr, jsonOnly, access);
     }
     if (section === 'edm') {

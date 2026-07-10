@@ -20,9 +20,23 @@ binding = "CF_VERSION_METADATA"
 # → Shared secret (each plugin has its own, so one can be rotated/revoked alone):
 #   wrangler secret put PLUGIN_SECRET
 
+# ── Multi-tenant mode (several CMS hosts → this one plugin) ────────────────────
+# Bind a KV namespace and add one record per connected CMS; CMS_URL/PLUGIN_SECRET
+# then become optional (they form a legacy fallback tenant if kept):
+#   wrangler kv namespace create cms-plugin-events-tenants
+#   wrangler kv key put --binding TENANTS "tenant:https://cms1.example.com" \
+#     '{"secret":"<32-byte hex, unique per CMS>","signKey":"<32-byte hex>","publicBaseUrl":"https://rsvp1.example.com","vars":{"EMAIL_FROM":"events@cms1.example.com"}}'
+# `secret` must match the CMS's Plugins → events → Shared secret. `signKey` signs
+# public tokens (QR / RSVP / unsubscribe links) and is what you copy into that
+# tenant's worker-rsvp + cms-plugin-checkin — never share the pairwise secret.
+# [[kv_namespaces]]
+# binding = "TENANTS"
+# id = "<kv-id>"
+
 [vars]
 # Base URL of the CMS Worker — where this plugin reaches the Plugin API
 # ({CMS_URL}/__cms/*, page read/write) to read events and create/update guest pages.
+# In multi-tenant mode, per-tenant cmsUrl comes from the TENANTS record instead.
 CMS_URL = "https://cms.eventuai.com"
 # Public origin of the worker-rsvp site — signed RSVP links in queued EDMs point
 # there (it verifies them with a copy of this plugin's PLUGIN_SECRET).

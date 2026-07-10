@@ -146,6 +146,14 @@ interface ActivityItem {
 export interface QrOptions {
   secret?: string;
   publicBase?: string;
+  /** Tenant ref appended (`?t=`) to minted check-in URLs so the shared
+   *  check-in Worker verifies against the right tenant's key. */
+  tenantRef?: string;
+}
+
+/** `?t=<ref>` suffix for minted public URLs (empty when single-tenant legacy). */
+function tenantSuffix(qr: QrOptions): string {
+  return qr.tenantRef ? `?t=${qr.tenantRef}` : '';
 }
 
 export async function handleRsvpAdmin(
@@ -1180,7 +1188,7 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
   const token = `${listId}.${guestId}`;
   const sig = qr.secret ? await signPayload(qr.secret, token) : '';
   const payload = qr.publicBase && sig
-    ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${sig}`
+    ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${sig}${tenantSuffix(qr)}`
     : `${token}.${sig}`;
   const values = guestValues(guest);
   const plusGuestQrs = await plusGuestQrCodes(listId, guestId, values.plus_guests, qr);
@@ -1213,7 +1221,7 @@ async function plusGuestQrCodes(
     const token = `${listId}.${guestId}.${index}`;
     const sig = qr.secret ? await signPayload(qr.secret, token) : '';
     const payload = qr.publicBase && sig
-      ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${index}/${sig}`
+      ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${index}/${sig}${tenantSuffix(qr)}`
       : `${token}.${sig}`;
     rows.push({
       label: `Plus guest ${index + 1}`,

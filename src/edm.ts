@@ -23,6 +23,9 @@ export interface OutboundEmail {
 export interface EmailDelivery extends OutboundEmail {
   edmId: number;
   guestId?: number;
+  /** Tenant (CMS) this delivery belongs to — the queue consumer re-resolves
+   *  the tenant's env (EMAIL_FROM overrides etc.) before sending. */
+  tenantId?: string;
 }
 
 export interface EdmEnv {
@@ -30,6 +33,10 @@ export interface EdmEnv {
   MAIL_QUEUE?: Queue<EmailDelivery>;
   EMAIL_FROM?: string;
   PLUGIN_SECRET?: string;
+  /** Tenant public-token signing key (tenantClientEnv overlay); falls back to PLUGIN_SECRET. */
+  SIGN_KEY?: string;
+  CMS_TENANT_ID?: string;
+  CMS_TENANT_REF?: string;
   PUBLIC_BASE_URL?: string;
   /** MJML render API (https://api.mjml.io). When set, used in place of the
    *  built-in compiler for production-grade, Outlook-safe email HTML. */
@@ -694,7 +701,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
       rsvpEnabled ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, rsvpUrl) : htmlTemplate,
       await guestEmailTokens(env, eventId, listId, guest, rsvpUrl),
     );
-    deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id, ...headers });
+    deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id, tenantId: env.CMS_TENANT_ID, ...headers });
   }
 
   // Metered credit charge (manifest key `send_edm`, priced host-side; free
@@ -793,6 +800,7 @@ export async function sendEdmToGuest(
     }),
     edmId: edm.id,
     guestId: guest.id,
+    tenantId: env.CMS_TENANT_ID,
   };
   if (env.MAIL_QUEUE) await env.MAIL_QUEUE.send(delivery);
   else await deliverQueuedEmail(env, delivery);
@@ -927,12 +935,16 @@ async function guestEmailTokens(
     : language.toLowerCase().startsWith('zh-hans')
       ? zhHansName
       : enName || zhHantName;
-  const signature = eventId && env.PLUGIN_SECRET
-    ? await signPayload(env.PLUGIN_SECRET, `rsvp:${eventId}:${listId}:${guest.id}`)
+  // Public tokens are signed with the tenant's signKey (shared with that
+  // tenant's worker-rsvp deployment), so a token minted for one CMS can never
+  // verify on another tenant's public site.
+  const signKey = env.SIGN_KEY || env.PLUGIN_SECRET;
+  const signature = eventId && signKey
+    ? await signPayload(signKey, `rsvp:${eventId}:${listId}:${guest.id}`)
     : '';
   const publicBase = (env.PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
-  const unsubscribeUrl = publicBase && env.PLUGIN_SECRET
-    ? `${publicBase}/unsubscribe/${listId}/${guest.id}/${await signPayload(env.PLUGIN_SECRET, `unsub:${listId}:${guest.id}`)}`
+  const unsubscribeUrl = publicBase && signKey
+    ? `${publicBase}/unsubscribe/${listId}/${guest.id}/${await signPayload(signKey, `unsub:${listId}:${guest.id}`)}`
     : '';
   const tokens: Record<string, string> = {
     domain: publicBase.replace(/^https?:\/\//, ''),
@@ -1052,9 +1064,10 @@ const PUBLIC_RSVP_LANGUAGES = ['mis', 'en', 'zh-hant', 'zh-hans'];
  * `rsvp-*` blocks.
  */
 async function guestRsvpUrl(env: EdmEnv, eventId: number, listId: number, guest: CmsPage, edmId?: number): Promise<string> {
-  if (!env.PUBLIC_BASE_URL || !env.PLUGIN_SECRET) return '';
+  const signKey = env.SIGN_KEY || env.PLUGIN_SECRET;
+  if (!env.PUBLIC_BASE_URL || !signKey) return '';
   const payload = `rsvp:${eventId}:${listId}:${guest.id}`;
-  const signature = await signPayload(env.PLUGIN_SECRET, payload);
+  const signature = await signPayload(signKey, payload);
   const language = attr(guest.lect, 'prefer_language').toLowerCase();
   const prefix = PUBLIC_RSVP_LANGUAGES.includes(language) ? `/${language}` : '';
   const suffix = edmId ? `?edm=${edmId}` : '';
