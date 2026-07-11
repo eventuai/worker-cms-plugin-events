@@ -129,6 +129,7 @@ describe('plugin contract', () => {
       ],
       assets: [
         { path: '/assets/event-new.js', label: 'New event auto slug' },
+        { path: '/assets/picture-upload.js', label: 'Picture field upload' },
       ],
       contentTypes: {
         blueprint: { event: expect.any(Array), guest: expect.any(Array) },
@@ -241,6 +242,42 @@ describe('plugin contract', () => {
         _pointers: { event: '7' },
       },
     });
+  });
+
+  it('seeds no EDM template for a manual QR check-in event', async () => {
+    const creates: Array<Record<string, unknown>> = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({
+          page: {
+            id: 7,
+            page_type: 'event',
+            name: 'Launch',
+            lect: { event_use_case: 'manual_qr_single' },
+          },
+        });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        creates.push(JSON.parse(String(init.body)));
+        return Response.json({ page: { id: 100 + creates.length, page_type: 'edm' } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/hooks/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-plugin-secret': 'shared-secret' },
+      body: JSON.stringify({ event: 'create', page: { id: 7, page_type: 'event', name: 'Launch' } }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('ok');
+    expect(creates).toHaveLength(0);
   });
 
   it('serves declared plugin assets for CMS approval', async () => {
@@ -2051,7 +2088,9 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
           subject: { mis: 'You are invited' },
           _blocks: [
             { _type: 'paragraph', _weight: 0, subject: { mis: 'Welcome' }, body: { mis: 'See you there' } },
-            { _type: 'picture', _weight: 1, picture: '/media/pictures/invite.jpg', caption: { mis: 'Hero' } },
+            // Reproduces the old editor bug: saving omitted #1@_type, so CMS
+            // persisted `default` even though the picture value survived.
+            { _type: 'default', _weight: 1, picture: '/media/pictures/invite.jpg', caption: { mis: 'Hero' } },
           ],
         }),
       },
@@ -2115,8 +2154,13 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('name=".subject|mis"');
     expect(html).toContain('name="#0.subject|mis"');
     expect(html).toContain('name="#0.body|mis"');
+    expect(html).toContain('name="#0@_type" value="paragraph"');
+    expect(html).toContain('name="#1@_type" value="picture"');
     expect(html).toContain('data-picture-url type="text" name="#1@picture"');
     expect(html).not.toContain('type="url" name="#1@picture"');
+    expect(html).toContain('data-picture-url type="text" name="@thankyou_picture"');
+    expect(html).not.toContain('type="url" name="@thankyou_picture"');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/picture-upload.js"></script>');
 
     const htmlWithPresence = await renderView(views(), '/sections/edm-edit.liquid', {
       ...payload,
@@ -2167,6 +2211,19 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
   });
 
   it('renders the new event override with simple details and use cases', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/credits') {
+        return Response.json({ balance: 1000, credits: [
+          { key: 'create_event', value: 100 },
+          { key: 'create_guest_list', value: 25 },
+          { key: 'create_edm', value: 50 },
+        ] });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
     const response = await plugin.fetch(request('/__plugin/edit', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
@@ -2209,6 +2266,11 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('Guest list, single session, manually send QR code for checkin');
     expect(html).toContain('name="@event_use_case" value="rsvp_plus_one" checked');
     expect(html).toContain('Label Printing with RFID tracking');
+    // Every event gets one auto-created Adhoc guest list. Manual QR creates no
+    // EDM; the RSVP/QR use cases also seed two EDM templates.
+    expect(html).toContain('>125 credits</span>');
+    expect(html).toContain('>225 credits</span>');
+    expect(html).toContain('One-time setup cost.');
   });
 
   it('creates an event through the plugin route and redirects to the new event dashboard', async () => {
@@ -2730,13 +2792,14 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('data-filter-status="confirmed"');
     expect(html).toContain('data-filter-color="blue"');
     expect(html).toContain('<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">List</th>');
-    expect(html).toContain('Email&nbsp;send');
+    expect(html).not.toContain('Email&nbsp;send'); // email sending lives on the per-list guest list, not the cross-list all-guests view
     expect(html).toContain('id="custom-field-selector"');
     expect(html).toContain('<option value="rsvp_custom_diet" selected>Diet</option>');
     expect(html).toContain('vegan');
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/status"');
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/color"');
-    expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/checkin"');
+    expect(html).not.toContain('action="/admin/plugins/events/rsvp/8/guests/1/checkin"'); // check-in action lives on the per-list guest list, not all-guests
+    expect(html).toContain('Not checked in'); // status still shows, just no check-in button
     expect(html).toContain('name="return_to" value="/admin/plugins/events/events/7/all-guests?q=5555&amp;status=confirmed&amp;color=blue&amp;cf=rsvp-custom-diet"');
     expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/1/qrcode"');
     expect(html).toContain('style="color:#22c55e"');

@@ -1336,7 +1336,6 @@ export async function eventSessions(cms: CmsClient, views: Fetcher, eventId: num
  */
 export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: number, url: URL, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
   const canImportExport = access?.canImportExport ?? true;
-  const canManageEmail = access?.canManageEmail ?? true;
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
 
@@ -1355,16 +1354,16 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const selectedCustomField = customFields.find((field) => field.key === selectedCustomFieldParam || field.legacyKey === selectedCustomFieldParam) ?? null;
   const returnTo = `${ADMIN_BASE}/events/${eventId}/all-guests${url.search}`;
   const rows: Array<Record<string, unknown>> = [];
-  let hasEdm = false;
   ordered.forEach((list, index) => {
-    const listEdmId = pageId(pointer(list.lect, 'edm'));
-    if (listEdmId) hasEdm = true;
     for (const guest of guestsByList[index] ?? []) {
       if (!guestMatchesFilters(guest, '', selectedStatus ?? undefined, selectedColor)) continue;
       rows.push({
-        ...guestRow(guest, list.id, canManageEmail ? listEdmId : null, selectedCustomField, returnTo, q, access),
+        // No EDM id here: email sending lives on the per-list guest list, not this cross-list view.
+        ...guestRow(guest, list.id, null, selectedCustomField, returnTo, q, access),
         listName: list.name,
         editHref: access?.canEdit === false ? '' : guestEditHref(guest.id, list.id, returnTo),
+        // No check-in action here either: checking guests in happens on the per-list guest list (status still shows).
+        checkinAction: '',
       });
     }
   });
@@ -1382,7 +1381,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
     q,
     selectedColor,
     colorOptions,
-    hasEdm: canManageEmail && hasEdm,
+    hasEdm: false,
     customFieldOptions: customFields.map((field) => ({
       key: field.key,
       label: field.label,

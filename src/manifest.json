@@ -45,7 +45,8 @@
     { "key": "max_guests_per_list", "label": "Guests per guest list", "description": "Guests in a single guest list, including imports.", "page_type": "guest", "scope": "per_pointer", "pointer_key": "mail_list" }
   ],
   "assets": [
-    { "path": "/assets/event-new.js", "label": "New event auto slug" }
+    { "path": "/assets/event-new.js", "label": "New event auto slug" },
+    { "path": "/assets/picture-upload.js", "label": "Picture field upload" }
   ],
   "editViews": ["edm", "guest"],
   "newViews": ["event"],

@@ -60,13 +60,14 @@ const EVENT_USE_CASES = [
   },
 ];
 
-export async function handleEventEditView(request: Request): Promise<Response> {
+export async function handleEventEditView(request: Request, cms: CmsClient): Promise<Response> {
   const ctx = (await request.json().catch(() => null)) as EditViewContext | null;
   if (!ctx || ctx.pageType !== 'event' || ctx.mode !== 'new') return new Response('not found', { status: 404 });
 
   const lect = parseLect(ctx.page.lect);
   const timezone = ctx.page.timezone || '+0800';
   const selectedUseCase = attr(lect, 'event_use_case') || EVENT_USE_CASES[0].value;
+  const pricing = await useCaseSetupPricing(cms);
 
   return clientViewResponse('New event', '/sections/event-new.liquid', {
     action: `${ADMIN_BASE}/events/new`,
@@ -80,8 +81,45 @@ export async function handleEventEditView(request: Request): Promise<Response> {
     end: toDatetimeLocal(ctx.page.end),
     timezone,
     timezoneOptions: TIMEZONE_OPTIONS.map((option) => ({ ...option, selected: option.value === timezone })),
-    useCases: EVENT_USE_CASES.map((option) => ({ ...option, selected: option.value === selectedUseCase })),
+    showCredits: pricing !== null,
+    useCases: EVENT_USE_CASES.map((option) => ({
+      ...option,
+      selected: option.value === selectedUseCase,
+      // One-time setup cost: event, auto-created Adhoc guest list, and use-case EDMs.
+      setupCredits: pricing ? setupCreditsForUseCase(pricing, option.value) : 0,
+    })),
   });
+}
+
+interface UseCaseSetupPricing {
+  event: number;
+  guestList: number;
+  edm: number;
+}
+
+/**
+ * Live host prices for the one-time costs the New event form previews (event
+ * page + auto-created Adhoc guest list + seeded EDM templates), or null when the credits API
+ * is unavailable — in which case the form hides the badges rather than guess.
+ */
+async function useCaseSetupPricing(cms: CmsClient): Promise<UseCaseSetupPricing | null> {
+  try {
+    const info = await cms.credits();
+    const priceOf = (key: string) => info.credits.find((credit) => credit.key === key)?.value ?? 0;
+    return { event: priceOf('create_event'), guestList: priceOf('create_guest_list'), edm: priceOf('create_edm') };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Setup credits for one use case: the event page, the Adhoc guest list created
+ * when its dashboard opens, and the EDM templates the option seeds. Reuses the
+ * same EDM seed predicates as event creation so the badge stays in step.
+ */
+function setupCreditsForUseCase(pricing: UseCaseSetupPricing, useCase: string): number {
+  const edmCount = (createsRsvpSample(useCase) ? 1 : 0) + (createsQrSample(useCase) ? 1 : 0);
+  return pricing.event + pricing.guestList + pricing.edm * edmCount;
 }
 
 export async function createEventFromForm(request: Request, cms: CmsClient): Promise<Response> {
@@ -147,7 +185,8 @@ function createsRsvpSample(useCase: string): boolean {
 }
 
 function createsQrSample(useCase: string): boolean {
-  return new Set(['manual_qr_single', 'rsvp_qr_single', 'rsvp_plus_one', 'multi_session_labels', 'multi_session_rfid']).has(useCase);
+  // manual_qr_single hands out QR codes by hand, so it seeds no EDM template.
+  return new Set(['rsvp_qr_single', 'rsvp_plus_one', 'multi_session_labels', 'multi_session_rfid']).has(useCase);
 }
 
 function sampleRsvpEdm(event: CmsPage): { kind: string; name: string; lect: Record<string, unknown> } {

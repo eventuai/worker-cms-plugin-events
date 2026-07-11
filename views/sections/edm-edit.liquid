@@ -128,6 +128,7 @@
                 </span>
               </summary>
               <div class="px-4 py-4 space-y-4">
+                <input type="hidden" name="#{{ block.index }}@_type" value="{{ block.type | escape }}">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {% render block.nameField.templateName, field: block.nameField %}
                   {% render block.weightField.templateName, field: block.weightField %}
@@ -236,3 +237,10 @@
     {% endif %}
   </div>
 {% endif %}
+
+{%- comment -%}
+  Plugin client views strip inline scripts, including the initializer embedded
+  in the shared CMS picture pagefield. Load the manifest-approved equivalent so
+  picture fields in this editor can upload and preview files.
+{%- endcomment -%}
+<script src="/admin/plugins/events/assets/picture-upload.js"></script>

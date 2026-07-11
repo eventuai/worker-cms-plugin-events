@@ -160,7 +160,7 @@ export default {
       if (edmResponse.status !== 404) return edmResponse;
       const guestResponse = await handleGuestEditView(request.clone(), cms, env.VIEWS);
       if (guestResponse.status !== 404) return guestResponse;
-      return handleEventEditView(request);
+      return handleEventEditView(request, cms);
     }
 
     if (path.startsWith('/__plugin/admin')) {

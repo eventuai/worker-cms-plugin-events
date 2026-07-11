@@ -359,7 +359,13 @@ function fieldId(inputName: string): string {
 function editBlocks(lect: Record<string, unknown>, lang: string, defaultLang: string): EditBlockVM[] {
   const raw = Array.isArray(lect._blocks) ? (lect._blocks as Array<Record<string, unknown>>) : [];
   const models = raw.map((block, index) => {
-    const type = attr(block, '_type') || 'paragraph';
+    const storedType = attr(block, '_type');
+    // Older plugin-rendered EDM forms omitted the hidden block type. The CMS
+    // then saved picture blocks as `default`, while retaining their picture
+    // value. Recover those blocks in the editor and repair the type on save.
+    const type = (!storedType || storedType === 'default') && attr(block, 'picture')
+      ? 'picture'
+      : storedType || 'paragraph';
     const prefix = `#${index}`;
     const fields = (EDM_BLOCK_FIELDS[type] ?? []).map((spec) => fieldVM(block, prefix, spec, lang, defaultLang));
     const rowSpec = EDM_BLOCK_ROWS[type];
@@ -475,7 +481,7 @@ export async function handleEdmEditView(
     rsvp_button: localizedField('rsvp_button', 'RSVP button text', lect, lang, defaultLang),
     rsvp_form_button: localizedField('rsvp_form_button', 'RSVP form button', lect, lang, defaultLang),
     rsvp_form_decline_button: localizedField('rsvp_form_decline_button', 'RSVP form decline button', lect, lang, defaultLang),
-    thankyou_picture_field: attrField('thankyou_picture', 'Thank-you picture URL', lect, 'url'),
+    thankyou_picture_field: attrField('thankyou_picture', 'Thank-you picture', lect, 'picture'),
     thankyou_heading: localizedField('thankyou_heading', 'Thank-you heading', lect, lang, defaultLang),
     thankyou_body: localizedField('thankyou_body', 'Thank-you body', lect, lang, defaultLang, 'richtext/md'),
     decline_heading: localizedField('decline_heading', 'Decline heading', lect, lang, defaultLang),
