@@ -158,13 +158,20 @@ describe('rsvp_response create hook', () => {
       plus_guests: '2',
       message: 'sorry!',
       submitted_at: '2026-07-07T10:00:00.000Z',
+      edm_id: '50',
+      answers: {
+        'rsvp-custom-meal-preference': 'vegan',
+        'rsvp-plus-one-0:name': 'Charles Babbage',
+        'session-0': 'yes',
+        unexpected: 'ignored',
+      },
     },
   };
 
   it('applies the response to the guest and stamps the response page', async () => {
     const calls = stubCms([
       responsePage,
-      { id: 9, page_type: 'guest', lect: { status: 'invited', response: [{}] } },
+      { id: 9, page_type: 'guest', lect: { status: 'invited', response: [{}], latest_response: { '49': { status: 'invited' } } } },
     ]);
 
     const response = await plugin.fetch(hookRequest({ id: 501, page_type: 'rsvp_response' }), env());
@@ -175,6 +182,19 @@ describe('rsvp_response create hook', () => {
       lect: {
         status: 'declined',
         plus_guests: '2',
+        'rsvp-custom-meal-preference': 'vegan',
+        latest_response: {
+          '49': { status: 'invited' },
+          '50': {
+            'rsvp-custom-meal-preference': 'vegan',
+            'rsvp-plus-one-0:name': 'Charles Babbage',
+            'session-0': 'yes',
+            status: 'declined',
+            plus_guests: '2',
+            message: 'sorry!',
+            submitted_at: '2026-07-07T10:00:00.000Z',
+          },
+        },
         response: [{
           status: 'declined',
           date: '2026-07-07T10:00:00.000Z',

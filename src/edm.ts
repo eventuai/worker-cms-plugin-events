@@ -1,6 +1,7 @@
 import { CmsApiError, CmsClient, attr, blocks, chargeCreditAction, items, localized, pointer, type CmsPage } from './cms';
 import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
+import { qrSvg } from './qr';
 import { renderLiquid } from './templates/liquid';
 import { adminView, clientViewResponse, notFoundView } from './templates/views';
 import { redirect } from '@lionrockjs/worker-cms-plugin';
@@ -38,6 +39,8 @@ export interface EdmEnv {
   CMS_TENANT_ID?: string;
   CMS_TENANT_REF?: string;
   PUBLIC_BASE_URL?: string;
+  /** Public origin of cms-plugin-checkin's guest /checkin/* routes. */
+  CHECKIN_BASE_URL?: string;
   /** MJML render API (https://api.mjml.io). When set, used in place of the
    *  built-in compiler for production-grade, Outlook-safe email HTML. */
   MJML_APP_ID?: string;
@@ -54,6 +57,10 @@ const MJML_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /** Placeholder swapped for each guest's signed RSVP URL after a single MJML render. */
 const RSVP_URL_PLACEHOLDER = 'https://__edm_rsvp_url__/';
+/** Guest-specific QR image swapped after the shared EDM template is compiled. */
+const CHECKIN_QR_IMAGE_PLACEHOLDER = 'https://__edm_checkin_qr_image__/';
+const CHECKIN_CODE_PLACEHOLDER = '__edm_checkin_code__';
+const CHECKIN_URL_PLACEHOLDER = 'https://__edm_checkin_url__/';
 
 // ── Plugin edit view (manifest `editViews: ['edm']`) ───────────────────────────
 // The CMS hands the whole edit/new view for `edm` pages to this plugin: it POSTs
@@ -118,6 +125,9 @@ const EDM_BLOCK_ROWS: Record<string, BlockRowSpec> = Object.fromEntries(
 const EDM_BLOCK_OPTIONS: Array<{ value: string; label: string }> = ((MANIFEST.contentTypes.blockLists.edm ?? []) as string[])
   .filter((type) => type in EDM_BLOCK_DEFINITIONS)
   .map((type) => ({ value: type, label: labelFor(type) }));
+
+/** Input controls supported by the public RSVP renderer and legacy EDM editor. */
+const RSVP_CUSTOM_INPUT_TYPES = ['text', 'textarea', 'select', 'radio', 'checkbox', 'email', 'tel', 'number', 'date', 'time'];
 
 function manifestBlockDefinitions(): Record<string, { fields: BlockFieldSpec[]; row?: BlockRowSpec }> {
   const blocks = MANIFEST.contentTypes.blocks as Record<string, BlueprintEntry[]>;
@@ -243,6 +253,30 @@ function fieldVM(
   return editField(name, spec.label, value, spec.type, { control: spec.control, placeholder });
 }
 
+/**
+ * RSVP custom-input rows have an `@type` attribute that drives public form
+ * rendering. Keep it constrained to the types both the legacy editor and the
+ * public worker understand; a free-text typo otherwise silently becomes an
+ * unusable input on the guest page.
+ */
+function rowFieldVM(
+  row: Record<string, unknown>,
+  prefix: string,
+  spec: BlockFieldSpec,
+  rowItem: string,
+  lang: string,
+  defaultLang: string,
+): EditFieldVM {
+  if (['custom_input', 'flight_custom_input', 'hotel_custom_input'].includes(rowItem) && spec.key === 'type') {
+    const inputName = `${prefix}@type`;
+    const value = attr(row, 'type') || 'text';
+    return editField(inputName, 'Input type', value, 'select', {
+      options: RSVP_CUSTOM_INPUT_TYPES.map((type) => ({ value: type, label: labelFor(type), selected: type === value })),
+    });
+  }
+  return fieldVM(row, prefix, spec, lang, defaultLang);
+}
+
 function localizedField(key: string, label: string, lect: Record<string, unknown>, lang: string, defaultLang: string, type = 'text', required = false): EditFieldVM {
   return editField(`.${key}|${lang}`, label, locExact(lect, key, lang), type, {
     placeholder: lang !== defaultLang ? locExact(lect, key, defaultLang) : '',
@@ -333,7 +367,7 @@ function editBlocks(lect: Record<string, unknown>, lang: string, defaultLang: st
       ? items(block, rowSpec.item).map((row, rowIndex) => ({
           label: `${rowSpec.label} ${rowIndex + 1}`,
           deleteAction: `block-item-delete:${index}|${rowSpec.item}|${rowIndex}`,
-          fields: rowSpec.fields.map((spec) => fieldVM(row, `${prefix}.${rowSpec.item}[${rowIndex}]`, spec, lang, defaultLang)),
+          fields: rowSpec.fields.map((spec) => rowFieldVM(row, `${prefix}.${rowSpec.item}[${rowIndex}]`, spec, rowSpec.item, lang, defaultLang)),
         }))
       : [];
     return {
@@ -687,6 +721,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   const htmlTemplate = await renderEmail(views, edm, env, {
     rsvpUrl: rsvpEnabled ? RSVP_URL_PLACEHOLDER : '',
     server: env.PUBLIC_BASE_URL,
+    deferGuestQr: true,
   });
   const values = edmValues(edm);
   const text = plainText(values.heading, values.body);
@@ -697,9 +732,10 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
     const recipient = attr(guest.lect, 'email');
     if (!recipient || !isEmail(recipient) || truthyAttr(guest.lect, 'not_send')) continue;
     const rsvpUrl = rsvpEnabled ? await guestRsvpUrl(env, eventId!, listId, guest, edmId) : '';
-    const html = applyTemplateTokens(
+    const tokenValues = await guestEmailTokens(env, eventId, listId, guest, rsvpUrl);
+    const html = applyGuestEmailTokens(
       rsvpEnabled ? htmlTemplate.replaceAll(RSVP_URL_PLACEHOLDER, rsvpUrl) : htmlTemplate,
-      await guestEmailTokens(env, eventId, listId, guest, rsvpUrl),
+      tokenValues,
     );
     deliveries.push({ from: values.sender, to: recipient, subject: values.subject, html, text, edmId, guestId: guest.id, tenantId: env.CMS_TENANT_ID, ...headers });
   }
@@ -837,7 +873,14 @@ async function renderEmail(
   views: Fetcher,
   edm: CmsPage,
   env: EdmEnv,
-  options: { rsvpUrl?: string; server?: string; language?: string; tokenValues?: Record<string, string> } = {},
+  options: {
+    rsvpUrl?: string;
+    server?: string;
+    language?: string;
+    tokenValues?: Record<string, string>;
+    /** Keep guest QR placeholders in the one-time template compiled for a blast. */
+    deferGuestQr?: boolean;
+  } = {},
 ): Promise<string> {
   const tokens = edmTokens(edm, options.language);
   const server = options.server ?? '';
@@ -848,7 +891,7 @@ async function renderEmail(
   const unsubscribeUrl = env.PUBLIC_BASE_URL && env.PLUGIN_SECRET ? '{{unsubscribe_url}}' : '';
   // Stage 1 — build the MJML body from the EDM's content blocks.
   const main = await renderLiquid(views, '/templates/edm-mjml.liquid', {
-    blocks: edmRenderBlocks(edm, options.language, unsubscribeUrl),
+    blocks: edmRenderBlocks(edm, options.language, unsubscribeUrl, Boolean(options.tokenValues || options.deferGuestQr)),
     server,
     rsvpUrl: options.rsvpUrl ?? '',
     rsvp_button: tokens.rsvp_button,
@@ -856,7 +899,7 @@ async function renderEmail(
   // Stage 2 — wrap in the MJML document (head attributes from tokens), then compile.
   const mjml = await renderLiquid(views, '/layout/mjml.liquid', { tokens, main });
   const html = await compileMjml(mjml, env);
-  return options.tokenValues ? applyTemplateTokens(html, options.tokenValues) : html;
+  return options.tokenValues ? applyGuestEmailTokens(html, options.tokenValues) : html;
 }
 
 /**
@@ -970,6 +1013,7 @@ async function guestEmailTokens(
     organization: attr(guest.lect, 'organization'),
     title: attr(guest.lect, 'job_title'),
     job_title: attr(guest.lect, 'job_title'),
+    ...await checkinQrTokens(env, listId, guest),
   };
   for (const [key, value] of Object.entries(guest.lect)) {
     if ((typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') && tokens[key] === undefined) {
@@ -977,6 +1021,45 @@ async function guestEmailTokens(
     }
   }
   return tokens;
+}
+
+/**
+ * QR data for per-guest EDM rendering.  When a public check-in origin is not
+ * configured, the QR still contains the verified compact token so an admin
+ * kiosk can resolve it; a configured origin upgrades the same payload to a
+ * guest-facing URL.
+ */
+async function checkinQrTokens(env: EdmEnv, listId: number, guest: CmsPage): Promise<Record<string, string>> {
+  const signKey = env.SIGN_KEY || env.PLUGIN_SECRET;
+  if (!signKey) return { checkin_code: '', checkin_url: '', checkin_qr_src: '' };
+
+  const token = `${listId}.${guest.id}`;
+  const signature = await signPayload(signKey, token);
+  const code = `${token}.${signature}`;
+  const base = (env.CHECKIN_BASE_URL ?? '').replace(/\/+$/, '');
+  const tenantSuffix = env.CMS_TENANT_REF ? `?t=${encodeURIComponent(env.CMS_TENANT_REF)}` : '';
+  const url = base ? `${base}/checkin/${listId}/${guest.id}/${signature}${tenantSuffix}` : '';
+  const payload = url || code;
+  return {
+    checkin_code: code,
+    checkin_url: url,
+    checkin_qr_src: svgDataUrl(qrSvg(payload, { size: 240 })),
+  };
+}
+
+function svgDataUrl(svg: string): string {
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+/** Applies ordinary legacy tokens plus the placeholders deliberately left in a shared EDM blast. */
+function applyGuestEmailTokens(html: string, tokens: Record<string, string>): string {
+  return applyTemplateTokens(
+    html
+      .replaceAll(CHECKIN_QR_IMAGE_PLACEHOLDER, tokens.checkin_qr_src ?? '')
+      .replaceAll(CHECKIN_CODE_PLACEHOLDER, tokens.checkin_code ?? '')
+      .replaceAll(CHECKIN_URL_PLACEHOLDER, tokens.checkin_url ?? ''),
+    tokens,
+  );
 }
 
 function applyTemplateTokens(html: string, tokens: Record<string, string>): string {
@@ -1023,7 +1106,12 @@ function edmTokens(edm: CmsPage, language?: string): Record<string, string> {
  * Projects the EDM's content blocks into the flat, sanitised shapes the MJML
  * block snippets expect (rich-text fields run through safeHtml).
  */
-function edmRenderBlocks(edm: CmsPage, language?: string, unsubscribeUrl = ''): Array<Record<string, unknown>> {
+function edmRenderBlocks(
+  edm: CmsPage,
+  language?: string,
+  unsubscribeUrl = '',
+  includeGuestQr = false,
+): Array<Record<string, unknown>> {
   return blocks(edm.lect).map((block) => {
     const type = attr(block, '_type');
     switch (type) {
@@ -1047,6 +1135,17 @@ function edmRenderBlocks(edm: CmsPage, language?: string, unsubscribeUrl = ''): 
         return { _type: type, lines: attr(block, 'lines') };
       case 'edm-unsubscribe':
         return { _type: type, unsubscribeUrl };
+      case 'rsvp-qrcode':
+        if (!includeGuestQr) return { _type: type };
+        return {
+          _type: type,
+          title: localized(block, 'title', language),
+          message: localized(block, 'message', language),
+          size: attr(block, 'size') || '200',
+          qrSrc: CHECKIN_QR_IMAGE_PLACEHOLDER,
+          code: CHECKIN_CODE_PLACEHOLDER,
+          checkinUrl: CHECKIN_URL_PLACEHOLDER,
+        };
       default:
         return { _type: type };
     }

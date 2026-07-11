@@ -356,7 +356,13 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
   // function as an unhandled 500.
   try {
     if (section === 'rsvp') {
-      const qr = { secret: env.SIGN_KEY || env.PLUGIN_SECRET, publicBase: env.PUBLIC_BASE_URL, tenantRef: env.CMS_TENANT_REF };
+      const qr = {
+        secret: env.SIGN_KEY || env.PLUGIN_SECRET,
+        // RSVP and check-in are separate public Workers. Preserve the legacy
+        // fallback, but prefer the explicit check-in origin for QR links.
+        publicBase: env.CHECKIN_BASE_URL || env.PUBLIC_BASE_URL,
+        tenantRef: env.CMS_TENANT_REF,
+      };
       return await handleRsvpAdmin(request, cms, env.VIEWS, env, segments.slice(1), url, qr, jsonOnly, access);
     }
     if (section === 'edm') {

@@ -69,13 +69,32 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
   const alreadyLogged = responseLog.some((entry) => entry._ref === page.uuid);
   if (!alreadyLogged) {
     const status = attr(page.lect, 'status') || 'confirmed';
+    const submittedAt = attr(page.lect, 'submitted_at') || now;
+    const answers = responseAnswers(page.lect.answers);
+    const edmId = attr(page.lect, 'edm_id').trim();
+    const latestResponse = record(guest.lect.latest_response);
+    // Match the legacy RSVP contract: keep a complete, EDM-scoped copy of
+    // the submitted form on the guest, while exposing RSVP custom fields as
+    // flat lect attributes for CMS lists, exports, and the check-in plugin.
+    const responseSnapshot: Record<string, unknown> = {
+      ...answers,
+      status,
+      plus_guests: attr(page.lect, 'plus_guests') || '0',
+      message: attr(page.lect, 'message'),
+      submitted_at: submittedAt,
+    };
+    const customAnswers = Object.fromEntries(
+      Object.entries(answers).filter(([key]) => key.startsWith('rsvp-custom-')),
+    );
     await cms.update(guest.id, {
       lect: {
         status,
         plus_guests: attr(page.lect, 'plus_guests') || '0',
+        ...customAnswers,
+        latest_response: { ...latestResponse, [edmId || 'latest']: responseSnapshot },
         response: [...realEntries(responseLog), {
           status,
-          date: attr(page.lect, 'submitted_at') || now,
+          date: submittedAt,
           message: attr(page.lect, 'message'),
           _ref: page.uuid,
         }],
@@ -92,6 +111,23 @@ function realEntries(entries: Array<Record<string, unknown>>): Array<Record<stri
   return entries.filter(
     (entry) => String(entry.status ?? '').trim() !== '' || String(entry.date ?? '').trim() !== '',
   );
+}
+
+/** Only retain public RSVP field names that worker-rsvp is allowed to submit. */
+function responseAnswers(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const answers: Record<string, string> = {};
+  for (const [key, answer] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^(?:rsvp-(?:public|custom|travel-hotel|pickup|plus-one)-|meal-|session-)[a-z0-9][a-z0-9:_-]*$/i.test(key)) continue;
+    answers[key] = String(answer ?? '');
+  }
+  return answers;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 export interface ApplyPendingResult {

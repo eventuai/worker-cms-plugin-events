@@ -29,9 +29,9 @@ binding = "CF_VERSION_METADATA"
 # `secret` must match the CMS's Plugins → events → Shared secret. `signKey` signs
 # public tokens (QR / RSVP / unsubscribe links) and is what you copy into that
 # tenant's worker-rsvp + cms-plugin-checkin — never share the pairwise secret.
-# [[kv_namespaces]]
-# binding = "TENANTS"
-# id = "<kv-id>"
+[[kv_namespaces]]
+binding = "TENANTS"
+id = "5511819de9f24bd596b25996e2b39eff"
 
 [vars]
 # Base URL of the CMS Worker — where this plugin reaches the Plugin API
@@ -41,6 +41,9 @@ CMS_URL = "https://cms.eventuai.com"
 # Public origin of the worker-rsvp site — signed RSVP links in queued EDMs point
 # there (it verifies them with a copy of this plugin's PLUGIN_SECRET).
 # PUBLIC_BASE_URL = "https://rsvp.eventuai.com"
+# Public cms-plugin-checkin origin for guest /checkin/* QR links. Leave unset
+# only for scanner-only raw-token QR codes.
+# CHECKIN_BASE_URL = "https://checkin.eventuai.com"
 
 # ── EDM email backbone (uncomment + provision before enabling delivery) ────────
 # Cloudflare Email Service binding. EMAIL_FROM must be a verified sender address.

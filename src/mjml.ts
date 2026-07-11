@@ -184,7 +184,8 @@ function renderImage(node: MjmlNode, head: Head): string {
   const a = resolve(node, head);
   const img = `<img src="${esc(a.src ?? '')}"${a.width ? ` width="${esc(a.width)}"` : ''}` +
     `${style([['display', 'block'], ['width', a.width ? `${a.width}` : '100%'], ['max-width', '100%'], ['height', 'auto'], ['border', '0']])} />`;
-  return `<div${style([['padding', a.padding], ['text-align', a.align]])}>${img}</div>`;
+  const image = a.href ? `<a href="${esc(a.href)}" style="display:inline-block">${img}</a>` : img;
+  return `<div${style([['padding', a.padding], ['text-align', a.align]])}>${image}</div>`;
 }
 
 function renderButton(node: MjmlNode, head: Head): string {

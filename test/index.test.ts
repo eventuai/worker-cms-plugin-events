@@ -10,6 +10,7 @@ interface PluginEnv {
   CMS_URL?: string;
   PLUGIN_SECRET?: string;
   PUBLIC_BASE_URL?: string;
+  CHECKIN_BASE_URL?: string;
   MJML_APP_ID?: string;
   MJML_SECRET_KEY?: string;
   MJML_API_URL?: string;
@@ -2126,6 +2127,45 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(htmlWithPresence).toContain('data-editor-form');
   });
 
+  it('uses a supported-type selector for RSVP custom-input rows', async () => {
+    const context = editContext();
+    const page = context.page as { lect: string };
+    page.lect = JSON.stringify({
+      _type: 'edm',
+      _pointers: { event: '12' },
+      _blocks: [{
+        _type: 'rsvp-custom',
+        _weight: 0,
+        custom_input: [{ required: 'yes', type: 'select', label: { mis: 'Meal preference' }, default_value: { mis: 'veg:Vegetarian|meat:Meat' } }],
+      }],
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') return Response.json({ page: { id: 12, page_type: 'event', name: 'Gala', lect: {} } });
+      return new Response('not found', { status: 404 });
+    }));
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(context),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    const payload = await response.clone().json() as {
+      blocks: Array<{ rows: Array<{ fields: Array<{ inputName: string; type: string; options: Array<{ value: string; selected: boolean }> }> }> }>;
+    };
+    const typeField = payload.blocks[0].rows[0].fields.find((field) => field.inputName === '#0.custom_input[0]@type');
+    expect(typeField?.type).toBe('select');
+    expect(typeField?.options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'select', selected: true }),
+      expect.objectContaining({ value: 'textarea', selected: false }),
+    ]));
+
+    const html = await renderedText(response);
+    expect(html).toContain('name="#0.custom_input[0]@type"');
+    expect(html).toContain('>Select<');
+  });
+
   it('renders the new event override with simple details and use cases', async () => {
     const response = await plugin.fetch(request('/__plugin/edit', {
       method: 'POST',
@@ -2896,7 +2936,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
 
 describe('RSVP EDM sending (guest-list controls)', () => {
   // A list (8) under event 7, linked to EDM 50, with one good-quality guest (55).
-  function rsvpEdmFetch(captured?: { put?: RequestInit }) {
+  function rsvpEdmFetch(captured?: { put?: RequestInit }, includeQr = false) {
     return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       const p = url.pathname;
@@ -2914,6 +2954,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
           heading: { en: 'Join us' },
           body: { en: '<p>Hello {{name}}, {{company||organization}}.</p>' },
           sender: 'events@example.com',
+          _blocks: includeQr ? [{ _type: 'rsvp-qrcode', title: { en: 'Your pass' }, message: { en: 'Present this code at the door.' }, size: '180' }] : [],
         } } });
       }
       if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
@@ -3022,6 +3063,26 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(html).toContain('Hello Ada, Analytical Engines.');
     expect(html).not.toContain('{{name}}');
     expect(html).not.toContain('{{company||organization}}');
+  });
+
+  it('renders a guest-specific signed check-in QR in an EDM', async () => {
+    vi.stubGlobal('fetch', rsvpEdmFetch(undefined, true));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({
+      CMS_URL: 'https://cms.test',
+      PLUGIN_SECRET: 'shared-secret',
+      CHECKIN_BASE_URL: 'https://checkin.test',
+    }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('Your pass');
+    expect(html).toContain('Present this code at the door.');
+    expect(html).toContain('data:image/svg+xml;base64,');
+    expect(html).toContain('https://checkin.test/checkin/8/55/');
+    expect(html).not.toContain('__edm_checkin_');
   });
 });
 

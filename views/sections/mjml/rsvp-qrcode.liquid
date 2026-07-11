@@ -1,0 +1,4 @@
+{% if tokens.title != blank %}<mj-text align="center" font-size="18px" font-weight="bold" padding="16px 0 8px">{{ tokens.title | escape }}</mj-text>{% endif %}
+{% if tokens.message != blank %}<mj-text align="center" font-size="14px" color="#666666" padding="0 0 12px">{{ tokens.message | escape }}</mj-text>{% endif %}
+<mj-image src="{{ tokens.qrSrc | escape }}" href="{{ tokens.checkinUrl | escape }}" width="{{ tokens.size | default: '200' | escape }}px" alt="Guest check-in QR code" padding="0" />
+<mj-text align="center" font-size="11px" color="#666666" padding="10px 0 16px">Check-in code: {{ tokens.code | escape }}</mj-text>
