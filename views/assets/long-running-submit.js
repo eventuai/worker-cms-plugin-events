@@ -22,6 +22,10 @@
         button.style.opacity = '0.65';
       });
       document.querySelectorAll('a[href]').forEach(function (link) {
+        // Escape hatches (e.g. "Stop for now" on progress pages) must stay
+        // clickable while a pass is in flight — navigating away is how the
+        // user stops an auto-continuing loop.
+        if (link.hasAttribute('data-stop-continue')) return;
         link.setAttribute('aria-disabled', 'true');
         link.style.pointerEvents = 'none';
         link.style.opacity = '0.65';
