@@ -1207,6 +1207,9 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     pairedQrCode: values.paired_qrcode,
     pairAction: access?.canCheckIn === false ? '' : `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/pair-qrcode`,
     payload,
+    // Compatibility for CMS isolates that still hold the previous immutable
+    // Liquid view during the deploy-revision cache rollover.
+    qrSvg: ticket.svg,
     qrPngSrc: `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/qrcode.png${guest.updated_at ? `?r=${encodeURIComponent(guest.updated_at)}` : ''}`,
     plusGuestQrs,
     hasPlusGuestQrs: plusGuestQrs.length > 0,

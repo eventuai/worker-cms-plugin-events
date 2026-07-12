@@ -89,6 +89,8 @@ interface PluginEnv extends EdmEnv {
   VIEWS: Fetcher;
   /** Cloudflare Images binding used to rasterize guest QR ticket SVGs. */
   IMAGES?: ImagesBinding;
+  /** Deploy identifier exposed in the manifest to invalidate cached views. */
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
 }
 
 export default {
@@ -113,7 +115,10 @@ export default {
     }
 
     if (path === '/__plugin/manifest') {
-      return Response.json(MANIFEST);
+      return Response.json({
+        ...MANIFEST,
+        ...(baseEnv.CF_VERSION_METADATA ? { workerVersion: baseEnv.CF_VERSION_METADATA } : {}),
+      });
     }
 
     // Plugin-owned view templates, served to the CMS's composite view resolver

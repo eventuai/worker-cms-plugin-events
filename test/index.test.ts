@@ -22,6 +22,7 @@ interface PluginEnv {
   AWS_SECRET_ACCESS_KEY?: string;
   VIEWS: Fetcher;
   IMAGES?: ImagesBinding;
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
 }
 
 interface SignedQr {
@@ -151,6 +152,14 @@ describe('plugin contract', () => {
     });
     expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');
     expect(manifest.contentTypes.blueprint.guest).toContain('@paired_qrcode');
+  });
+
+  it('exposes the Worker deploy revision so CMS invalidates cached plugin views', async () => {
+    const response = await plugin.fetch(request('/__plugin/manifest'), env({
+      CF_VERSION_METADATA: { id: 'deploy-qr-png', tag: '', timestamp: '2026-07-13T00:00:00Z' },
+    }));
+    const manifest = await response.json() as { workerVersion?: { id?: string } };
+    expect(manifest.workerVersion?.id).toBe('deploy-qr-png');
   });
 
   it('declares the full admin credit action list', async () => {
@@ -3050,6 +3059,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     const view = await response.json() as {
       data: {
         payload: string;
+        qrSvg: string;
         qrPngSrc: string;
         pairAction: string;
         pairedQrCode: string;
@@ -3057,6 +3067,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       };
     };
     expect(view.data.qrPngSrc).toBe('/admin/plugins/events/rsvp/8/guests/55/qrcode.png');
+    expect(view.data.qrSvg).toContain('<svg');
     expect(view.data.payload).toBe(compactCheckinCode(8, 55));
     expect(view.data.pairAction).toBe('/admin/plugins/events/rsvp/8/guests/55/pair-qrcode');
     expect(view.data.pairedQrCode).toBe('BADGE-OLD');
