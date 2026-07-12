@@ -21,7 +21,6 @@ interface PluginEnv {
   AWS_ACCESS_KEY_ID?: string;
   AWS_SECRET_ACCESS_KEY?: string;
   VIEWS: Fetcher;
-  IMAGES?: ImagesBinding;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
 }
 
@@ -3078,7 +3077,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(view.data.plusGuestQrs[0].qrSvg).toContain('<svg');
   });
 
-  it('rasterizes the guest QR ticket through the Cloudflare Images binding', async () => {
+  it('rasterizes the guest QR ticket to PNG in the Worker', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
@@ -3087,34 +3086,15 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
-    let sourceSvg = '';
-    const images = {
-      input(stream: ReadableStream<Uint8Array>) {
-        return {
-          async output(options: ImageOutputOptions) {
-            sourceSvg = await new Response(stream).text();
-            expect(options).toEqual({ format: 'image/png' });
-            return {
-              image: () => new Response('png-bytes').body!,
-              contentType: () => 'image/png',
-              response: () => new Response('png-bytes', { headers: { 'content-type': 'image/png' } }),
-            };
-          },
-        };
-      },
-    } as unknown as ImagesBinding;
-
     const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode.png', {
       headers: { 'x-plugin-secret': 'shared-secret' },
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', IMAGES: images }));
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/png');
     expect(response.headers.get('content-disposition')).toContain('guest-55-qrcode.png');
-    expect(await response.text()).toBe('png-bytes');
-    expect(sourceSvg).toContain('<svg');
-    expect(sourceSvg).toContain('Launch');
-    expect(sourceSvg).toContain('Ada');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect([...bytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
   });
 
   it('pairs a badge QR code to a guest and checks them in when needed', async () => {

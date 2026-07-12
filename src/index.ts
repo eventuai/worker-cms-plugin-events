@@ -87,8 +87,6 @@ interface PluginEnv extends EdmEnv {
   TENANTS?: KVNamespace;
   /** Plugin-owned Liquid templates and other view assets. */
   VIEWS: Fetcher;
-  /** Cloudflare Images binding used to rasterize guest QR ticket SVGs. */
-  IMAGES?: ImagesBinding;
   /** Deploy identifier exposed in the manifest to invalidate cached views. */
   CF_VERSION_METADATA?: WorkerVersionMetadata;
 }

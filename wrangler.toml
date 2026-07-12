@@ -11,12 +11,14 @@ directory = "./views"
 binding = "VIEWS"
 run_worker_first = true
 
-# Rasterizes the generated guest-ticket SVG for the authenticated `.png` route.
-[images]
-binding = "IMAGES"
-
 [version_metadata]
 binding = "CF_VERSION_METADATA"
+
+# Bundle only the explicitly imported QR rasterizer fonts as ArrayBuffer data.
+[[rules]]
+type = "Data"
+globs = ["**/*.woff2"]
+fallthrough = true
 
 # The CMS forwards this secret on every hook / admin / publish call, and this
 # plugin sends it back on every Plugin API write-back call. Set it to THIS plugin's

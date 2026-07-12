@@ -16,6 +16,9 @@ import {
 } from './cms';
 import { compactCheckinCode } from './crypto';
 import { qrSvg, qrTicketSvg } from './qr';
+import { Resvg } from '@cf-wasm/resvg';
+import notoSansTcLatin from '@fontsource/noto-sans-tc/files/noto-sans-tc-latin-400-normal.woff2';
+import notoSansTcTraditional from '@fontsource/noto-sans-tc/files/noto-sans-tc-chinese-traditional-400-normal.woff2';
 import {
   emailQuality,
   guestWasSentEdm,
@@ -160,7 +163,7 @@ export async function handleRsvpAdmin(
   request: Request,
   cms: CmsClient,
   views: Fetcher,
-  env: EdmEnv & { IMAGES?: ImagesBinding },
+  env: EdmEnv,
   segments: string[],
   url: URL,
   qr: QrOptions = {},
@@ -286,7 +289,7 @@ export async function handleRsvpAdmin(
     }
     if (segments[3] === 'qrcode.png') {
       if (!canCheckIn) return forbidden();
-      return guestQrPng(cms, listId, guestId, env.IMAGES);
+      return guestQrPng(cms, listId, guestId);
     }
     return new Response('not found', { status: 404 });
   }
@@ -1216,13 +1219,25 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
   }, jsonOnly);
 }
 
-async function guestQrPng(cms: CmsClient, listId: number, guestId: number, images?: ImagesBinding): Promise<Response> {
-  if (!images) return new Response('PNG rendering is not configured', { status: 501 });
+async function guestQrPng(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const ticket = await guestQrTicket(cms, listId, guestId);
   if (!ticket) return new Response('not found', { status: 404 });
-  const stream = new Response(ticket.svg, { headers: { 'content-type': 'image/svg+xml' } }).body!;
-  const rendered = await images.input(stream).output({ format: 'image/png' });
-  return new Response(rendered.image(), {
+  const renderer = await Resvg.async(ticket.svg, {
+    background: '#fff',
+    font: {
+      loadSystemFonts: false,
+      fontBuffers: [new Uint8Array(notoSansTcLatin), new Uint8Array(notoSansTcTraditional)],
+      defaultFontFamily: 'Noto Sans TC',
+      sansSerifFamily: 'Noto Sans TC',
+    },
+    shapeRendering: 1,
+    textRendering: 1,
+  });
+  const rendered = renderer.render();
+  const png = rendered.asPng();
+  rendered.free();
+  renderer.free();
+  return new Response(png, {
     headers: {
       'content-type': 'image/png',
       'cache-control': 'private, max-age=86400',
