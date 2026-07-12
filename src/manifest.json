@@ -104,7 +104,8 @@
         "last_name",
         {
           "response": ["@status", "@date", "@message"],
-          "checkin": ["@status", "@date", "@message"]
+          "checkin": ["@status", "@date", "@message"],
+          "sent_edm": ["@edm", "@date", "@message"]
         }
       ],
       "label": [

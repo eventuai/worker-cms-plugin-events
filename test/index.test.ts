@@ -3189,8 +3189,13 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(response.status).toBe(302);
     expect(EMAIL.send).toHaveBeenCalledTimes(1);
     expect(sent[0]).toMatchObject({ to: 'ada@example.com' });
-    // The guest is marked as sent this EDM so the button flips to "Re-send".
-    expect(JSON.parse(String(captured.put?.body))).toMatchObject({ lect: { sent_edm: ['50'] } });
+    // A structured record survives CMS lect normalization, drives Activity,
+    // and makes the button flip to "Re-send" on the next page render.
+    expect(JSON.parse(String(captured.put?.body))).toMatchObject({ lect: { sent_edm: [{
+      edm: '50',
+      message: 'email sent (Hi)',
+    }] } });
+    expect(JSON.parse(String(captured.put?.body)).lect.sent_edm[0].date).toBeTruthy();
   });
 
   it('redirects GET /rsvp/:id/edm back to the guest list detail', async () => {

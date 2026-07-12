@@ -665,11 +665,16 @@ async function resolveListEdm(cms: CmsClient, list: CmsPage): Promise<CmsPage | 
   }
 }
 
-/** Records that a guest has been sent an EDM (lect.sent_edm), so the button shows "Re-send". */
-async function recordSentEdm(cms: CmsClient, guest: CmsPage, edmId: number): Promise<void> {
+/** Records a dated EDM activity, which also makes the button show "Re-send". */
+async function recordSentEdm(cms: CmsClient, guest: CmsPage, edm: CmsPage): Promise<void> {
   const sent = Array.isArray(guest.lect.sent_edm) ? [...guest.lect.sent_edm] : [];
-  if (guestWasSentEdm(guest, edmId)) return;
-  sent.push(String(edmId));
+  if (guestWasSentEdm(guest, edm.id)) return;
+  const subject = localized(edm.lect, 'subject') || edm.name;
+  sent.push({
+    edm: String(edm.id),
+    date: new Date().toISOString(),
+    message: `email sent (${subject})`,
+  });
   await cms.update(guest.id, { lect: { ...guest.lect, sent_edm: sent } });
 }
 
@@ -714,7 +719,7 @@ async function sendGuestEdm(request: Request, cms: CmsClient, views: Fetcher, en
   });
   try {
     await sendEdmToGuest(views, env, edm, context.eventId, listId, guest);
-    await recordSentEdm(cms, guest, edm.id);
+    await recordSentEdm(cms, guest, edm);
   } catch (error) {
     return listFlash(listId, error instanceof Error ? error.message : 'Unable to send email', returnTo);
   }
@@ -756,7 +761,7 @@ async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env
     }
     try {
       await sendEdmToGuest(views, env, edm, context.eventId, listId, guest);
-      await recordSentEdm(cms, guest, edm.id);
+      await recordSentEdm(cms, guest, edm);
       sent++;
     } catch {
       failed++;
