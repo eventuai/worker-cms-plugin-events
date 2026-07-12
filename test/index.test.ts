@@ -133,6 +133,8 @@ describe('plugin contract', () => {
       assets: [
         { path: '/assets/event-new.js', label: 'New event auto slug' },
         { path: '/assets/picture-upload.js', label: 'Picture field upload' },
+        { path: '/assets/long-running-submit.js', label: 'Long-running form loading state' },
+        { path: '/assets/import-continue.js', label: 'Resumable import and deletion continuation' },
       ],
       contentTypes: {
         blueprint: { event: expect.any(Array), guest: expect.any(Array) },

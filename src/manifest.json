@@ -46,7 +46,9 @@
   ],
   "assets": [
     { "path": "/assets/event-new.js", "label": "New event auto slug" },
-    { "path": "/assets/picture-upload.js", "label": "Picture field upload" }
+    { "path": "/assets/picture-upload.js", "label": "Picture field upload" },
+    { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
+    { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" }
   ],
   "editViews": ["edm", "guest"],
   "newViews": ["event"],
