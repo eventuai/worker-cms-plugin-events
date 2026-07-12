@@ -1864,6 +1864,7 @@ describe('EDM and labels', () => {
             heading: { en: 'Join us in October' },
             body: { en: '<p>We would love to see you.</p>' },
             bg_color: '#0f172a', text_color: '#e2e8f0', button_color: '#4f46e5',
+            _pointers: { event: '7' },
             _blocks: [
               { _type: 'paragraph', _weight: 0, subject: { en: 'Agenda' }, body: { en: '<p>Talks &amp; dinner.</p>' } },
               { _type: 'button', _weight: 1, label: { en: 'Directions' }, url: { en: 'https://maps.example/x' } },
@@ -1878,7 +1879,7 @@ describe('EDM and labels', () => {
 
     const response = await plugin.fetch(request('/__plugin/admin/edm/12/preview', {
       headers: { 'x-plugin-secret': 'shared-secret' },
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', PUBLIC_BASE_URL: 'https://rsvp.eventuai.com' }));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/html');
@@ -1891,6 +1892,8 @@ describe('EDM and labels', () => {
     expect(html).not.toContain('<mj-');
     expect(html).toContain('role="status"');
     expect(html).toContain('Preview of EDM: Invite');
+    expect(html).toContain('href="https://rsvp.eventuai.com/rsvp/7/12"');
+    expect(html).toContain('Open registration form ↗');
     // Tokens and blocks rendered.
     expect(html).toContain('Join us in October');
     expect(html).toContain('<p>We would love to see you.</p>');

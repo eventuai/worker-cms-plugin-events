@@ -660,7 +660,16 @@ async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: nu
     // No recipient in the editor preview — neutralize the per-guest tokens.
     tokenValues: { unsubscribe_url: '#' },
   });
-  const banner = `<div role="status" style="position:sticky;top:0;z-index:2147483647;padding:7px 12px;background:#fdba74;color:#9a3412;text-align:center;font:600 14px/20px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-sizing:border-box">Preview of EDM: ${escapeHtml(edm.name)}</div>`;
+  const eventId = pageId(pointer(edm.lect, 'event'));
+  const publicBase = env.PUBLIC_BASE_URL?.replace(/\/+$/, '');
+  const languagePrefix = language && PUBLIC_RSVP_LANGUAGES.includes(language.toLowerCase()) ? `/${language.toLowerCase()}` : '';
+  const registrationHref = publicBase && eventId
+    ? `${publicBase}${languagePrefix}/rsvp/${eventId}/${edm.id}`
+    : '';
+  const registrationLink = registrationHref
+    ? ` <a href="${escapeHtml(registrationHref)}" target="_blank" rel="noopener" style="color:inherit;font-weight:700;margin-left:6px;text-decoration:underline;text-underline-offset:2px">Open registration form ↗</a>`
+    : '';
+  const banner = `<div role="status" style="position:sticky;top:0;z-index:2147483647;padding:7px 12px;background:#fdba74;color:#9a3412;text-align:center;font:600 14px/20px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-sizing:border-box">Preview of EDM: ${escapeHtml(edm.name)}${registrationLink}</div>`;
   const html = /<body(?:\s[^>]*)?>/i.test(emailHtml)
     ? emailHtml.replace(/<body(?:\s[^>]*)?>/i, (body) => `${body}${banner}`)
     : `${banner}${emailHtml}`;
