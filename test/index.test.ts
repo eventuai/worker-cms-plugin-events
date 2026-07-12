@@ -3146,6 +3146,35 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(html).toContain('>good<');                                            // quality chip
   });
 
+  it('renders a gray Re-send button for a legacy sent EDM activity record', async () => {
+    const baseFetch = rsvpEdmFetch();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [{
+          id: 55,
+          page_type: 'guest',
+          page_id: 8,
+          name: 'Ada',
+          lect: {
+            email: 'ada@example.com',
+            sent_edm: [{ edm: '50', date: '2026-06-24T08:00:00Z', message: 'manual send' }],
+            _pointers: { mail_list: '8' },
+          },
+        }], total: 1 });
+      }
+      return baseFetch(input, init);
+    }));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    const html = await renderedText(response);
+    expect(html).toContain('bg-white text-gray-700 border-gray-300');
+    expect(html).toContain('>Re-send</button>');
+  });
+
   it('sends the EDM to one guest and records it as sent', async () => {
     const captured: { put?: RequestInit } = {};
     vi.stubGlobal('fetch', rsvpEdmFetch(captured));

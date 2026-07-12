@@ -823,7 +823,13 @@ export function emailQuality(email: string): 'good' | 'risky' | 'invalid' {
 /** Has this guest already been sent the given EDM? (recorded in lect.sent_edm). */
 export function guestWasSentEdm(guest: CmsPage, edmId: number): boolean {
   const sent = guest.lect.sent_edm;
-  return Array.isArray(sent) && sent.some((id) => String(id) === String(edmId));
+  return Array.isArray(sent) && sent.some((entry) => {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const record = entry as Record<string, unknown>;
+      return String(record.edm ?? record.edm_id ?? '') === String(edmId);
+    }
+    return String(entry) === String(edmId);
+  });
 }
 
 /** Sends one EDM to one guest immediately (or via the queue when bound). The

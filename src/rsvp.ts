@@ -667,8 +667,8 @@ async function resolveListEdm(cms: CmsClient, list: CmsPage): Promise<CmsPage | 
 
 /** Records that a guest has been sent an EDM (lect.sent_edm), so the button shows "Re-send". */
 async function recordSentEdm(cms: CmsClient, guest: CmsPage, edmId: number): Promise<void> {
-  const sent = Array.isArray(guest.lect.sent_edm) ? guest.lect.sent_edm.map(String) : [];
-  if (sent.includes(String(edmId))) return;
+  const sent = Array.isArray(guest.lect.sent_edm) ? [...guest.lect.sent_edm] : [];
+  if (guestWasSentEdm(guest, edmId)) return;
   sent.push(String(edmId));
   await cms.update(guest.id, { lect: { ...guest.lect, sent_edm: sent } });
 }
