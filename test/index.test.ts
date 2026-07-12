@@ -1580,7 +1580,7 @@ describe('event deletion', () => {
     expect(html).toContain('action="/admin/plugins/events/events/7/delete/start"');
   });
 
-  it('marks an event as deleting before preserving the POST to the queued delete route', async () => {
+  it('marks an event as deleting and completes a small event in the first bounded pass', async () => {
     let deletingUpdate: Record<string, unknown> | undefined;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -1591,6 +1591,11 @@ describe('event deletion', () => {
         deletingUpdate = JSON.parse(String(init.body)) as Record<string, unknown>;
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: deletingUpdate.lect } });
       }
+      if (url.pathname === '/__cms/pages' && (init?.method ?? 'GET') === 'GET') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages/7' && init?.method === 'DELETE') return Response.json({ ok: true });
+      if (url.pathname === '/__cms/pages/batch' && init?.method === 'DELETE') return Response.json({ ok: true });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
@@ -1600,13 +1605,13 @@ describe('event deletion', () => {
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/delete');
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deleted.');
     expect(deletingUpdate).toMatchObject({ lect: { venue: 'Hall', deleting: 'yes' } });
     expect((deletingUpdate?.lect as Record<string, unknown>).deleting_at).toEqual(expect.any(String));
   });
 
-  it('does not queue a second delete when the event is already marked deleting', async () => {
+  it('renders a manual continuation when deletion is already marked in progress', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
@@ -1624,8 +1629,11 @@ describe('event deletion', () => {
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20is%20already%20in%20progress.');
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('Deletion is already in progress.');
+    expect(html).toContain('action="/admin/plugins/events/events/7/delete/continue"');
+    expect(html).toContain('data-auto="0"');
   });
 
   it('deletes the event, trashing each list\'s guests server-side then the lists and templates', async () => {
@@ -1682,7 +1690,7 @@ describe('event deletion', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20started.%20It%20may%20take%20a%20moment%20to%20finish.');
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deleted.');
     expect(deletingUpdate).toMatchObject({ lect: { venue: 'Hall', deleting: 'yes' } });
     expect((deletingUpdate?.lect as Record<string, unknown>).deleting_at).toEqual(expect.any(String));
     // Lists and EDMs are found by the indexed event pointer, projected to ids
@@ -1703,35 +1711,76 @@ describe('event deletion', () => {
     expect(removed).toEqual([8, 9, 7]);
   });
 
-  it('continues event deletion in waitUntil when Worker context is available', async () => {
-    const waits: Promise<unknown>[] = [];
-    const ctx = {
-      waitUntil: vi.fn((promise: Promise<unknown>) => waits.push(promise)),
-    } as unknown as ExecutionContext;
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+  it('stops at the pass budget and returns an auto-continuing deletion page', async () => {
+    let childCalls = 0;
+    const removed: number[] = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-      if (url.pathname === '/__cms/pages/7') {
-        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { deleting: 'yes' } } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [], total: 0 });
+        return Response.json({ pages: [{ id: 8 }], total: 1 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
         return Response.json({ pages: [], total: 0 });
       }
-      return Response.json({ ok: true });
+      if (url.pathname === '/__cms/pages/children' && init?.method === 'DELETE') {
+        childCalls += 1;
+        return Response.json({ trashed: 100, done: false });
+      }
+      const single = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
+      if (single && init?.method === 'DELETE') {
+        removed.push(Number(single[1]));
+        return Response.json({ ok: true });
+      }
+      return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete', {
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete/continue', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret' },
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }), ctx);
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/admin/plugins/events/events?flash=Event%20deletion%20started.%20It%20may%20take%20a%20moment%20to%20finish.');
-    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
-    await Promise.all(waits);
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('2800 guest(s) moved to trash');
+    expect(html).toContain('1 guest list(s) remain');
+    expect(html).toContain('data-auto="1"');
+    expect(childCalls).toBe(28);
+    expect(removed).toEqual([]);
+  });
+
+  it('requires a manual retry when a deletion slice makes no progress', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7' && (init?.method ?? 'GET') === 'GET') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { deleting: 'yes' } } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8 }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages/children' && init?.method === 'DELETE') {
+        return Response.json({ trashed: 0, done: false });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/delete/continue', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('No items moved this pass');
+    expect(html).toContain('data-auto="0"');
+    expect(html).toContain('Press “Continue deletion” to retry.');
   });
 });
 

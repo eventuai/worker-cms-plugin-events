@@ -392,8 +392,8 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
     }
     if (eventId && sub === 'delete') {
       if (!access.canDelete) return forbidden();
-      if (request.method === 'POST' && segments[3] === 'start') return await startEventDeletion(cms, eventId);
-      if (request.method === 'POST') return await deleteEvent(request, cms, eventId, ctx);
+      if (request.method === 'POST' && segments[3] === 'start') return await startEventDeletion(cms, env.VIEWS, eventId, jsonOnly);
+      if (request.method === 'POST') return await continueEventDeletion(cms, env.VIEWS, eventId, jsonOnly);
       return await deleteEventForm(cms, env.VIEWS, eventId, jsonOnly);
     }
     if (eventId && sub === 'labels') {
@@ -803,9 +803,16 @@ async function duplicateEventRelations(cms: CmsClient, eventId: number, copyId: 
 
 // ── Event deletion ────────────────────────────────────────────────────────────
 
+// Leave room below Cloudflare's free-plan subrequest cap for authentication,
+// event/list discovery, rendering, and a final list/event delete.
+const EVENT_DELETE_PASS_BUDGET = 30;
+
 async function deleteEventForm(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return errorPanel(views, 'Event not found.', false, jsonOnly);
+  if (isDeleting(event.lect)) {
+    return eventDeleteProgressView(views, eventId, event.name, false, 'Deletion is ready to continue.', jsonOnly);
+  }
   // Counts for the confirmation copy. Guest lists and EDMs group under the event
   // by the `event` pointer, so we count them with a cheap list-and-filter rather
   // than tallying every guest (which would cost a fetch per list on a GET).
@@ -824,47 +831,80 @@ async function deleteEventForm(cms: CmsClient, views: Fetcher, eventId: number, 
   }, jsonOnly);
 }
 
-async function startEventDeletion(cms: CmsClient, eventId: number): Promise<Response> {
+async function startEventDeletion(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   if (isDeleting(event.lect)) {
-    return redirect(withFlash(`${ADMIN_BASE}/events`, 'Event deletion is already in progress.'));
+    return eventDeleteProgressView(views, eventId, event.name, false, 'Deletion is already in progress.', jsonOnly);
   }
-  await cms.update(eventId, { lect: { ...event.lect, deleting: 'yes', deleting_at: new Date().toISOString() } });
-  return redirect(`${ADMIN_BASE}/events/${eventId}/delete`, 307);
-}
-
-async function deleteEvent(request: Request, cms: CmsClient, eventId: number, ctx?: ExecutionContext): Promise<Response> {
-  const event = await cms.get(eventId);
-  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
   await chargeCreditAction(cms, 'delete_event', 1, {
     entityType: 'event',
     entityId: eventId,
     note: 'Delete event cascade',
   });
   await cms.update(eventId, { lect: { ...event.lect, deleting: 'yes', deleting_at: new Date().toISOString() } });
-
-  if (request.headers.get('x-cms-background-job') === '1') {
-    await deleteEventCascade(cms, eventId);
-  } else {
-    const pending = runBackground(ctx, `delete event ${eventId}`, () => deleteEventCascade(cms, eventId));
-    if (pending) await pending;
-  }
-
-  return redirect(withFlash(`${ADMIN_BASE}/events`, 'Event deletion started. It may take a moment to finish.'));
+  return runEventDeletionPass(cms, views, eventId, event.name, jsonOnly);
 }
 
-async function deleteEventCascade(cms: CmsClient, eventId: number): Promise<void> {
+async function continueEventDeletion(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  // Compatibility for an exact delete POST already queued by an older plugin
+  // version: initialize it once, then enter the same bounded pass flow.
+  if (!isDeleting(event.lect)) {
+    await chargeCreditAction(cms, 'delete_event', 1, {
+      entityType: 'event',
+      entityId: eventId,
+      note: 'Delete event cascade',
+    });
+    await cms.update(eventId, { lect: { ...event.lect, deleting: 'yes', deleting_at: new Date().toISOString() } });
+  }
+  return runEventDeletionPass(cms, views, eventId, event.name, jsonOnly);
+}
+
+async function runEventDeletionPass(cms: CmsClient, views: Fetcher, eventId: number, eventName: string, jsonOnly: boolean): Promise<Response> {
+  let result: EventDeletePass;
+  try {
+    result = await deleteEventCascadePass(cms, eventId);
+  } catch (error) {
+    if (!isSubrequestLimitError(error)) throw error;
+    return eventDeleteProgressView(views, eventId, eventName, false, 'This pass reached the runtime limit before it could continue.', jsonOnly);
+  }
+  if (result.done) return redirect(withFlash(`${ADMIN_BASE}/events`, 'Event deleted.'));
+
+  const summary = [
+    result.guests ? `${result.guests} guest(s) moved to trash` : '',
+    result.lists ? `${result.lists} guest list(s) moved to trash` : '',
+    result.edms ? `${result.edms} email template(s) moved to trash` : '',
+  ].filter(Boolean).join(', ') || 'No items moved this pass';
+  return eventDeleteProgressView(views, eventId, eventName, result.progressed, `${summary}. ${result.remainingLists} guest list(s) remain.`, jsonOnly);
+}
+
+interface EventDeletePass {
+  done: boolean;
+  progressed: boolean;
+  guests: number;
+  lists: number;
+  edms: number;
+  remainingLists: number;
+}
+
+async function deleteEventCascadePass(cms: CmsClient, eventId: number): Promise<EventDeletePass> {
   // Guest lists and EDMs group under the event by the `event` pointer — they are
   // not children of the event page, so deleting it would orphan them rather than
   // cascade. Remove them explicitly. (The Adhoc list is included here; the
   // individual-delete guard does not apply when tearing down the whole event.)
   // Only the ids are needed to tear down, so skip fetching the pages themselves.
-  const [guestListIds, edmIds] = await Promise.all([
-    cms.listAllIds('mail_list', { pointer: { key: 'event', value: eventId } }),
-    cms.listAllIds('edm', { pointer: { key: 'event', value: eventId } }),
+  const [guestListPage, edmPage] = await Promise.all([
+    cms.listIdsPage('mail_list', { pointer: { key: 'event', value: eventId } }, 25),
+    cms.listIdsPage('edm', { pointer: { key: 'event', value: eventId } }, 100),
   ]);
+  const guestListIds = guestListPage.ids;
+  const edmIds = edmPage.ids;
 
+  let spent = 2;
+  let guests = 0;
+  let lists = 0;
   for (const listId of guestListIds) {
     // Trash a list's guests before the list itself: the schema cascades on the
     // list's page_id, so removing the list first would wipe guest rows before
@@ -872,13 +912,55 @@ async function deleteEventCascade(cms: CmsClient, eventId: number): Promise<void
     // `mail_list` lect pointer (the canonical link, not parent page), so the CMS
     // trashes them by that pointer server-side — no streaming every guest back
     // here, which is what risked a timeout on a large list.
-    await cms.deleteChildren({ pointerKey: 'mail_list', pointerValue: String(listId) }, 'guest');
+    const childPass = await cms.deleteChildrenPass(
+      { pointerKey: 'mail_list', pointerValue: String(listId) },
+      'guest',
+      Math.max(1, EVENT_DELETE_PASS_BUDGET - spent),
+    );
+    spent += childPass.requests;
+    guests += childPass.trashed;
+    if (!childPass.done || spent >= EVENT_DELETE_PASS_BUDGET) {
+      return { done: false, progressed: guests + lists > 0, guests, lists, edms: 0, remainingLists: guestListIds.length - lists };
+    }
     await cms.remove(listId);
+    spent += 1;
+    lists += 1;
+    if (spent >= EVENT_DELETE_PASS_BUDGET) {
+      return { done: false, progressed: true, guests, lists, edms: 0, remainingLists: guestListIds.length - lists };
+    }
+  }
+  if (guestListPage.more) {
+    return { done: false, progressed: lists > 0, guests, lists, edms: 0, remainingLists: guestListPage.total - lists };
   }
   // EDMs group by the event pointer (not children), and are few — a single
-  // id-batch is fine.
+  // bounded id-batch is fine. A later pass rediscovers any remaining page.
   await cms.batchRemove(edmIds);
+  if (edmPage.more) {
+    return { done: false, progressed: edmIds.length > 0, guests, lists, edms: edmIds.length, remainingLists: 0 };
+  }
   await cms.remove(eventId);
+  return { done: true, progressed: true, guests, lists, edms: edmIds.length, remainingLists: 0 };
+}
+
+function eventDeleteProgressView(
+  views: Fetcher,
+  eventId: number,
+  eventName: string,
+  auto: boolean,
+  summary: string,
+  jsonOnly: boolean,
+): Promise<Response> {
+  return adminView(views, 'Deleting event…', 'event-delete-progress', {
+    eventName,
+    summary,
+    auto,
+    action: `${ADMIN_BASE}/events/${eventId}/delete/continue`,
+    backHref: `${ADMIN_BASE}/events`,
+  }, jsonOnly);
+}
+
+function isSubrequestLimitError(error: unknown): boolean {
+  return error instanceof Error && /too many subrequests/i.test(error.message);
 }
 
 const RESPONSES_PER_PAGE = 25;

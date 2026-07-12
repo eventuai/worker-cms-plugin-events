@@ -212,6 +212,16 @@ export class CmsClient extends BaseCmsClient {
     return pages.map((page) => page.id);
   }
 
+  /** One bounded id-only page for resumable jobs that rediscover remaining work. */
+  async listIdsPage(
+    pageType: string,
+    opts: { parentId?: number; pointer?: CmsListPointer; q?: string } = {},
+    limit = 100,
+  ): Promise<{ ids: number[]; total: number; more: boolean }> {
+    const result = await this.listPage(pageType, { ...opts, fields: ['id'] }, limit, 0, true);
+    return { ids: result.pages.map((page) => page.id), total: result.total, more: result.pages.length < result.total };
+  }
+
   /**
    * One raw GET /__cms/pages call. Exists because the SDK's `list()` cannot
    * send `count=0` (skip the host's COUNT(*) — itself a scan of the filtered
@@ -446,6 +456,39 @@ export class CmsClient extends BaseCmsClient {
       if (result.done || result.trashed === 0) break;
     }
     return total;
+  }
+
+  /**
+   * Performs at most `maxRequests` slices of the server-side children delete.
+   * The selector is stable and trashed rows leave the source collection, so a
+   * later Worker invocation can call this again to resume without a cursor.
+   */
+  async deleteChildrenPass(
+    selector: CollectionSelector,
+    pageType: string,
+    maxRequests: number,
+  ): Promise<{ trashed: number; done: boolean; requests: number }> {
+    let trashed = 0;
+    let requests = 0;
+    while (requests < maxRequests) {
+      const response = await globalThis.fetch(`${this.link.base}/__cms/pages/children`, {
+        method: 'DELETE',
+        headers: this.linkHeaders({ 'content-type': 'application/json' }),
+        body: JSON.stringify({ ...selectorFields(selector, ''), page_type: pageType }),
+      });
+      if (!response.ok) {
+        const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+        throw new CmsApiError(response.status, code, 'DELETE', '/pages/children');
+      }
+      const result = await response.json() as { trashed: number; done: boolean };
+      requests += 1;
+      trashed += result.trashed;
+      if (result.done) return { trashed, done: true, requests };
+      // Do not burn the rest of an invocation on a host operation that cannot
+      // currently make progress. The progress page will require a manual retry.
+      if (result.trashed === 0) return { trashed, done: false, requests };
+    }
+    return { trashed, done: false, requests };
   }
 }
 
