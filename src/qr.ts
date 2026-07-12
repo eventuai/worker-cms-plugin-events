@@ -421,6 +421,13 @@ export function qrMatrix(text: string): boolean[][] {
  * `margin` is the quiet-zone width in modules (4 is the spec minimum).
  */
 export function qrSvg(text: string, { size = 220, margin = 4 }: { size?: number; margin?: number } = {}): string {
+  const { count, rects } = qrSvgParts(text, margin);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${count} ${count}" shape-rendering="crispEdges">` +
+    `<rect width="${count}" height="${count}" fill="#fff"/>` +
+    `<g fill="#000">${rects}</g></svg>`;
+}
+
+function qrSvgParts(text: string, margin: number): { count: number; rects: string } {
   const matrix = qrMatrix(text);
   const count = matrix.length + margin * 2;
   const rects: string[] = [];
@@ -429,9 +436,7 @@ export function qrSvg(text: string, { size = 220, margin = 4 }: { size?: number;
       if (matrix[r][c]) rects.push(`<rect x="${c + margin}" y="${r + margin}" width="1" height="1"/>`);
     }
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${count} ${count}" shape-rendering="crispEdges">` +
-    `<rect width="${count}" height="${count}" fill="#fff"/>` +
-    `<g fill="#000">${rects.join('')}</g></svg>`;
+  return { count, rects: rects.join('') };
 }
 
 export interface QrTicketText {
@@ -473,9 +478,10 @@ export function qrTicketSvg(payload: string, fields: QrTicketText, { width = 320
     y += 7;
   }
   const height = Math.max(qrSize + 20, y + 7);
-  const qr = qrSvg(payload, { size: qrSize, margin: 1 })
-    .replace('<svg ', `<svg x="${(width - qrSize) / 2}" y="10" `);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#fff"/>${qr}${textElements.join('')}</svg>`;
+  const qr = qrSvgParts(payload, 1);
+  const scale = qrSize / qr.count;
+  const qrGroup = `<g transform="translate(${(width - qrSize) / 2} 10) scale(${scale})" shape-rendering="crispEdges"><rect width="${qr.count}" height="${qr.count}" fill="#fff"/><g fill="#000">${qr.rects}</g></g>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#fff"/>${qrGroup}${textElements.join('')}</svg>`;
 }
 
 function wrapSvgText(value: string, maxWidth: number, fontSize: number): string[] {

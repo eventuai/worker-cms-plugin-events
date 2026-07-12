@@ -60,6 +60,7 @@ describe('qr encoder', () => {
     expect(svg).toContain('HKDC Vividly Hong Kong');
     expect(svg).toContain('Elliott &lt;Tse&gt;');
     expect(svg).toContain('Occasions &amp; Asia Pacific');
+    expect((svg.match(/<svg/g) ?? [])).toHaveLength(1);
     expect((svg.match(/<text /g) ?? []).length).toBeGreaterThan(3);
     expect(svg).not.toContain('deliberately very long attendee name that wraps</text>');
   });
