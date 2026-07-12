@@ -16,12 +16,12 @@
     <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">This pass could not apply any records. Press “Continue import” to retry; if it keeps stopping here, split the file into smaller parts and import them one at a time.</div>
   {% endif %}
 
-  <form method="post" action="{{ confirmAction | escape }}" id="import-continue-form" data-auto="{% if auto %}1{% else %}0{% endif %}">
+  <form method="post" action="{{ confirmAction | escape }}" id="import-continue-form" data-auto="{% if auto %}1{% else %}0{% endif %}" data-long-running-form>
     <textarea name="csv" style="display:none">{{ csv | escape }}</textarea>
     <input type="hidden" name="mode" value="{{ mode | escape }}">
     <input type="hidden" name="assign_new_ids" value="{{ assignNewIds | escape }}">
     <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Continue import" aria-label="Continue import">
+      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Continue import" aria-label="Continue import" data-loading-label="Continuing import">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>
         <span class="hidden lg:inline">Continue import</span>
       </button>
@@ -30,4 +30,5 @@
   </form>
 </div>
 
+<script src="/admin/plugins/events/assets/long-running-submit.js" defer></script>
 <script src="/admin/plugins/events/assets/import-continue.js" defer></script>

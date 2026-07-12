@@ -6,6 +6,7 @@
 
   // Brief pause so the pass summary is readable before the next pass starts.
   setTimeout(function () {
-    form.submit();
+    if (form.requestSubmit) form.requestSubmit();
+    else form.submit();
   }, 800);
 }());

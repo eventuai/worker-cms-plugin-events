@@ -52,7 +52,7 @@
   </table>
 </div>
 
-<form method="post" action="{{ confirmAction | escape }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+<form method="post" action="{{ confirmAction | escape }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" data-long-running-form>
   <textarea name="csv" style="display:none">{{ csv | escape }}</textarea>
   <label class="block mb-4" style="max-width:30rem">
     <span class="block text-sm font-medium text-gray-700 mb-1">How should these be imported?</span>
@@ -63,10 +63,11 @@
     </select>
   </label>
   <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-    <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Confirm import" aria-label="Confirm import">
+    <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Confirm import" aria-label="Confirm import" data-loading-label="Importing guests">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>
       <span class="hidden lg:inline">Confirm import</span>
     </button>
     <a href="{{ listHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
   </div>
 </form>
+<script src="/admin/plugins/events/assets/long-running-submit.js" defer></script>

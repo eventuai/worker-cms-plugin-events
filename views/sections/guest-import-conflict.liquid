@@ -9,12 +9,12 @@
   </div>
   <p class="text-sm text-gray-600 mb-4">You can continue letting the CMS assign new IDs to the conflicting rows. Rows whose ID is free still keep the ID from the file — but QR codes or links from the old system that point at a replaced ID will no longer match.</p>
 
-  <form method="post" action="{{ confirmAction | escape }}">
+  <form method="post" action="{{ confirmAction | escape }}" data-long-running-form>
     <textarea name="csv" style="display:none">{{ csv | escape }}</textarea>
     <input type="hidden" name="mode" value="{{ mode | escape }}">
     <input type="hidden" name="assign_new_ids" value="1">
     <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Assign new IDs and continue" aria-label="Assign new IDs and continue">
+      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Assign new IDs and continue" aria-label="Assign new IDs and continue" data-loading-label="Continuing import">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>
         <span class="hidden lg:inline">Assign new IDs and continue</span>
       </button>
@@ -22,3 +22,4 @@
     </div>
   </form>
 </div>
+<script src="/admin/plugins/events/assets/long-running-submit.js" defer></script>

@@ -11,9 +11,9 @@
     <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">This pass could not make progress automatically. Press “Continue deletion” to retry.</div>
   {% endif %}
 
-  <form method="post" action="{{ action | escape }}" id="import-continue-form" data-auto="{% if auto %}1{% else %}0{% endif %}">
+  <form method="post" action="{{ action | escape }}" id="import-continue-form" data-auto="{% if auto %}1{% else %}0{% endif %}" data-long-running-form>
     <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" title="Continue deletion" aria-label="Continue deletion">
+      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" title="Continue deletion" aria-label="Continue deletion" data-loading-label="Continuing deletion">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>
         <span class="hidden lg:inline">Continue deletion</span>
       </button>
@@ -22,4 +22,5 @@
   </form>
 </div>
 
+<script src="/admin/plugins/events/assets/long-running-submit.js" defer></script>
 <script src="/admin/plugins/events/assets/import-continue.js" defer></script>
