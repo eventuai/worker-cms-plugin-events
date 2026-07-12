@@ -81,6 +81,72 @@ npm install && npm run dev
 
 No `wrangler.toml` change or CMS redeploy needed.
 
+## Email delivery setup
+
+EDM sending has two interchangeable backends. `deliverQueuedEmail`
+([`src/edm.ts`](src/edm.ts)) picks one per send:
+
+1. **AWS SES** — used whenever `AWS_SES_REGION` + `AWS_ACCESS_KEY_ID` +
+   `AWS_SECRET_ACCESS_KEY` are all set (takes precedence over the binding).
+2. **Cloudflare Email Service** — the `EMAIL` (`[[send_email]]`) binding,
+   used otherwise.
+
+Either way `EMAIL_FROM` is the default sender; an EDM's own **Sender email**
+field overrides it per-EDM. With neither backend configured, sends fail with a
+config-hint error. To switch backends, add or remove the SES credentials —
+there is no separate toggle.
+
+### Option A — Cloudflare Email Service
+
+Only works when the sender domain's DNS is hosted **on Cloudflare** (the
+service verifies the sender there). Uncomment in `wrangler.toml`:
+
+```toml
+[[send_email]]
+name = "EMAIL"
+
+[vars]
+EMAIL_FROM = "events@example.com"
+```
+
+### Option B — AWS SES (any DNS host)
+
+Ported from the legacy eventuai admin (`config/mail.mjs`), so its verified SES
+identities carry over. [`src/ses.ts`](src/ses.ts) calls the SES v2 `SendEmail`
+API with a WebCrypto SigV4 signature — no AWS SDK. The IAM key needs
+`ses:SendEmail`; verify the sender identity in SES first.
+
+```bash
+wrangler secret put AWS_ACCESS_KEY_ID
+wrangler secret put AWS_SECRET_ACCESS_KEY
+```
+
+```toml
+[vars]
+AWS_SES_REGION = "ap-southeast-1"
+AWS_SES_CONFIGURATION_SET = "default"   # optional: bounce/open tracking
+EMAIL_FROM = "events@example.com"
+```
+
+Local dev: put the same values in `.dev.vars` (gitignored). Optional
+`AWS_SESSION_TOKEN` supports temporary STS credentials; `AWS_SES_ENDPOINT`
+overrides the API endpoint (tests).
+
+### Blasts, scheduling, and per-tenant senders
+
+- **Guest-list blasts** additionally need the `MAIL_QUEUE` queue
+  (producer + consumer), and **scheduled blasts** the cron trigger — see the
+  commented blocks in [`wrangler.toml`](wrangler.toml). Test sends
+  (EDM editor → send-test) work without the queue.
+- **Multi-tenant:** all of the above are plain env vars, and each TENANTS
+  record's `vars` overlay the env before delivery — so one tenant can carry its
+  own `AWS_SES_*` / `EMAIL_FROM` (e.g. route only that tenant through a
+  different SES account, or mix backends across tenants). Tenant vars overlay
+  last and win.
+- **Verify** with the EDM editor's test-send: SES deliveries arrive with
+  `X-SES-*` headers; misconfiguration surfaces the backend's own error in the
+  admin panel (e.g. SES "Email address is not verified").
+
 ## Status
 
 - [x] All event/RSVP/EDM blueprints + blocks + block lists + event taxonomies;
