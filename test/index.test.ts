@@ -3095,7 +3095,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
 
 describe('RSVP EDM sending (guest-list controls)', () => {
   // A list (8) under event 7, linked to EDM 50, with one good-quality guest (55).
-  function rsvpEdmFetch(captured?: { put?: RequestInit }, includeQr = false) {
+  function rsvpEdmFetch(captured?: { put?: RequestInit }, includeQr = false, guestLect: Record<string, unknown> = {}) {
     return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       const p = url.pathname;
@@ -3120,10 +3120,10 @@ describe('RSVP EDM sending (guest-list controls)', () => {
         return Response.json({ pages: [{ id: 50, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
       }
       if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        return Response.json({ pages: [{ id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', organization: 'Analytical Engines', _pointers: { mail_list: '8' } } }], total: 1 });
+        return Response.json({ pages: [{ id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', organization: 'Analytical Engines', _pointers: { mail_list: '8' }, ...guestLect } }], total: 1 });
       }
       if (p === '/__cms/pages/55' && init?.method === 'PUT') { if (captured) captured.put = init; return Response.json({ page: { id: 55 } }); }
-      if (p === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', organization: 'Analytical Engines', _pointers: { mail_list: '8' } } } });
+      if (p === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { email: 'ada@example.com', organization: 'Analytical Engines', _pointers: { mail_list: '8' }, ...guestLect } } });
       return new Response('not found', { status: 404 });
     });
   }
@@ -3196,8 +3196,28 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(JSON.parse(String(captured.put?.body))).toMatchObject({ lect: { sent_edm: [{
       edm: '50',
       message: 'email sent (Hi)',
-    }] } });
+    }], status: 'invited' } });
     expect(JSON.parse(String(captured.put?.body)).lect.sent_edm[0].date).toBeTruthy();
+  });
+
+  it('records re-send activity without replacing a confirmed RSVP status', async () => {
+    const captured: { put?: RequestInit } = {};
+    vi.stubGlobal('fetch', rsvpEdmFetch(captured, false, {
+      status: 'confirmed',
+      sent_edm: [{ edm: '50', date: '2026-06-24T08:00:00Z', message: 'first send' }],
+    }));
+    const EMAIL = { send: vi.fn(async () => undefined) };
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/send', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
+
+    expect(response.status).toBe(302);
+    const update = JSON.parse(String(captured.put?.body));
+    expect(update.lect.status).toBe('confirmed');
+    expect(update.lect.sent_edm).toHaveLength(2);
+    expect(update.lect.sent_edm[1]).toMatchObject({ edm: '50', message: 'email sent (Hi)' });
   });
 
   it('redirects GET /rsvp/:id/edm back to the guest list detail', async () => {

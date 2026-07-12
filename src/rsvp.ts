@@ -668,14 +668,17 @@ async function resolveListEdm(cms: CmsClient, list: CmsPage): Promise<CmsPage | 
 /** Records a dated EDM activity, which also makes the button show "Re-send". */
 async function recordSentEdm(cms: CmsClient, guest: CmsPage, edm: CmsPage): Promise<void> {
   const sent = Array.isArray(guest.lect.sent_edm) ? [...guest.lect.sent_edm] : [];
-  if (guestWasSentEdm(guest, edm.id)) return;
   const subject = localized(edm.lect, 'subject') || edm.name;
   sent.push({
     edm: String(edm.id),
     date: new Date().toISOString(),
     message: `email sent (${subject})`,
   });
-  await cms.update(guest.id, { lect: { ...guest.lect, sent_edm: sent } });
+  const currentStatus = normalizeStatus(attr(guest.lect, 'status'));
+  const status = !currentStatus || currentStatus === 'to be invited'
+    ? 'invited'
+    : attr(guest.lect, 'status');
+  await cms.update(guest.id, { lect: { ...guest.lect, status, sent_edm: sent } });
 }
 
 function listFlash(listId: number, message: string, returnTo = ''): Response {
