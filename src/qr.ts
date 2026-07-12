@@ -1,13 +1,13 @@
 // ============================================================
-// Minimal QR Code generator (byte mode, ECC level M, versions 1–10).
+// Minimal QR Code generator (byte mode, ECC level Q, versions 1–10).
 //
 // The plugin runs on Workers with no Node/native deps, and the legacy app
 // shelled out to a `generate-qrcode` command — neither is available here, so we
 // encode the matrix ourselves and render it as a crisp, print-friendly SVG.
 //
-// Scope is deliberately small: byte mode + level M covers a signed check-in URL
-// (well under the ~270-byte v10 budget) with enough error correction to survive
-// being printed on a badge. Implements the full ISO/IEC 18004 pipeline:
+// Scope is deliberately small: byte mode + level Q covers the compact check-in
+// token with roughly 25% error recovery for printed badges. Implements the full
+// ISO/IEC 18004 pipeline:
 // Reed–Solomon ECC, block interleaving, function patterns, all eight data masks
 // with penalty scoring, and format/version information.
 // ============================================================
@@ -58,7 +58,7 @@ function rsEncode(data: number[], ecLen: number): number[] {
   return res;
 }
 
-// ── Per-version characteristics for ECC level M ───────────────────────────────
+// ── Per-version characteristics for ECC level Q ───────────────────────────────
 interface VersionSpec {
   /** EC codewords per block. */
   ec: number;
@@ -71,16 +71,16 @@ interface VersionSpec {
 }
 
 const VERSIONS: Record<number, VersionSpec> = {
-  1: { ec: 10, groups: [[1, 16]], align: [], remainder: 0 },
-  2: { ec: 16, groups: [[1, 28]], align: [6, 18], remainder: 7 },
-  3: { ec: 26, groups: [[1, 44]], align: [6, 22], remainder: 7 },
-  4: { ec: 18, groups: [[2, 32]], align: [6, 26], remainder: 7 },
-  5: { ec: 24, groups: [[2, 43]], align: [6, 30], remainder: 7 },
-  6: { ec: 16, groups: [[4, 27]], align: [6, 34], remainder: 7 },
-  7: { ec: 18, groups: [[4, 31]], align: [6, 22, 38], remainder: 0 },
-  8: { ec: 22, groups: [[2, 38], [2, 39]], align: [6, 24, 42], remainder: 0 },
-  9: { ec: 22, groups: [[3, 36], [2, 37]], align: [6, 26, 46], remainder: 0 },
-  10: { ec: 26, groups: [[4, 43], [1, 44]], align: [6, 28, 50], remainder: 0 },
+  1: { ec: 13, groups: [[1, 13]], align: [], remainder: 0 },
+  2: { ec: 22, groups: [[1, 22]], align: [6, 18], remainder: 7 },
+  3: { ec: 18, groups: [[2, 17]], align: [6, 22], remainder: 7 },
+  4: { ec: 26, groups: [[2, 24]], align: [6, 26], remainder: 7 },
+  5: { ec: 18, groups: [[2, 15], [2, 16]], align: [6, 30], remainder: 7 },
+  6: { ec: 24, groups: [[4, 19]], align: [6, 34], remainder: 7 },
+  7: { ec: 18, groups: [[2, 14], [4, 15]], align: [6, 22, 38], remainder: 0 },
+  8: { ec: 22, groups: [[4, 18], [2, 19]], align: [6, 24, 42], remainder: 0 },
+  9: { ec: 20, groups: [[4, 16], [4, 17]], align: [6, 26, 46], remainder: 0 },
+  10: { ec: 24, groups: [[6, 19], [2, 20]], align: [6, 28, 50], remainder: 0 },
 };
 
 function totalDataCodewords(spec: VersionSpec): number {
@@ -340,8 +340,8 @@ function bch15(format: number): number {
 }
 
 function placeFormat(m: Matrix, mask: number): void {
-  // ECC level M = 0b00.
-  const bits = bch15((0b00 << 3) | mask);
+  // ECC level Q = 0b11.
+  const bits = bch15((0b11 << 3) | mask);
   const get = (i: number): Module => ((bits >> i) & 1) as Module;
   const n = m.size;
   for (let i = 0; i <= 5; i++) m.set(8, i, get(i), false);
@@ -382,7 +382,7 @@ function chooseVersion(byteLen: number): { version: number; spec: VersionSpec } 
     const needed = 4 + countBits + byteLen * 8;
     if (needed <= totalDataCodewords(spec) * 8) return { version, spec };
   }
-  throw new Error('QR payload too large (max ~216 bytes at ECC level M)');
+  throw new Error('QR payload too large for versions 1–10 at ECC level Q');
 }
 
 /** Builds the boolean module matrix for `text` (true = dark). */

@@ -3,6 +3,18 @@ import { qrMatrix, qrSvg, qrTicketSvg } from '../src/qr';
 import { compactCheckinCode } from '../src/crypto';
 
 describe('qr encoder', () => {
+  it('uses ECC level Q format information', () => {
+    const matrix = qrMatrix('format-level');
+    const positions = [[8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8], [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]];
+    const actual = positions.reduce((bits, [row, column], index) => bits | (matrix[row][column] ? 1 << index : 0), 0);
+    const bch15 = (format: number): number => {
+      let value = format << 10;
+      for (let bit = 14; bit >= 10; bit--) if ((value >> bit) & 1) value ^= 0x537 << (bit - 10);
+      return ((format << 10) | value) ^ 0x5412;
+    };
+    expect(Array.from({ length: 8 }, (_unused, mask) => bch15((0b11 << 3) | mask))).toContain(actual);
+  });
+
   it('encodes the compact legacy Eventuai check-in payload in radix 32 with BLAKE3', () => {
     expect(compactCheckinCode(19856682903287, 19856712108462)).toBe(
       `EAI${(19856682903287).toString(32)}:${(19856712108462 - 19856682903287).toString(32)}:M:cc7560`,
