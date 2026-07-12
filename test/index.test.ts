@@ -125,6 +125,7 @@ describe('plugin contract', () => {
         { label: 'Events', href: 'events', roles: ['admin', 'editor', 'moderator', 'event-helper'] },
       ],
       hooks: ['create', 'publish', 'unpublish', 'delete'],
+      autoPublishTypes: ['event', 'guest', 'mail_list', 'edm'],
       permissions: [
         { value: 'events:view', label: 'Events: view events, guest lists and guests' },
         { value: 'events:write', label: 'Events: edit and delete events, guest lists, guests and EDM templates' },

@@ -3,6 +3,7 @@
   "name": "Events Suite",
   "version": "0.1.0",
   "hooks": ["create", "publish", "unpublish", "delete"],
+  "autoPublishTypes": ["event", "guest", "mail_list", "edm"],
   "nav": [
     { "label": "Events", "href": "events", "roles": ["admin", "editor", "moderator", "event-helper"] }
   ],
