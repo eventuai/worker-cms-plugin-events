@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { qrMatrix, qrSvg } from '../src/qr';
+import { qrMatrix, qrSvg, qrTicketSvg } from '../src/qr';
+import { compactCheckinCode } from '../src/crypto';
 
 describe('qr encoder', () => {
+  it('encodes the compact legacy Eventuai check-in payload in radix 32 with BLAKE3', () => {
+    expect(compactCheckinCode(19856682903287, 19856712108462)).toBe(
+      `EAI${(19856682903287).toString(32)}:${(19856712108462 - 19856682903287).toString(32)}:M:cc7560`,
+    );
+    expect(compactCheckinCode(100, 125, 0)).toMatch(/^EAI34:p:0:[0-9a-f]{6}$/);
+  });
+
   it('picks the smallest version that fits and is square', () => {
     const small = qrMatrix('HELLO');
     expect(small.length).toBe(21); // version 1 → 21×21
@@ -40,5 +48,19 @@ describe('qr encoder', () => {
     expect(svg).toContain('<rect'); // background + modules
     // viewBox accounts for the 4-module quiet zone on each side (21 + 8 = 29).
     expect(svg).toContain('viewBox="0 0 29 29"');
+  });
+
+  it('renders a legacy-style ticket with escaped, wrapped guest text', () => {
+    const svg = qrTicketSvg('EAI123:ABC', {
+      keyword: 'HKDC Vividly Hong Kong',
+      name: 'Elliott <Tse> with a deliberately very long attendee name that wraps',
+      organization: 'Occasions & Asia Pacific 國際活動公司',
+    });
+    expect(svg).toContain('width="320"');
+    expect(svg).toContain('HKDC Vividly Hong Kong');
+    expect(svg).toContain('Elliott &lt;Tse&gt;');
+    expect(svg).toContain('Occasions &amp; Asia Pacific');
+    expect((svg.match(/<text /g) ?? []).length).toBeGreaterThan(3);
+    expect(svg).not.toContain('deliberately very long attendee name that wraps</text>');
   });
 });

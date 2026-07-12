@@ -433,3 +433,81 @@ export function qrSvg(text: string, { size = 220, margin = 4 }: { size?: number;
     `<rect width="${count}" height="${count}" fill="#fff"/>` +
     `<g fill="#000">${rects.join('')}</g></svg>`;
 }
+
+export interface QrTicketText {
+  keyword?: string;
+  name?: string;
+  organization?: string;
+  jobTitle?: string;
+  remark?: string;
+}
+
+/**
+ * Legacy-style check-in ticket: a compact QR followed by centred, wrapped SVG
+ * text. The height is derived from the wrapped lines, so long names and CJK
+ * text cannot be clipped or overflow the image.
+ */
+export function qrTicketSvg(payload: string, fields: QrTicketText, { width = 320, qrSize = 280 }: { width?: number; qrSize?: number } = {}): string {
+  const rows: Array<{ value: string; size: number; color: string; weight?: number }> = [];
+  add(fields.keyword, 11, '#333');
+  add(fields.name, (fields.name?.length ?? 0) > 35 ? 14 : 18, '#000', 500);
+  add(fields.organization, 14, '#666');
+  add(fields.jobTitle, 11, '#666');
+  add(fields.remark, 11, '#999');
+
+  function add(value: string | undefined, size: number, color: string, weight?: number): void {
+    const clean = String(value ?? '').trim();
+    if (clean) rows.push({ value: clean, size, color, weight });
+  }
+
+  const maxTextWidth = width - 20;
+  let y = qrSize + 20;
+  const textElements: string[] = [];
+  for (const row of rows) {
+    const lines = wrapSvgText(row.value, maxTextWidth, row.size);
+    const lineHeight = Math.ceil(row.size * 1.15);
+    for (const line of lines) {
+      y += lineHeight;
+      textElements.push(`<text x="${width / 2}" y="${y}" text-anchor="middle" font-family="Noto Sans CJK SC,Noto Sans CJK TC,Noto Sans CJK KR,Noto Sans CJK JP,Arial,sans-serif" font-size="${row.size}"${row.weight ? ` font-weight="${row.weight}"` : ''} fill="${row.color}">${escapeSvgText(line)}</text>`);
+    }
+    y += 7;
+  }
+  const height = Math.max(qrSize + 20, y + 7);
+  const qr = qrSvg(payload, { size: qrSize, margin: 1 })
+    .replace('<svg ', `<svg x="${(width - qrSize) / 2}" y="10" `);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#fff"/>${qr}${textElements.join('')}</svg>`;
+}
+
+function wrapSvgText(value: string, maxWidth: number, fontSize: number): string[] {
+  const maxUnits = maxWidth / fontSize;
+  const result: string[] = [];
+  for (const paragraph of value.replace(/\r/g, '').split('\n')) {
+    let line = '';
+    for (const token of paragraph.match(/\s+|[^\s]+/gu) ?? ['']) {
+      const candidate = line + token;
+      if (line.trim() && textUnits(candidate) > maxUnits) {
+        result.push(line.trim());
+        line = token.trimStart();
+      } else {
+        line = candidate;
+      }
+      while (textUnits(line) > maxUnits && Array.from(line).length > 1) {
+        const chars = Array.from(line);
+        let split = 1;
+        while (split < chars.length && textUnits(chars.slice(0, split + 1).join('')) <= maxUnits) split++;
+        result.push(chars.slice(0, split).join('').trim());
+        line = chars.slice(split).join('').trimStart();
+      }
+    }
+    result.push(line.trim());
+  }
+  return result.filter(Boolean);
+}
+
+function textUnits(value: string): number {
+  return Array.from(value).reduce((units, char) => units + (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(char) ? 1 : char === ' ' ? 0.32 : 0.56), 0);
+}
+
+function escapeSvgText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}

@@ -1,5 +1,5 @@
 import { CmsApiError, CmsClient, attr, blocks, chargeCreditAction, items, localized, pointer, type CmsPage } from './cms';
-import { signPayload } from './crypto';
+import { compactCheckinCode, signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { qrSvg } from './qr';
 import { sendViaSes, sesConfigured, type SesEnv } from './ses';
@@ -1065,10 +1065,8 @@ async function guestEmailTokens(
 }
 
 /**
- * QR data for per-guest EDM rendering.  When a public check-in origin is not
- * configured, the QR still contains the verified compact token so an admin
- * kiosk can resolve it; a configured origin upgrades the same payload to a
- * guest-facing URL.
+ * QR data for per-guest EDM rendering. The image always contains the compact
+ * Eventuai code; `checkin_url` remains a separate clickable fallback in email.
  */
 async function checkinQrTokens(env: EdmEnv, listId: number, guest: CmsPage): Promise<Record<string, string>> {
   const signKey = env.SIGN_KEY || env.PLUGIN_SECRET;
@@ -1076,15 +1074,14 @@ async function checkinQrTokens(env: EdmEnv, listId: number, guest: CmsPage): Pro
 
   const token = `${listId}.${guest.id}`;
   const signature = await signPayload(signKey, token);
-  const code = `${token}.${signature}`;
+  const code = compactCheckinCode(listId, guest.id);
   const base = (env.CHECKIN_BASE_URL ?? '').replace(/\/+$/, '');
   const tenantSuffix = env.CMS_TENANT_REF ? `?t=${encodeURIComponent(env.CMS_TENANT_REF)}` : '';
   const url = base ? `${base}/checkin/${listId}/${guest.id}/${signature}${tenantSuffix}` : '';
-  const payload = url || code;
   return {
     checkin_code: code,
     checkin_url: url,
-    checkin_qr_src: svgDataUrl(qrSvg(payload, { size: 240 })),
+    checkin_qr_src: svgDataUrl(qrSvg(code, { size: 240, margin: 1 })),
   };
 }
 

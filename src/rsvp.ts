@@ -14,8 +14,8 @@ import {
   type CmsPage,
   type CmsPageInput,
 } from './cms';
-import { signPayload } from './crypto';
-import { qrSvg } from './qr';
+import { compactCheckinCode } from './crypto';
+import { qrSvg, qrTicketSvg } from './qr';
 import {
   emailQuality,
   guestWasSentEdm,
@@ -1184,22 +1184,17 @@ async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Prom
 }
 
 /**
- * Renders a guest's check-in QR. The code carries a PLUGIN_SECRET-signed
- * `listId.guestId.sig` token (as a check-in URL when a public base is set), so a
- * door scanner can identify the guest without trusting the unsigned payload.
+ * Renders a guest's check-in QR using the legacy compact Eventuai payload:
+ * `EAI{list-base32}:{guest-delta-base32}:{M|plus-index}:{sig-prefix}`.
  */
-async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, qr: QrOptions, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
+async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, _qr: QrOptions, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
   const context = await guestListContext(cms, listId);
   const guest = await cms.get(guestId);
   if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
 
-  const token = `${listId}.${guestId}`;
-  const sig = qr.secret ? await signPayload(qr.secret, token) : '';
-  const payload = qr.publicBase && sig
-    ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${sig}${tenantSuffix(qr)}`
-    : `${token}.${sig}`;
+  const payload = compactCheckinCode(listId, guestId);
   const values = guestValues(guest);
-  const plusGuestQrs = await plusGuestQrCodes(listId, guestId, values.plus_guests, qr);
+  const plusGuestQrs = plusGuestQrCodes(listId, guestId, values.plus_guests);
 
   return adminView(views, `QR — ${values.name}`, 'guest-qr', {
     guestName: values.name,
@@ -1211,26 +1206,27 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     pairedQrCode: values.paired_qrcode,
     pairAction: access?.canCheckIn === false ? '' : `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/pair-qrcode`,
     payload,
-    qrSvg: qrSvg(payload, { size: 240 }),
+    qrSvg: qrTicketSvg(payload, {
+      keyword: context.event?.name ?? context.list.name,
+      name: values.name,
+      organization: values.organization,
+      jobTitle: values.job_title,
+      remark: values.qrcode_remark,
+    }),
     plusGuestQrs,
     hasPlusGuestQrs: plusGuestQrs.length > 0,
   }, jsonOnly);
 }
 
-async function plusGuestQrCodes(
+function plusGuestQrCodes(
   listId: number,
   guestId: number,
   rawCount: string,
-  qr: QrOptions,
-): Promise<Array<{ label: string; payload: string; qrSvg: string }>> {
+): Array<{ label: string; payload: string; qrSvg: string }> {
   const count = Math.max(0, Number.parseInt(rawCount, 10) || 0);
   const rows: Array<{ label: string; payload: string; qrSvg: string }> = [];
   for (let index = 0; index < count; index += 1) {
-    const token = `${listId}.${guestId}.${index}`;
-    const sig = qr.secret ? await signPayload(qr.secret, token) : '';
-    const payload = qr.publicBase && sig
-      ? `${qr.publicBase.replace(/\/+$/, '')}/checkin/${listId}/${guestId}/${index}/${sig}${tenantSuffix(qr)}`
-      : `${token}.${sig}`;
+    const payload = compactCheckinCode(listId, guestId, index);
     rows.push({
       label: `Plus guest ${index + 1}`,
       payload,

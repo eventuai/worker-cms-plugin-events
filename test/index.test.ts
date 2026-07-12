@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CmsClient, checkins } from '../src/cms';
-import { signPayload } from '../src/crypto';
+import { compactCheckinCode, signPayload } from '../src/crypto';
 import worker from '../src/index';
 import { renderView } from '../src/templates/liquid';
 
@@ -3034,9 +3034,9 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
   it('renders a scannable per-guest QR with a signed check-in payload', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: {} } });
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: { _pointers: { event: '7' } } } });
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { plus_guests: '2', paired_qrcode: 'BADGE-OLD', _pointers: { mail_list: '8' } } } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { organization: 'Analytical Engines', job_title: 'Programmer', qrcode_remark: 'Bring photo ID', plus_guests: '2', paired_qrcode: 'BADGE-OLD', _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
@@ -3057,15 +3057,15 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     };
     expect(view.data.qrSvg).toContain('<svg');
     expect(view.data.qrSvg).toContain('<rect'); // QR modules rendered
-    const sig = await signPayload('shared-secret', '8.55');
-    expect(view.data.payload).toBe(`8.55.${sig}`);
+    expect(view.data.qrSvg).toContain('Launch');
+    expect(view.data.qrSvg).toContain('Ada');
+    expect(view.data.qrSvg).toContain('Analytical Engines');
+    expect(view.data.payload).toBe(compactCheckinCode(8, 55));
     expect(view.data.pairAction).toBe('/admin/plugins/events/rsvp/8/guests/55/pair-qrcode');
     expect(view.data.pairedQrCode).toBe('BADGE-OLD');
-    const firstPlusSig = await signPayload('shared-secret', '8.55.0');
-    const secondPlusSig = await signPayload('shared-secret', '8.55.1');
     expect(view.data.plusGuestQrs).toMatchObject([
-      { label: 'Plus guest 1', payload: `8.55.0.${firstPlusSig}` },
-      { label: 'Plus guest 2', payload: `8.55.1.${secondPlusSig}` },
+      { label: 'Plus guest 1', payload: compactCheckinCode(8, 55, 0) },
+      { label: 'Plus guest 2', payload: compactCheckinCode(8, 55, 1) },
     ]);
     expect(view.data.plusGuestQrs[0].qrSvg).toContain('<svg');
   });

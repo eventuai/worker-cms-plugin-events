@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@lionrockjs/worker-cms-plugin": "0.2.0",
+    "@noble/hashes": "^2.2.0",
     "liquidjs": "^10.27.2"
   },
   "devDependencies": {
