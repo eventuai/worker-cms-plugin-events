@@ -61,6 +61,7 @@ import {
   convertRegistration,
   discardRegistration,
   pullSubmissions,
+  refreshSubmissions,
   registrationsView,
 } from './submissions';
 import {
@@ -971,14 +972,25 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
   const canImportExport = access?.canImportExport ?? true;
   const canCheckIn = access?.canCheckIn ?? true;
   const canManageEmail = access?.canManageEmail ?? true;
+  const event = await cms.get(eventId);
+  const deleting = isDeleting(event.lect);
+  // Public RSVP submissions live in worker-rsvp's published database. Pull and
+  // apply them before reading guest lists so every dashboard visit reflects the
+  // latest response. Keep this best-effort: an unavailable ingest endpoint must
+  // not make an otherwise readable event dashboard fail.
+  if (!deleting) {
+    try {
+      await refreshSubmissions(cms);
+    } catch (error) {
+      console.error('[events-suite] dashboard submission refresh failed', error);
+    }
+  }
   // `mail_list` and `edm` group under their event by the `event` pointer (their
   // parent page may be a different page type), so filter on the pointer.
-  const [event, guestLists, edms] = await Promise.all([
-    cms.get(eventId),
+  const [guestLists, edms] = await Promise.all([
     listByEvent(cms, 'mail_list', eventId),
     listByEvent(cms, 'edm', eventId),
   ]);
-  const deleting = isDeleting(event.lect);
   if (!deleting && !guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId));
   // The CMS page API is generic, so the plugin tallies each list's guests itself
   // (one fetch per list) rather than asking the CMS for RSVP-specific figures.

@@ -90,6 +90,8 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
       lect: {
         status,
         plus_guests: attr(page.lect, 'plus_guests') || '0',
+        // Refill permission is single-use, matching the legacy RSVP submit.
+        allow_refill: '',
         ...customAnswers,
         latest_response: { ...latestResponse, [edmId || 'latest']: responseSnapshot },
         response: [...realEntries(responseLog), {
@@ -100,6 +102,9 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
         }],
       },
     });
+  } else if (attr(guest.lect, 'allow_refill')) {
+    // Repair a partial prior application without duplicating its response log.
+    await cms.update(guest.id, { lect: { allow_refill: '' } });
   }
 
   await cms.update(page.id, { lect: { applied_at: now, applied_guest_id: String(guest.id) } });
@@ -136,6 +141,11 @@ export interface ApplyPendingResult {
   guestMissing: number;
 }
 
+export interface SubmissionRefreshResult {
+  ingested: { scanned: number; created: number; more: boolean };
+  responses: ApplyPendingResult;
+}
+
 /**
  * Fallback for missed create hooks: sweeps unapplied rsvp_response pages and
  * applies up to APPLY_BATCH of them.
@@ -151,6 +161,13 @@ export async function applyPendingResponses(cms: CmsClient): Promise<ApplyPendin
     if (outcome === 'guest_missing') guestMissing += 1;
   }
   return { pending: pending.length, applied, guestMissing };
+}
+
+/** Pulls the host's latest public RSVP rows and applies response rows to guests. */
+export async function refreshSubmissions(cms: CmsClient): Promise<SubmissionRefreshResult> {
+  const ingested = await cms.ingestSubmissions();
+  const responses = await applyPendingResponses(cms);
+  return { ingested, responses };
 }
 
 // ── Registration review (admin) ────────────────────────────────────────────────
@@ -198,8 +215,7 @@ export async function registrationsView(
  * any unapplied responses. The "nothing shows up" debugging button.
  */
 export async function pullSubmissions(cms: CmsClient, eventId: number): Promise<Response> {
-  const ingested = await cms.ingestSubmissions();
-  const responses = await applyPendingResponses(cms);
+  const { ingested, responses } = await refreshSubmissions(cms);
   const message = `Pulled ${ingested.created} new submission${ingested.created === 1 ? '' : 's'}`
     + (ingested.more ? ' (more waiting — pull again)' : '')
     + (responses.applied ? `; applied ${responses.applied} response${responses.applied === 1 ? '' : 's'}` : '');

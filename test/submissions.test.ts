@@ -171,7 +171,7 @@ describe('rsvp_response create hook', () => {
   it('applies the response to the guest and stamps the response page', async () => {
     const calls = stubCms([
       responsePage,
-      { id: 9, page_type: 'guest', lect: { status: 'invited', response: [{}], latest_response: { '49': { status: 'invited' } } } },
+      { id: 9, page_type: 'guest', lect: { status: 'invited', allow_refill: 'yes', response: [{}], latest_response: { '49': { status: 'invited' } } } },
     ]);
 
     const response = await plugin.fetch(hookRequest({ id: 501, page_type: 'rsvp_response' }), env());
@@ -182,6 +182,7 @@ describe('rsvp_response create hook', () => {
       lect: {
         status: 'declined',
         plus_guests: '2',
+        allow_refill: '',
         'rsvp-custom-meal-preference': 'vegan',
         latest_response: {
           '49': { status: 'invited' },
@@ -222,6 +223,27 @@ describe('rsvp_response create hook', () => {
     await plugin.fetch(hookRequest({ id: 501, page_type: 'rsvp_response' }), env());
     expect(calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/9')).toBeUndefined();
     expect(calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/501')).toBeTruthy();
+  });
+
+  it('clears allow_refill on retry when the response was already logged', async () => {
+    const calls = stubCms([
+      responsePage,
+      {
+        id: 9,
+        page_type: 'guest',
+        lect: {
+          status: 'declined',
+          allow_refill: 'yes',
+          response: [{ status: 'declined', date: '2026-07-07', _ref: 'sub-uuid-1' }],
+        },
+      },
+    ]);
+
+    const response = await plugin.fetch(hookRequest({ id: 501, page_type: 'rsvp_response' }), env());
+
+    expect(response.status).toBe(200);
+    const guestPut = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/9');
+    expect(guestPut?.body).toEqual({ lect: { allow_refill: '' } });
   });
 
   it('skips entirely when the response page is already applied', async () => {
@@ -367,6 +389,27 @@ describe('registration review admin', () => {
 
     expect(calls.find((call) => call.method === 'POST' && call.path === '/__cms/ingest/submissions')).toBeTruthy();
     // The sweep applied the unapplied response it found.
+    expect(calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/9')).toBeTruthy();
+    expect(calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/501')).toBeTruthy();
+  });
+
+  it('refreshes submissions automatically when the event dashboard opens', async () => {
+    const calls = stubCms([
+      event,
+      { id: 501, uuid: 'sub-uuid-dashboard', page_type: 'rsvp_response', page_id: 9, lect: { status: 'confirmed' } },
+      { id: 9, page_type: 'guest', page_id: 80, lect: { response: [{}], _pointers: { event: '7', mail_list: '80' } } },
+      adhocList,
+    ], { scanned: 1, created: 1, more: false });
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7'), env());
+
+    expect(response.status).toBe(200);
+    const ingestIndex = calls.findIndex((call) => call.method === 'POST' && call.path === '/__cms/ingest/submissions');
+    const guestListIndex = calls.findIndex((call) => call.method === 'GET'
+      && call.path === '/__cms/pages'
+      && call.search.page_type === 'guest');
+    expect(ingestIndex).toBeGreaterThanOrEqual(0);
+    expect(guestListIndex).toBeGreaterThan(ingestIndex);
     expect(calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/9')).toBeTruthy();
     expect(calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/501')).toBeTruthy();
   });
