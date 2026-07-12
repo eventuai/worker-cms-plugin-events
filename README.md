@@ -156,8 +156,8 @@ overrides the API endpoint (tests).
 - [x] Guest lists, guest management, CSV import/export, label designer
 - [x] Signed RSVP links (multilingual, `?edm=`) — the form itself is served by
       the standalone `worker-rsvp` Worker from the published DB
-- [x] Render/send email, scheduled blasts (code done — provision the
-      `wrangler.toml` email/queue/cron/KV bindings before enabling delivery)
+- [x] Render/send email, scheduled blasts, Cloudflare Email Service or AWS SES
+      backend (code done — see [Email delivery setup](#email-delivery-setup))
 - [x] Add/remove guests from the contact database (per-list Contacts page;
       reads `contact` pages via manifest `readTypes`)
 - [x] Event archive (guest↔contact reconciliation review + archived flag;
