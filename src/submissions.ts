@@ -243,16 +243,25 @@ export async function convertRegistration(cms: CmsClient, eventId: number, regis
   const email = attr(registration.lect, 'email').trim().toLowerCase();
   const existing = guests.find((guest) => attr(guest.lect, 'registration_ref') === registration.uuid)
     ?? (email ? guests.find((guest) => attr(guest.lect, 'email').trim().toLowerCase() === email) : undefined);
+  const answers = responseAnswers(registration.lect.answers);
+  const customAnswers = Object.fromEntries(
+    Object.entries(answers).filter(([key]) => key.startsWith('rsvp-custom-')),
+  );
 
   let outcome: ConvertOutcome = 'already_converted';
   let guestId: number;
   if (existing) {
     guestId = existing.id;
     outcome = 'linked_existing';
+    await cms.update(existing.id, {
+      lect: {
+        ...customAnswers,
+        ...(Object.keys(answers).length > 0 ? { public_registration: answers } : {}),
+      },
+    });
   } else {
     const name = attr(registration.lect, 'name') || registration.name;
     const submittedAt = attr(registration.lect, 'submitted_at') || new Date().toISOString();
-    const answers = registration.lect.answers;
     const created = await cms.create({
       page_type: 'guest',
       page_id: list.id,
@@ -274,7 +283,8 @@ export async function convertRegistration(cms: CmsClient, eventId: number, regis
         registration_ref: registration.uuid,
         _pointers: { event: String(eventId), mail_list: String(list.id) },
         response: [{ status: 'confirmed', date: submittedAt, message: 'public registration', _ref: registration.uuid }],
-        ...(answers && typeof answers === 'object' ? { public_registration: answers } : {}),
+        ...customAnswers,
+        ...(Object.keys(answers).length > 0 ? { public_registration: answers } : {}),
       },
     });
     guestId = created.id;

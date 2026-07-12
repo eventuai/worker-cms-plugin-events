@@ -288,7 +288,11 @@ describe('registration review admin', () => {
       plus_guests: '1',
       language: 'en',
       submitted_at: '2026-07-07T09:00:00.000Z',
-      answers: { 'rsvp-public-source': 'Friend' },
+      answers: {
+        'rsvp-public-source': 'Friend',
+        'rsvp-custom-birthday': '12-13',
+        unexpected: 'ignored',
+      },
     },
   };
   const adhocList: FakePage = {
@@ -332,7 +336,11 @@ describe('registration review admin', () => {
         registration_ref: 'reg-uuid-1',
         _pointers: { event: '7', mail_list: '80' },
         response: [{ status: 'confirmed', date: '2026-07-07T09:00:00.000Z', message: 'public registration', _ref: 'reg-uuid-1' }],
-        public_registration: { 'rsvp-public-source': 'Friend' },
+        'rsvp-custom-birthday': '12-13',
+        public_registration: {
+          'rsvp-public-source': 'Friend',
+          'rsvp-custom-birthday': '12-13',
+        },
       },
     });
 
@@ -357,6 +365,16 @@ describe('registration review admin', () => {
     const response = await plugin.fetch(request('/__plugin/admin/events/7/registrations/601/convert', { method: 'POST' }), env());
     expect(response.status).toBe(302);
     expect(calls.find((call) => call.method === 'POST' && call.path === '/__cms/pages')).toBeUndefined();
+    const guestUpdate = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/90');
+    expect(guestUpdate?.body).toEqual({
+      lect: {
+        'rsvp-custom-birthday': '12-13',
+        public_registration: {
+          'rsvp-public-source': 'Friend',
+          'rsvp-custom-birthday': '12-13',
+        },
+      },
+    });
     const stamp = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/601');
     expect((stamp?.body as { lect?: Record<string, unknown> })?.lect).toMatchObject({ converted_guest_id: '90' });
   });
