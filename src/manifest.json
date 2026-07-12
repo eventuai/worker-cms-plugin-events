@@ -55,6 +55,7 @@
   "newViews": ["event"],
   "contentTypes": {
     "readTypes": ["contact"],
+    "writeTypes": ["contact"],
     "blueprint": {
       "event": [
         "@type", "@label", "@rfid:switch",

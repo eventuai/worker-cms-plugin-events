@@ -1724,7 +1724,7 @@ function importGuestFromValue(value: (...names: string[]) => string): IncomingGu
 }
 
 /** Identity key for matching a guest to an existing one: email if present, else name. */
-function guestMatchKey(name: string, email: string): string {
+export function guestMatchKey(name: string, email: string): string {
   const normalizedEmail = email.trim().toLowerCase();
   // Collapse internal whitespace (including newlines from multi-line CSV cells) so
   // the key is stable regardless of how the CMS normalises the stored page name.

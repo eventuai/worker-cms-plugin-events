@@ -1,0 +1,25 @@
+<div class="mb-4">
+  <h1 class="text-2xl font-bold text-gray-900">Archiving event…</h1>
+  <p class="mt-1 text-sm text-gray-500">{{ eventName | escape }}</p>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:40rem">
+  <p class="text-sm text-gray-700 mb-4">{{ summary | escape }}</p>
+  {% if auto %}
+    <p class="text-sm text-gray-600 mb-4">This event is large, so archiving runs in stages. It will continue automatically — keep this page open until it finishes.</p>
+  {% else %}
+    <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">This pass could not make progress automatically. Press “Continue archiving” to retry.</div>
+  {% endif %}
+
+  <form method="post" action="{{ action | escape }}" id="import-continue-form" data-auto="{% if auto %}1{% else %}0{% endif %}" data-long-running-form>
+    <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Continue archiving" aria-label="Continue archiving" data-loading-label="Continuing archiving">
+        <span>Continue archiving</span>
+      </button>
+      <a href="{{ backHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Stop for now</a>
+    </div>
+  </form>
+</div>
+
+<script src="/admin/plugins/events/assets/long-running-submit.js" defer></script>
+<script src="/admin/plugins/events/assets/import-continue.js" defer></script>
