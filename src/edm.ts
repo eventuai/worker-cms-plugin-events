@@ -661,10 +661,19 @@ async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: nu
     tokenValues: { unsubscribe_url: '#' },
   });
   const eventId = pageId(pointer(edm.lect, 'event'));
+  let eventSlug = '';
+  if (eventId) {
+    try {
+      const event = await cms.get(eventId);
+      if (event.page_type === 'event') eventSlug = event.slug;
+    } catch (error) {
+      if (!(error instanceof CmsApiError && error.status === 404)) throw error;
+    }
+  }
   const publicBase = env.PUBLIC_BASE_URL?.replace(/\/+$/, '');
   const languagePrefix = language && PUBLIC_RSVP_LANGUAGES.includes(language.toLowerCase()) ? `/${language.toLowerCase()}` : '';
   const registrationHref = publicBase && eventId
-    ? `${publicBase}${languagePrefix}/rsvp/${eventId}/${edm.id}`
+    ? `${publicBase}${languagePrefix}/rsvp/${encodeURIComponent(eventSlug || String(eventId))}/${encodeURIComponent(edm.slug || String(edm.id))}`
     : '';
   const registrationLink = registrationHref
     ? ` <a href="${escapeHtml(registrationHref)}" target="_blank" rel="noopener" style="color:inherit;font-weight:700;margin-left:6px;text-decoration:underline;text-underline-offset:2px">Open registration form ↗</a>`

@@ -1856,9 +1856,12 @@ describe('EDM and labels', () => {
   it('renders an EDM preview through the Liquid → MJML → HTML pipeline', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch Night', slug: 'launch-night', lect: {} } });
+      }
       if (url.pathname === '/__cms/pages/12') {
         return Response.json({ page: {
-          id: 12, page_type: 'edm', name: 'Invite', page_id: 7,
+          id: 12, page_type: 'edm', name: 'Invite', slug: 'invite', page_id: 7,
           lect: {
             subject: { en: 'You are invited' },
             heading: { en: 'Join us in October' },
@@ -1892,7 +1895,7 @@ describe('EDM and labels', () => {
     expect(html).not.toContain('<mj-');
     expect(html).toContain('role="status"');
     expect(html).toContain('Preview of EDM: Invite');
-    expect(html).toContain('href="https://rsvp.eventuai.com/rsvp/7/12"');
+    expect(html).toContain('href="https://rsvp.eventuai.com/rsvp/launch-night/invite"');
     expect(html).toContain('Open registration form ↗');
     // Tokens and blocks rendered.
     expect(html).toContain('Join us in October');
