@@ -34,7 +34,7 @@ import { signPayload, verifyPayload } from './crypto';
 import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
 import { cmsUserId, eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
-import { archiveEvent, archiveReview, continueEventArchive, isArchived } from './archive';
+import { archiveEvent, archiveReview, continueEventArchive, isArchived, stopEventArchive } from './archive';
 import {
   ensureAdhocGuestList,
   isAdhocList,
@@ -426,6 +426,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
     if (eventId && sub === 'archive') {
       if (!access.canEdit) return forbidden();
       if (segments[3] === 'continue' && request.method === 'POST') return await continueEventArchive(cms, env.VIEWS, eventId, jsonOnly);
+      if (segments[3] === 'stop' && request.method === 'POST') return await stopEventArchive(cms, eventId);
       if (request.method === 'POST') return await archiveEvent(request, cms, env.VIEWS, eventId, jsonOnly);
       return await archiveReview(cms, env.VIEWS, eventId, jsonOnly);
     }

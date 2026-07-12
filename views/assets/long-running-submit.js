@@ -16,6 +16,9 @@
 
       var submitter = event.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
       document.querySelectorAll('button').forEach(function (button) {
+        // Stop controls on progress pages stay usable while a pass runs —
+        // their submit both cancels the in-flight POST and ends the loop.
+        if (button.hasAttribute('data-stop-continue')) return;
         button.disabled = true;
         button.setAttribute('aria-disabled', 'true');
         button.style.cursor = 'wait';

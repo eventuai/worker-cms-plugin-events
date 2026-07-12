@@ -345,6 +345,21 @@ export async function continueEventArchive(cms: CmsClient, views: Fetcher, event
   return runArchivePass(cms, views, eventId, event.name, jsonOnly);
 }
 
+/**
+ * POST /events/:id/archive/stop — pause a running apply: clears the
+ * `archiving` flag so the event is no longer mid-archive. Progress already
+ * made (contact merges, stamps, trashed submissions) is kept — applying again
+ * later skips it and continues from where this run stopped.
+ */
+export async function stopEventArchive(cms: CmsClient, eventId: number): Promise<Response> {
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  if (isArchiving(event.lect)) {
+    await cms.update(eventId, { lect: { archiving: '', archiving_at: '' } });
+  }
+  return redirect(withFlash(`${ADMIN_BASE}/events/${eventId}`, 'Archiving stopped — progress made so far is kept; open Archive again to continue.'));
+}
+
 async function runArchivePass(cms: CmsClient, views: Fetcher, eventId: number, eventName: string, jsonOnly: boolean): Promise<Response> {
   const pass = new ArchivePass();
   let done: boolean;
@@ -589,6 +604,7 @@ function archiveProgressView(
     summary,
     auto,
     action: `${ADMIN_BASE}/events/${eventId}/archive/continue`,
+    stopAction: `${ADMIN_BASE}/events/${eventId}/archive/stop`,
     backHref: `${ADMIN_BASE}/events/${eventId}`,
   }, jsonOnly);
 }

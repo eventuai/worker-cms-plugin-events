@@ -343,6 +343,22 @@ describe('archive apply', () => {
     expect(calls.filter((call) => call.method === 'DELETE')).toEqual([]);
   });
 
+  it('stop clears the in-progress archiving flag and keeps progress', async () => {
+    const pages = fixture();
+    pages[0].lect = { archiving: 'yes', archiving_at: '2026-07-12T00:00:00.000Z' };
+    const calls = stubCms(pages);
+    const response = await plugin.fetch(request('/__plugin/admin/events/100/archive/stop', { method: 'POST' }), env());
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toContain('/admin/plugins/events/events/100');
+    const eventPut = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/100');
+    expect(lectOf(eventPut)).toMatchObject({ archiving: '', archiving_at: '' });
+    expect(lectOf(eventPut).archived).toBeUndefined();
+    // Stop only clears the flag — nothing is merged or trashed.
+    expect(calls.filter((call) => call.method === 'POST' && call.path === '/__cms/pages')).toEqual([]);
+    expect(calls.filter((call) => call.method === 'DELETE')).toEqual([]);
+  });
+
   it('restore clears the archived flag', async () => {
     const pages = fixture();
     pages[0].lect = { archived: 'yes' };

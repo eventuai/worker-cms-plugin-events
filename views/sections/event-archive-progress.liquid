@@ -11,12 +11,13 @@
     <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">This pass could not make progress automatically. Press “Continue archiving” to retry.</div>
   {% endif %}
 
+  <form method="post" action="{{ stopAction | escape }}" id="archive-stop-form"></form>
   <form method="post" action="{{ action | escape }}" id="import-continue-form" data-auto="{% if auto %}1{% else %}0{% endif %}" data-long-running-form>
     <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
       <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Continue archiving" aria-label="Continue archiving" data-loading-label="Continuing archiving">
         <span>Continue archiving</span>
       </button>
-      <a href="{{ backHref | escape }}" data-stop-continue class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Stop for now</a>
+      <button type="submit" form="archive-stop-form" data-stop-continue class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer sm:w-auto">Stop for now</button>
     </div>
   </form>
 </div>
