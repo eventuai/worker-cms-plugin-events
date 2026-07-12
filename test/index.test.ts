@@ -3141,6 +3141,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(html).toContain('/admin/plugins/events/rsvp/8/send-edm?quality=good');
     expect(html).toContain('data-autosubmit');                                   // EDM dropdown
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/55/send"'); // per-guest send
+    expect(html).not.toContain('Are you sure you want to re-send the email to this guest?');
     expect(html).toContain('href="/admin/pages/55/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Frsvp%2F8"');
     expect(html).not.toContain('href="/admin/plugins/events/rsvp/8/guests/55"');
     expect(html).toContain('>good<');                                            // quality chip
@@ -3173,6 +3174,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     const html = await renderedText(response);
     expect(html).toContain('bg-white text-gray-700 border-gray-300');
     expect(html).toContain('>Re-send</button>');
+    expect(html).toContain('data-confirm="Are you sure you want to re-send the email to this guest? This will send another copy of the invitation email."');
   });
 
   it('sends the EDM to one guest and records it as sent', async () => {
