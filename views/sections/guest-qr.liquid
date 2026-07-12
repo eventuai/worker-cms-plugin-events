@@ -17,7 +17,7 @@
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center" style="max-width:22rem">
-  <div style="width:320px;max-width:100%;margin:0 auto">{{ qrSvg }}</div>
+  <img src="{{ qrPngSrc | escape }}" alt="QR code for {{ guestName | escape }}" width="320" style="display:block;width:320px;max-width:100%;height:auto;margin:0 auto">
 </div>
 {% if pairAction != blank %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-4" style="max-width:32rem">

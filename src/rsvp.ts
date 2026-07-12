@@ -160,7 +160,7 @@ export async function handleRsvpAdmin(
   request: Request,
   cms: CmsClient,
   views: Fetcher,
-  env: EdmEnv,
+  env: EdmEnv & { IMAGES?: ImagesBinding },
   segments: string[],
   url: URL,
   qr: QrOptions = {},
@@ -283,6 +283,10 @@ export async function handleRsvpAdmin(
     if (segments[3] === 'qrcode') {
       if (!canCheckIn) return forbidden();
       return guestQr(cms, views, listId, guestId, qr, jsonOnly, access);
+    }
+    if (segments[3] === 'qrcode.png') {
+      if (!canCheckIn) return forbidden();
+      return guestQrPng(cms, listId, guestId, env.IMAGES);
     }
     return new Response('not found', { status: 404 });
   }
@@ -1188,12 +1192,9 @@ async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Prom
  * `EAI{list-base32}:{guest-delta-base32}:{M|plus-index}:{sig-prefix}`.
  */
 async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, _qr: QrOptions, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
-  const context = await guestListContext(cms, listId);
-  const guest = await cms.get(guestId);
-  if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
-
-  const payload = compactCheckinCode(listId, guestId);
-  const values = guestValues(guest);
+  const ticket = await guestQrTicket(cms, listId, guestId);
+  if (!ticket) return new Response('not found', { status: 404 });
+  const { context, guest, payload, values } = ticket;
   const plusGuestQrs = plusGuestQrCodes(listId, guestId, values.plus_guests);
 
   return adminView(views, `QR — ${values.name}`, 'guest-qr', {
@@ -1206,16 +1207,52 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     pairedQrCode: values.paired_qrcode,
     pairAction: access?.canCheckIn === false ? '' : `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/pair-qrcode`,
     payload,
-    qrSvg: qrTicketSvg(payload, {
+    qrPngSrc: `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/qrcode.png${guest.updated_at ? `?r=${encodeURIComponent(guest.updated_at)}` : ''}`,
+    plusGuestQrs,
+    hasPlusGuestQrs: plusGuestQrs.length > 0,
+  }, jsonOnly);
+}
+
+async function guestQrPng(cms: CmsClient, listId: number, guestId: number, images?: ImagesBinding): Promise<Response> {
+  if (!images) return new Response('PNG rendering is not configured', { status: 501 });
+  const ticket = await guestQrTicket(cms, listId, guestId);
+  if (!ticket) return new Response('not found', { status: 404 });
+  const stream = new Response(ticket.svg, { headers: { 'content-type': 'image/svg+xml' } }).body!;
+  const rendered = await images.input(stream).output({ format: 'image/png' });
+  return new Response(rendered.image(), {
+    headers: {
+      'content-type': 'image/png',
+      'cache-control': 'private, max-age=86400',
+      'content-disposition': `inline; filename="guest-${guestId}-qrcode.png"`,
+    },
+  });
+}
+
+async function guestQrTicket(cms: CmsClient, listId: number, guestId: number): Promise<{
+  context: GuestListContext;
+  guest: CmsPage;
+  values: Record<string, string>;
+  payload: string;
+  svg: string;
+} | null> {
+  const context = await guestListContext(cms, listId);
+  const guest = await cms.get(guestId);
+  if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return null;
+  const values = guestValues(guest);
+  const payload = compactCheckinCode(listId, guestId);
+  return {
+    context,
+    guest,
+    values,
+    payload,
+    svg: qrTicketSvg(payload, {
       keyword: context.event?.name ?? context.list.name,
       name: values.name,
       organization: values.organization,
       jobTitle: values.job_title,
       remark: values.qrcode_remark,
     }),
-    plusGuestQrs,
-    hasPlusGuestQrs: plusGuestQrs.length > 0,
-  }, jsonOnly);
+  };
 }
 
 function plusGuestQrCodes(

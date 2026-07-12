@@ -21,6 +21,7 @@ interface PluginEnv {
   AWS_ACCESS_KEY_ID?: string;
   AWS_SECRET_ACCESS_KEY?: string;
   VIEWS: Fetcher;
+  IMAGES?: ImagesBinding;
 }
 
 interface SignedQr {
@@ -3049,17 +3050,13 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     const view = await response.json() as {
       data: {
         payload: string;
-        qrSvg: string;
+        qrPngSrc: string;
         pairAction: string;
         pairedQrCode: string;
         plusGuestQrs: Array<{ label: string; payload: string; qrSvg: string }>;
       };
     };
-    expect(view.data.qrSvg).toContain('<svg');
-    expect(view.data.qrSvg).toContain('<rect'); // QR modules rendered
-    expect(view.data.qrSvg).toContain('Launch');
-    expect(view.data.qrSvg).toContain('Ada');
-    expect(view.data.qrSvg).toContain('Analytical Engines');
+    expect(view.data.qrPngSrc).toBe('/admin/plugins/events/rsvp/8/guests/55/qrcode.png');
     expect(view.data.payload).toBe(compactCheckinCode(8, 55));
     expect(view.data.pairAction).toBe('/admin/plugins/events/rsvp/8/guests/55/pair-qrcode');
     expect(view.data.pairedQrCode).toBe('BADGE-OLD');
@@ -3068,6 +3065,45 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       { label: 'Plus guest 2', payload: compactCheckinCode(8, 55, 1) },
     ]);
     expect(view.data.plusGuestQrs[0].qrSvg).toContain('<svg');
+  });
+
+  it('rasterizes the guest QR ticket through the Cloudflare Images binding', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: { organization: 'Analytical Engines', _pointers: { mail_list: '8' } } } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+    let sourceSvg = '';
+    const images = {
+      input(stream: ReadableStream<Uint8Array>) {
+        return {
+          async output(options: ImageOutputOptions) {
+            sourceSvg = await new Response(stream).text();
+            expect(options).toEqual({ format: 'image/png' });
+            return {
+              image: () => new Response('png-bytes').body!,
+              contentType: () => 'image/png',
+              response: () => new Response('png-bytes', { headers: { 'content-type': 'image/png' } }),
+            };
+          },
+        };
+      },
+    } as unknown as ImagesBinding;
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode.png', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', IMAGES: images }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('content-disposition')).toContain('guest-55-qrcode.png');
+    expect(await response.text()).toBe('png-bytes');
+    expect(sourceSvg).toContain('<svg');
+    expect(sourceSvg).toContain('Launch');
+    expect(sourceSvg).toContain('Ada');
   });
 
   it('pairs a badge QR code to a guest and checks them in when needed', async () => {
