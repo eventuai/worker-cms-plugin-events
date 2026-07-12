@@ -1889,6 +1889,8 @@ describe('EDM and labels', () => {
     expect(html).toContain('<!doctype html>');
     expect(html).not.toContain('<mjml');
     expect(html).not.toContain('<mj-');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('Preview of EDM: Invite');
     // Tokens and blocks rendered.
     expect(html).toContain('Join us in October');
     expect(html).toContain('<p>We would love to see you.</p>');
@@ -1952,8 +1954,10 @@ describe('EDM and labels', () => {
 
     expect(response.status).toBe(200);
     const html = await renderedText(response);
-    // The API's HTML is returned verbatim — the built-in compiler was bypassed.
-    expect(html).toBe('<html><body>FROM_MJML_API</body></html>');
+    // The API's HTML is used, with the admin-only preview banner inserted.
+    expect(html).toContain('<body><div role="status"');
+    expect(html).toContain('Preview of EDM: Invite');
+    expect(html).toContain('FROM_MJML_API');
     // Basic auth uses APP_ID:SECRET_KEY and the body carries the rendered MJML.
     expect(mjmlAuth).toBe(`Basic ${btoa('app-1:secret-2')}`);
     expect(JSON.parse(mjmlBody).mjml).toContain('<mjml>');
@@ -2057,12 +2061,14 @@ describe('EDM and labels', () => {
     const preview = () => plugin.fetch(request('/__plugin/admin/edm/12/preview', { headers: { 'x-plugin-secret': 'shared-secret' } }), e);
 
     const first = await preview();
-    expect(await first.text()).toBe('<html><body>CACHED_OUTPUT</body></html>');
+    const firstHtml = await first.text();
+    expect(firstHtml).toContain('Preview of EDM: Invite');
+    expect(firstHtml).toContain('CACHED_OUTPUT');
     expect(apiCalls).toBe(1);
     expect(store.size).toBe(1);
 
     const second = await preview();
-    expect(await second.text()).toBe('<html><body>CACHED_OUTPUT</body></html>');
+    expect(await second.text()).toBe(firstHtml);
     // Served from KV — the API was not hit again.
     expect(apiCalls).toBe(1);
   });

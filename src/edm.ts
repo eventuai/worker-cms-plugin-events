@@ -654,12 +654,16 @@ async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number, jsonO
 async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, language?: string): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
-  const html = await renderEmail(views, edm, env, {
+  const emailHtml = await renderEmail(views, edm, env, {
     server: env.PUBLIC_BASE_URL,
     language,
     // No recipient in the editor preview — neutralize the per-guest tokens.
     tokenValues: { unsubscribe_url: '#' },
   });
+  const banner = `<div role="status" style="position:sticky;top:0;z-index:2147483647;padding:7px 12px;background:#fdba74;color:#9a3412;text-align:center;font:600 14px/20px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-sizing:border-box">Preview of EDM: ${escapeHtml(edm.name)}</div>`;
+  const html = /<body(?:\s[^>]*)?>/i.test(emailHtml)
+    ? emailHtml.replace(/<body(?:\s[^>]*)?>/i, (body) => `${body}${banner}`)
+    : `${banner}${emailHtml}`;
   return new Response(html, {
     headers: {
       'content-type': 'text/html; charset=utf-8',
@@ -1097,6 +1101,16 @@ function applyTemplateTokens(html: string, tokens: Record<string, string>): stri
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[char] ?? char);
 }
 
 /** Flat token map the MJML layout reads (content + styling), each a string. */
