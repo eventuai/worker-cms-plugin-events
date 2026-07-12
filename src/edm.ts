@@ -2,6 +2,7 @@ import { CmsApiError, CmsClient, attr, blocks, chargeCreditAction, items, locali
 import { signPayload } from './crypto';
 import { mjmlToHtml } from './mjml';
 import { qrSvg } from './qr';
+import { sendViaSes, sesConfigured, type SesEnv } from './ses';
 import { renderLiquid } from './templates/liquid';
 import { adminView, clientViewResponse, notFoundView } from './templates/views';
 import { redirect } from '@lionrockjs/worker-cms-plugin';
@@ -29,7 +30,7 @@ export interface EmailDelivery extends OutboundEmail {
   tenantId?: string;
 }
 
-export interface EdmEnv {
+export interface EdmEnv extends SesEnv {
   EMAIL?: { send(message: OutboundEmail): Promise<unknown> };
   MAIL_QUEUE?: Queue<EmailDelivery>;
   EMAIL_FROM?: string;
@@ -552,8 +553,14 @@ function editorHref(edmId: number, params: Record<string, string> = {}): string 
 }
 
 export async function deliverQueuedEmail(env: EdmEnv, delivery: EmailDelivery): Promise<void> {
-  if (!env.EMAIL || !env.EMAIL_FROM) throw new Error('EMAIL and EMAIL_FROM must be configured before sending EDMs');
-  await env.EMAIL.send({ ...delivery, from: delivery.from || env.EMAIL_FROM });
+  const from = delivery.from || env.EMAIL_FROM;
+  if (!from) throw new Error('EMAIL_FROM (or the EDM sender) must be configured before sending EDMs');
+  // AWS SES takes precedence over the Cloudflare Email binding: the binding
+  // can only send from domains on Cloudflare DNS, so an install that bothers
+  // to configure SES credentials means them to be used.
+  if (sesConfigured(env)) return sendViaSes(env, { ...delivery, from });
+  if (!env.EMAIL) throw new Error('Configure the EMAIL binding or the AWS_SES_* vars before sending EDMs');
+  await env.EMAIL.send({ ...delivery, from });
 }
 
 /** Queues every due mail-list blast once; invoked by the optional Cron Trigger. */

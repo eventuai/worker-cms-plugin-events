@@ -17,6 +17,9 @@ interface PluginEnv {
   MAIL_TRACKING?: KVNamespace;
   EMAIL?: { send(message: Record<string, unknown>): Promise<unknown> };
   EMAIL_FROM?: string;
+  AWS_SES_REGION?: string;
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
   VIEWS: Fetcher;
 }
 
@@ -1933,6 +1936,48 @@ describe('EDM and labels', () => {
       to: 'guest@example.com',
       replyTo: 'rsvp@example.com',
       bcc: ['archive@example.com', 'log@example.com'],
+    });
+  });
+
+  it('sends the test email through AWS SES when the AWS vars are configured', async () => {
+    let sesBody: string | undefined;
+    let sesAuth: string | null | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.hostname === 'email.ap-southeast-1.amazonaws.com') {
+        sesBody = String(init?.body);
+        sesAuth = new Headers(init?.headers).get('authorization');
+        return Response.json({ MessageId: 'ses-1' });
+      }
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: {
+          id: 12, page_type: 'edm', name: 'Invite', page_id: 7,
+          lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' }, sender: 'events@example.com' },
+        } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/send-test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ recipient: 'guest@example.com' }),
+    }), env({
+      CMS_URL: 'https://cms.test',
+      PLUGIN_SECRET: 'shared-secret',
+      // No EMAIL binding — SES is the sole backend here.
+      AWS_SES_REGION: 'ap-southeast-1',
+      AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+      AWS_SECRET_ACCESS_KEY: 'secret-key',
+    }));
+
+    expect(response.status).toBe(302);
+    expect(sesAuth).toMatch(/^AWS4-HMAC-SHA256 Credential=AKIAEXAMPLE\//);
+    expect(JSON.parse(sesBody ?? '')).toMatchObject({
+      FromEmailAddress: 'events@example.com',
+      Destination: { ToAddresses: ['guest@example.com'] },
+      Content: { Simple: { Subject: { Data: 'Hi' } } },
     });
   });
 

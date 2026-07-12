@@ -46,9 +46,24 @@ CMS_URL = "https://cms.eventuai.com"
 # CHECKIN_BASE_URL = "https://checkin.eventuai.com"
 
 # ── EDM email backbone (uncomment + provision before enabling delivery) ────────
-# Cloudflare Email Service binding. EMAIL_FROM must be a verified sender address.
+# Pick ONE sending backend; EMAIL_FROM is the default sender either way (an
+# EDM's own `sender` field overrides it per-EDM).
+#
+# Option A — Cloudflare Email Service binding. Only works when the sender
+# domain's DNS is hosted ON Cloudflare (the service verifies it there):
 # [[send_email]]
 # name = "EMAIL"
+#
+# Option B — AWS SES v2 (any DNS host; the legacy eventuai identities carry
+# over). When the three AWS_* values are set they take precedence over the
+# EMAIL binding. Verify the sender domain/address in SES first:
+#   wrangler secret put AWS_ACCESS_KEY_ID
+#   wrangler secret put AWS_SECRET_ACCESS_KEY
+# and in [vars]:
+#   AWS_SES_REGION = "ap-southeast-1"
+#   AWS_SES_CONFIGURATION_SET = "default"   # optional (bounce/open tracking)
+# Multi-tenant: any of these may instead live in a TENANTS record's `vars` to
+# give a tenant its own SES account/region/sender.
 
 # [vars]
 # EMAIL_FROM = "events@example.com"
