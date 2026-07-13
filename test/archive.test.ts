@@ -113,6 +113,25 @@ function stubCms(pages: FakePage[]): RecordedCall[] {
       rows = rows.filter((row) => !ids.has(row.id));
       return Response.json({ removed: ids.size });
     }
+    if (url.pathname === '/__cms/pages/batch' && method === 'POST') {
+      const created = ((call.body?.pages ?? []) as Array<Record<string, unknown>>).map((body) => {
+        nextId += 1;
+        const page = {
+          uuid: `uuid-${nextId}`,
+          name: String(body.name ?? `Page ${nextId}`),
+          slug: `page-${nextId}`,
+          page_id: (body.page_id as number | null) ?? null,
+          start: null,
+          created_at: '2026-07-07 00:00:00',
+          ...body,
+          lect: (body.lect ?? {}) as Record<string, unknown>,
+          id: nextId,
+        } as typeof rows[number];
+        rows.push(page);
+        return page;
+      });
+      return Response.json({ created, errors: [] });
+    }
     const idMatch = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
     if (idMatch) {
       const page = rows.find((row) => row.id === Number(idMatch[1]));
@@ -242,6 +261,31 @@ describe('archive preview', () => {
 });
 
 describe('archive apply', () => {
+  it('creates multiple unmatched contacts in one host batch', async () => {
+    const pages = fixture();
+    pages.push({
+      id: 6,
+      page_type: 'guest',
+      name: 'Second New Person',
+      lect: { name: { en: 'Second' }, last_name: { en: 'New Person' }, email: 'second@x.com', _pointers: { mail_list: '201', event: '100' } },
+    });
+    const calls = stubCms(pages);
+
+    await plugin.fetch(request('/__plugin/admin/events/100/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'action=apply',
+    }), env());
+
+    const batches = calls.filter((call) => call.method === 'POST' && call.path === '/__cms/pages/batch');
+    expect(batches).toHaveLength(1);
+    expect(((batches[0].body?.pages ?? []) as Array<Record<string, unknown>>).map((page) => page.name)).toEqual([
+      'New Person',
+      'Second New Person',
+    ]);
+    expect(calls.filter((call) => call.method === 'POST' && call.path === '/__cms/pages')).toEqual([]);
+  });
+
   it('merges guests into contacts, trashes submissions and archives the event', async () => {
     const calls = stubCms(fixture());
     const response = await plugin.fetch(request('/__plugin/admin/events/100/archive', {
@@ -254,10 +298,11 @@ describe('archive apply', () => {
     expect(response.headers.get('location')).toContain('/admin/plugins/events/events?archived=1');
 
     // One new contact created — for guest 4, with the history entry inline.
-    const creates = calls.filter((call) => call.method === 'POST' && call.path === '/__cms/pages');
+    const createBatch = calls.find((call) => call.method === 'POST' && call.path === '/__cms/pages/batch');
+    const creates = (createBatch?.body?.pages ?? []) as Array<Record<string, unknown>>;
     expect(creates).toHaveLength(1);
-    expect(creates[0].body).toMatchObject({ page_type: 'contact', name: 'New Person' });
-    const createdLect = lectOf(creates[0]);
+    expect(creates[0]).toMatchObject({ page_type: 'contact', name: 'New Person' });
+    const createdLect = (creates[0].lect ?? {}) as Record<string, unknown>;
     expect(createdLect.source).toBe('events-archive');
     expect(createdLect.email).toEqual([{ type: 'other', email: 'new@x.com' }]);
     expect(createdLect.position).toEqual([{ type: 'work', organization_name: { en: 'Acme' }, title: { en: 'CTO' } }]);
@@ -324,7 +369,8 @@ describe('archive apply', () => {
     expect(response.status).toBe(302);
 
     const fresh = calls.slice(alreadyMade);
-    expect(fresh.filter((call) => call.method === 'POST' && call.path === '/__cms/pages')).toEqual([]);
+    expect(fresh.filter((call) => call.method === 'POST' && ['/__cms/pages', '/__cms/pages/batch'].includes(call.path))).toEqual([]);
+    expect(fresh.filter((call) => call.method === 'GET' && call.path === '/__cms/pages' && call.search.page_type === 'contact')).toEqual([]);
     expect(fresh.filter((call) => call.method === 'PUT' && /\/pages\/(1|2|3|4|5|30\d)$/.test(call.path))).toEqual([]);
     expect(fresh.filter((call) => call.method === 'DELETE')).toEqual([]);
   });

@@ -90,12 +90,15 @@ async function loadContactIndex(cms: CmsClient): Promise<ContactIndex> {
   const byId = new Map<string, CmsPage>();
   const byEmail = new Map<string, CmsPage>();
   const byName = new Map<string, CmsPage | null>();
-  let total = 0;
-  let requests = 0;
-  for (let offset = 0; offset < CONTACT_CAP; offset += 500) {
-    const { pages, total: reported } = await cms.list('contact', { limit: 500, offset });
-    requests += 1;
-    total = reported;
+  const first = await cms.list('contact', { limit: 500, offset: 0 });
+  const total = first.total;
+  const offsets: number[] = [];
+  for (let offset = 500; offset < Math.min(total, CONTACT_CAP); offset += 500) offsets.push(offset);
+  const remaining = await Promise.all(
+    offsets.map((offset) => cms.list('contact', { limit: 500, offset })),
+  );
+  const pagesByRequest = [first, ...remaining];
+  for (const { pages } of pagesByRequest) {
     for (const contact of pages) {
       byId.set(String(contact.id), contact);
       const fields = contactToGuestFields(contact);
@@ -104,9 +107,12 @@ async function loadContactIndex(cms: CmsClient): Promise<ContactIndex> {
       const name = normalizedName(fields.name);
       if (name) byName.set(name, byName.has(name) ? null : contact);
     }
-    if (offset + pages.length >= total || pages.length === 0) break;
   }
-  return { byId, byEmail, byName, requests, capped: total > CONTACT_CAP };
+  return { byId, byEmail, byName, requests: pagesByRequest.length, capped: total > CONTACT_CAP };
+}
+
+function emptyContactIndex(): ContactIndex {
+  return { byId: new Map(), byEmail: new Map(), byName: new Map(), requests: 0, capped: false };
 }
 
 // ── Classification (shared by preview and apply) ──────────────────────────────
@@ -217,16 +223,25 @@ function classifyGuest(
 }
 
 async function buildArchivePlan(cms: CmsClient, eventId: number): Promise<ArchivePlan> {
-  const contacts = await loadContactIndex(cms);
   const lists = await listByEvent(cms, 'mail_list', eventId);
+  const guestsByList = await Promise.all(
+    lists.map((list) => cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } })),
+  );
+  const guests = guestsByList.flat();
+
+  // Once every guest is stamped, trailing passes only need to trash remaining
+  // submissions. Avoid reloading up to 2,000 fat contact rows in that case.
+  const contacts = guests.some((guest) => !attr(guest.lect, 'contact_merged_at').trim())
+    ? await loadContactIndex(cms)
+    : emptyContactIndex();
   let readRequests = contacts.requests + 1;
 
   const rows: ArchiveRow[] = [];
   const byKey = new Map<string, ArchiveRow>();
-  for (const list of lists) {
-    const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
-    readRequests += Math.max(1, Math.ceil(guests.length / 500));
-    for (const guest of guests) rows.push(classifyGuest(guest, list.name, contacts, byKey));
+  for (const [index, list] of lists.entries()) {
+    const listGuests = guestsByList[index];
+    readRequests += Math.max(1, Math.ceil(listGuests.length / 500));
+    for (const guest of listGuests) rows.push(classifyGuest(guest, list.name, contacts, byKey));
   }
   return { rows, contacts, readRequests };
 }
@@ -303,7 +318,7 @@ class ArchivePass {
   capped = false;
 
   get done(): boolean {
-    return this.capped || this.spent >= ARCHIVE_PASS_BUDGET;
+    return this.capped || this.spent >= DEFAULT_ARCHIVE_PASS_BUDGET;
   }
 
   get progressed(): boolean {
@@ -421,6 +436,7 @@ async function archivePass(cms: CmsClient, eventId: number, pass: ArchivePass): 
 
   const pending = plan.rows.filter((row) => row.category !== 'merged');
   try {
+    await createNewContacts(cms, event, pending, contactByKey, plan.contacts, pass);
     for (const [index, row] of pending.entries()) {
       // Always process at least one guest so a plan whose reads alone exhaust
       // the estimate still makes progress; the runtime cap is the hard stop.
@@ -433,6 +449,42 @@ async function archivePass(cms: CmsClient, eventId: number, pass: ArchivePass): 
     if (!isSubrequestLimitError(error)) throw error;
     pass.capped = true;
     return false;
+  }
+}
+
+/** Creates distinct unmatched contacts in bounded host batches. */
+async function createNewContacts(
+  cms: CmsClient,
+  event: CmsPage,
+  pending: ArchiveRow[],
+  contactByKey: Map<string, string>,
+  contacts: ContactIndex,
+  pass: ArchivePass,
+): Promise<void> {
+  const rows: ArchiveRow[] = [];
+  const seen = new Set<string>();
+  for (const row of pending) {
+    if (row.category !== 'new' || contactByKey.has(row.matchKey) || seen.has(row.matchKey)) continue;
+    seen.add(row.matchKey);
+    rows.push(row);
+  }
+
+  for (let start = 0; start < rows.length; start += CONTACT_CREATE_BATCH) {
+    if (start > 0 && pass.done) return;
+    const chunk = rows.slice(start, start + CONTACT_CREATE_BATCH);
+    pass.spend(1);
+    const result = await cms.batchCreate(chunk.map((row) => contactInputFromGuest(event, row)));
+    if (result.errors.length) {
+      const first = result.errors[0];
+      throw new CmsApiError(400, `batch_item_${first.index}:${first.error}`, 'POST', '/pages/batch');
+    }
+    for (const [index, contact] of result.created.entries()) {
+      const row = chunk[index];
+      const contactId = String(contact.id);
+      contacts.byId.set(contactId, contact);
+      contactByKey.set(row.matchKey, contactId);
+      pass.contactsCreated += 1;
+    }
   }
 }
 
