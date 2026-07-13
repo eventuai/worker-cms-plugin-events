@@ -116,12 +116,12 @@
       <select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="target_mail_list">
         <option value="">Select a list</option>
         {% for list in moveLists %}<option value="{{ list.id }}">{{ list.name | escape }}</option>{% endfor %}</select></label><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Move guest" aria-label="Move guest"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Move guest</span></button></form>{% endif %}
-  {% if deleteAction %}<form id="guest-delete-form" method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest?"></form>{% endif %}
+  {% if deleteAction != blank %}<form id="guest-delete-form" method="post" action="{{ deleteAction | escape }}" data-confirm="Delete this guest?"></form>{% endif %}
   <div class="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
     {% unless readOnly %}<button form="guest-form" type="submit" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">Save guest</button>{% endunless %}
     <a href="{{ listHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{% if readOnly %}Back{% else %}Cancel{% endif %}</a>
-    {% if qrHref %}<a href="{{ qrHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">QR code</a>{% endif %}
-    {% if deleteAction %}<button form="guest-delete-form" type="submit" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">Delete</button>{% endif %}
+    {% if qrHref != blank %}<a href="{{ qrHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">QR code</a>{% endif %}
+    {% if deleteAction != blank %}<button form="guest-delete-form" type="submit" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">Delete</button>{% endif %}
   </div>
 </div>
 

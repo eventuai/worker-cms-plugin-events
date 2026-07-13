@@ -611,7 +611,7 @@ describe('events admin', () => {
         return Response.json({ pages: [{ id: 50, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        return Response.json({ pages: [{ id: 55, page_type: 'guest', name: 'Ada', lect: { status: 'confirmed', _pointers: { mail_list: '8' } } }], total: 1 });
+        return Response.json({ pages: [{ id: 55, page_type: 'guest', name: 'Ada', updated_at: '2026-01-01T10:00:00Z', lect: { status: 'confirmed', _pointers: { mail_list: '8' } } }], total: 1 });
       }
       return new Response('not found', { status: 404 });
     });
