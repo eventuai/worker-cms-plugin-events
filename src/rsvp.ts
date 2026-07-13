@@ -378,7 +378,9 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
   if (!archived && !pages.some(isAdhocList)) pages.push(await createAdhocGuestList(cms, eventId));
   return adminView(views, `Guest lists — ${event.name}`, 'guest-lists', {
     title: `Guest lists — ${event.name}`,
-    subtitle: 'Drag a list to reorder it; the order is shared across the event.',
+    subtitle: archived
+      ? 'Guest lists are read-only while this event is archived.'
+      : 'Drag a list to reorder it; the order is shared across the event.',
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     archived,
     newHref: canEdit && !archived ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : '',
