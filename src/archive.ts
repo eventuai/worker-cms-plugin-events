@@ -276,6 +276,9 @@ export async function archiveReview(cms: CmsClient, views: Fetcher, eventId: num
       listName: row.listName,
       email: attr(row.guest.lect, 'email'),
       detail: row.detail,
+      // Linked / likely / merged rows resolve to a contact page; the preview
+      // links it (opened in a new tab) so the reviewer can check the match.
+      contactHref: row.contactId ? `/admin/pages/${row.contactId}/edit` : '',
     })),
     moreCount: Math.max(0, rows.length - PREVIEW_ROW_CAP),
   });
