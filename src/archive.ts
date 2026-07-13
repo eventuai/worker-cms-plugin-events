@@ -31,6 +31,7 @@ import {
   items,
   listByEvent,
   localized,
+  pointer,
   type CmsPage,
   type CmsPageInput,
 } from './cms';
@@ -56,9 +57,8 @@ export function archivePassBudget(env: { ARCHIVE_PASS_BUDGET?: string }): number
   return Math.min(900, Math.max(10, Math.floor(value)));
 }
 
-/** Contacts created per POST /pages/batch — matches the import flow's chunking
- *  so each host request stays light (~5 D1 ops + audit row per create). */
-const CONTACT_CREATE_BATCH = 25;
+/** Pages per generic CMS create/update batch. */
+const ARCHIVE_WRITE_BATCH = 100;
 
 /** Ids per DELETE /pages/batch call when trashing submission pages. */
 const TRASH_BATCH = 100;
@@ -224,23 +224,30 @@ function classifyGuest(
 
 async function buildArchivePlan(cms: CmsClient, eventId: number): Promise<ArchivePlan> {
   const lists = await listByEvent(cms, 'mail_list', eventId);
-  const guestsByList = await Promise.all(
-    lists.map((list) => cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } })),
-  );
-  const guests = guestsByList.flat();
+  // Fetch every list's guests through one multi-pointer query (plus pagination)
+  // instead of one independent GET /pages chain per guest list.
+  const guests = lists.length
+    ? await cms.listAll('guest', { pointer: { key: 'mail_list', values: lists.map((list) => list.id) } })
+    : [];
+  const guestsByList = new Map<string, CmsPage[]>();
+  for (const guest of guests) {
+    const listId = pointer(guest.lect, 'mail_list');
+    const grouped = guestsByList.get(listId) ?? [];
+    grouped.push(guest);
+    guestsByList.set(listId, grouped);
+  }
 
   // Once every guest is stamped, trailing passes only need to trash remaining
   // submissions. Avoid reloading up to 2,000 fat contact rows in that case.
   const contacts = guests.some((guest) => !attr(guest.lect, 'contact_merged_at').trim())
     ? await loadContactIndex(cms)
     : emptyContactIndex();
-  let readRequests = contacts.requests + 1;
+  let readRequests = contacts.requests + 1 + (lists.length ? Math.max(1, Math.ceil(guests.length / 500)) : 0);
 
   const rows: ArchiveRow[] = [];
   const byKey = new Map<string, ArchiveRow>();
-  for (const [index, list] of lists.entries()) {
-    const listGuests = guestsByList[index];
-    readRequests += Math.max(1, Math.ceil(listGuests.length / 500));
+  for (const list of lists) {
+    const listGuests = guestsByList.get(String(list.id)) ?? [];
     for (const guest of listGuests) rows.push(classifyGuest(guest, list.name, contacts, byKey));
   }
   return { rows, contacts, readRequests };
@@ -439,13 +446,7 @@ async function archivePass(cms: CmsClient, eventId: number, pass: ArchivePass): 
 
   const pending = plan.rows.filter((row) => row.category !== 'merged');
   try {
-    await createNewContacts(cms, event, pending, contactByKey, plan.contacts, pass);
-    for (const [index, row] of pending.entries()) {
-      // Always process at least one guest so a plan whose reads alone exhaust
-      // the estimate still makes progress; the runtime cap is the hard stop.
-      if (index > 0 && pass.done) return false;
-      await mergeGuest(cms, event, row, contactByKey, plan.contacts, pass);
-    }
+    if (!(await reconcileGuests(cms, event, pending, contactByKey, plan.contacts, pass))) return false;
     const trashed = await trashSubmissions(cms, eventId, pass);
     return trashed;
   } catch (error) {
@@ -455,98 +456,130 @@ async function archivePass(cms: CmsClient, eventId: number, pass: ArchivePass): 
   }
 }
 
-/** Creates distinct unmatched contacts in bounded host batches. */
-async function createNewContacts(
+interface ArchiveMutation {
+  id: number;
+  lect: Record<string, unknown>;
+  versionAction: string;
+  kind: 'contact' | 'guest';
+  historyAdded: number;
+}
+
+/** Resolves every pending guest to a contact, creates unmatched contacts with
+ * all duplicate histories inline, then writes one contact patch per contact
+ * and all guest stamps through the generic CMS batch-update endpoint. */
+async function reconcileGuests(
   cms: CmsClient,
   event: CmsPage,
   pending: ArchiveRow[],
   contactByKey: Map<string, string>,
   contacts: ContactIndex,
   pass: ArchivePass,
-): Promise<void> {
-  const rows: ArchiveRow[] = [];
-  const seen = new Set<string>();
+): Promise<boolean> {
+  const rowsByKey = new Map<string, ArchiveRow[]>();
   for (const row of pending) {
-    if (row.category !== 'new' || contactByKey.has(row.matchKey) || seen.has(row.matchKey)) continue;
-    seen.add(row.matchKey);
+    const rows = rowsByKey.get(row.matchKey) ?? [];
     rows.push(row);
+    rowsByKey.set(row.matchKey, rows);
+    if (row.contact && row.contactId) {
+      contacts.byId.set(row.contactId, row.contact);
+      contactByKey.set(row.matchKey, row.contactId);
+    } else if (row.contactId && !contactByKey.has(row.matchKey)) {
+      contactByKey.set(row.matchKey, row.contactId);
+    }
   }
 
-  for (let start = 0; start < rows.length; start += CONTACT_CREATE_BATCH) {
-    if (start > 0 && pass.done) return;
-    const chunk = rows.slice(start, start + CONTACT_CREATE_BATCH);
+  // Verify pointers beyond the loaded contact slice once per target id.
+  const unresolvedIds = [...new Set(
+    [...rowsByKey.keys()]
+      .map((key) => contactByKey.get(key) ?? '')
+      .filter((id) => id && !contacts.byId.has(id)),
+  )];
+  for (const id of unresolvedIds) {
+    if (pass.done) return false;
     pass.spend(1);
-    const result = await cms.batchCreate(chunk.map((row) => contactInputFromGuest(event, row)));
+    try {
+      const contact = await cms.get(Number(id));
+      if (contact.page_type === 'contact') contacts.byId.set(id, contact);
+    } catch (error) {
+      if (!(error instanceof CmsApiError && (error.status === 404 || error.status === 403))) throw error;
+    }
+    if (!contacts.byId.has(id)) {
+      for (const [key, targetId] of contactByKey) {
+        if (targetId === id) contactByKey.delete(key);
+      }
+    }
+  }
+
+  const newGroups = [...rowsByKey.entries()].filter(([key]) => !contactByKey.has(key));
+  for (let start = 0; start < newGroups.length; start += ARCHIVE_WRITE_BATCH) {
+    if (start > 0 && pass.done) return false;
+    const chunk = newGroups.slice(start, start + ARCHIVE_WRITE_BATCH);
+    pass.spend(1);
+    const result = await cms.batchCreate(chunk.map(([, rows]) => contactInputFromGuest(event, rows[0], rows)));
     if (result.errors.length) {
       const first = result.errors[0];
       throw new CmsApiError(400, first.error, 'POST', `/pages/batch[${first.index}]`);
     }
     for (const [index, contact] of result.created.entries()) {
-      const row = chunk[index];
+      const [key] = chunk[index];
       const contactId = String(contact.id);
       contacts.byId.set(contactId, contact);
-      contactByKey.set(row.matchKey, contactId);
+      contactByKey.set(key, contactId);
       pass.contactsCreated += 1;
     }
   }
-}
 
-/**
- * Merges one guest into the contact database: resolve or create the target
- * contact, append the guest's event activity to its `event_history` (guarded
- * by `_ref`), and stamp the guest with the pointer + `contact_merged_at`.
- */
-async function mergeGuest(
-  cms: CmsClient,
-  event: CmsPage,
-  row: ArchiveRow,
-  contactByKey: Map<string, string>,
-  contacts: ContactIndex,
-  pass: ArchivePass,
-): Promise<void> {
-  // Resolve the target: a contact another copy of this person already got,
-  // then the row's own match, then a fresh create.
-  let contactId = contactByKey.get(row.matchKey) ?? row.contactId;
-  let contact = (contactId ? contacts.byId.get(contactId) : undefined) ?? row.contact;
+  const rowsByContact = new Map<string, ArchiveRow[]>();
+  for (const [key, rows] of rowsByKey) {
+    const contactId = contactByKey.get(key);
+    if (!contactId) throw new CmsApiError(500, 'contact_resolution_failed', 'PATCH', '/pages/batch');
+    const grouped = rowsByContact.get(contactId) ?? [];
+    grouped.push(...rows);
+    rowsByContact.set(contactId, grouped);
+  }
 
-  if (contactId && (!contact || String(contact.id) !== contactId)) {
-    // Pointer beyond the loaded contact slice — verify it before writing.
-    pass.spend(1);
-    try {
-      const fetched = await cms.get(Number(contactId));
-      contact = fetched.page_type === 'contact' ? fetched : null;
-    } catch (error) {
-      if (!(error instanceof CmsApiError && (error.status === 404 || error.status === 403))) throw error;
-      contact = null;
+  const mutations: ArchiveMutation[] = [];
+  const mergedAt = new Date().toISOString();
+  for (const [contactId, rows] of rowsByContact) {
+    const contact = contacts.byId.get(contactId);
+    if (!contact) throw new CmsApiError(500, 'contact_resolution_failed', 'PATCH', '/pages/batch');
+    const history = historyEntries(contact);
+    const refs = new Set(history.map((entry) => String(entry._ref ?? '')).filter(Boolean));
+    const additions = rows
+      .filter((row) => !refs.has(row.guest.uuid))
+      .map((row) => eventHistoryEntry(event, row));
+    if (additions.length) {
+      mutations.push({
+        id: contact.id,
+        lect: { event_history: [...history, ...additions] },
+        versionAction: 'archive-merge',
+        kind: 'contact',
+        historyAdded: additions.length,
+      });
     }
-    if (!contact) contactId = '';
+    for (const row of rows) {
+      mutations.push({
+        id: row.guest.id,
+        lect: {
+          contact_merged_at: mergedAt,
+          _pointers: { ...(row.guest.lect._pointers as Record<string, unknown> ?? {}), contact: contactId },
+        },
+        versionAction: 'archive-contact-link',
+        kind: 'guest',
+        historyAdded: 0,
+      });
+    }
   }
 
-  if (!contact || !contactId) {
+  for (let start = 0; start < mutations.length; start += ARCHIVE_WRITE_BATCH) {
+    if (start > 0 && pass.done) return false;
+    const chunk = mutations.slice(start, start + ARCHIVE_WRITE_BATCH);
     pass.spend(1);
-    contact = await cms.create(contactInputFromGuest(event, row));
-    contactId = String(contact.id);
-    pass.contactsCreated += 1;
-    contacts.byId.set(contactId, contact);
-  } else if (!historyEntries(contact).some((entry) => entry._ref === row.guest.uuid)) {
-    pass.spend(1);
-    const history = [...historyEntries(contact), eventHistoryEntry(event, row)];
-    await cms.update(contact.id, { lect: { event_history: history } });
-    // Keep the in-memory copy current so more guests merging into this contact
-    // within the same pass see the appended entry.
-    contact.lect = { ...contact.lect, event_history: history };
-    pass.historyAppended += 1;
+    await cms.batchUpdate(chunk);
+    pass.merged += chunk.filter((mutation) => mutation.kind === 'guest').length;
+    pass.historyAppended += chunk.reduce((total, mutation) => total + mutation.historyAdded, 0);
   }
-
-  pass.spend(1);
-  await cms.update(row.guest.id, {
-    lect: {
-      contact_merged_at: new Date().toISOString(),
-      _pointers: { ...(row.guest.lect._pointers as Record<string, unknown> ?? {}), contact: contactId },
-    },
-  });
-  pass.merged += 1;
-  contactByKey.set(row.matchKey, contactId);
+  return true;
 }
 
 /** Real (non-blueprint-seeded) event_history entries on a contact. */
@@ -588,7 +621,7 @@ function eventHistoryEntry(event: CmsPage, row: ArchiveRow): Record<string, unkn
 }
 
 /** Contact record created from an unmatched guest, with the history entry inline. */
-function contactInputFromGuest(event: CmsPage, row: ArchiveRow): CmsPageInput {
+function contactInputFromGuest(event: CmsPage, row: ArchiveRow, historyRows: ArchiveRow[] = [row]): CmsPageInput {
   const lect = row.guest.lect;
   const first = (localized(lect, 'name') || row.guest.name).trim();
   const last = localized(lect, 'last_name').trim();
@@ -614,7 +647,7 @@ function contactInputFromGuest(event: CmsPage, row: ArchiveRow): CmsPageInput {
       ...(organization || jobTitle
         ? { position: [{ type: 'work', organization_name: { en: organization }, title: { en: jobTitle } }] }
         : {}),
-      event_history: [eventHistoryEntry(event, row)],
+      event_history: historyRows.map((historyRow) => eventHistoryEntry(event, historyRow)),
     },
   };
 }

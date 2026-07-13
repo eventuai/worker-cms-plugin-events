@@ -135,6 +135,15 @@ function stubCms(pages: FakePage[], options: { forbidContactBatch?: boolean } = 
       });
       return Response.json({ created, errors: [] });
     }
+    if (url.pathname === '/__cms/pages/batch' && method === 'PATCH') {
+      const updated = ((call.body?.pages ?? []) as Array<Record<string, unknown>>).flatMap((body) => {
+        const page = rows.find((row) => row.id === Number(body.id));
+        if (!page) return [];
+        page.lect = { ...page.lect, ...((body.lect ?? {}) as Record<string, unknown>) };
+        return [page];
+      });
+      return Response.json({ updated, errors: [], count: updated.length });
+    }
     const idMatch = url.pathname.match(/^\/__cms\/pages\/(\d+)$/);
     if (idMatch) {
       const page = rows.find((row) => row.id === Number(idMatch[1]));
@@ -156,10 +165,13 @@ function stubCms(pages: FakePage[], options: { forbidContactBatch?: boolean } = 
       if (parent) matched = matched.filter((row) => String(row.page_id) === parent);
       const pointerKey = url.searchParams.get('pointer_key');
       if (pointerKey) {
-        const value = url.searchParams.get('pointer_value');
+        const values = new Set([
+          url.searchParams.get('pointer_value') ?? '',
+          ...(url.searchParams.get('pointer_values') ?? '').split(','),
+        ].filter(Boolean));
         matched = matched.filter((row) => {
           const pointers = (row.lect as { _pointers?: Record<string, string> })._pointers ?? {};
-          return pointers[pointerKey] === value;
+          return values.has(pointers[pointerKey]);
         });
       }
       return Response.json({ pages: matched, total: matched.length });
@@ -234,6 +246,19 @@ function lectOf(call: RecordedCall | undefined): Record<string, unknown> {
 }
 
 describe('archive preview', () => {
+  it('loads all guest lists through one multi-pointer guest query', async () => {
+    const calls = stubCms(fixture());
+
+    await plugin.fetch(request('/__plugin/admin/events/100/archive'), env());
+
+    const guestReads = calls.filter(
+      (call) => call.method === 'GET' && call.path === '/__cms/pages' && call.search.page_type === 'guest',
+    );
+    expect(guestReads).toHaveLength(1);
+    expect(guestReads[0].search.pointer_key).toBe('mail_list');
+    expect(guestReads[0].search.pointer_values).toBe('200,201');
+  });
+
   it('classifies guests into duplicated / linked / likely / new', async () => {
     stubCms(fixture());
     const response = await plugin.fetch(request('/__plugin/admin/events/100/archive'), env());
@@ -304,6 +329,29 @@ describe('archive apply', () => {
     expect(calls.filter((call) => call.method === 'POST' && call.path === '/__cms/pages')).toEqual([]);
   });
 
+  it('creates one new contact with all duplicate guest histories inline', async () => {
+    const calls = stubCms(fixture().filter((page) => page.id !== 301));
+
+    await plugin.fetch(request('/__plugin/admin/events/100/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'action=apply',
+    }), env());
+
+    const createBatch = calls.find((call) => call.method === 'POST' && call.path === '/__cms/pages/batch');
+    const creates = (createBatch?.body?.pages ?? []) as Array<Record<string, unknown>>;
+    const grace = creates.find((page) => page.name === 'Grace Hopper');
+    const history = ((grace?.lect as Record<string, unknown>)?.event_history ?? []) as Array<Record<string, unknown>>;
+    expect(history.map((entry) => entry._ref)).toEqual(['uuid-2', 'uuid-5']);
+
+    // Both guest links and all existing-contact histories share one generic
+    // batch update; the newly created Grace contact needs no follow-up update.
+    const updateBatches = calls.filter((call) => call.method === 'PATCH' && call.path === '/__cms/pages/batch');
+    expect(updateBatches).toHaveLength(1);
+    const updates = (updateBatches[0].body?.pages ?? []) as Array<Record<string, unknown>>;
+    expect(updates.filter((update) => update.id === 9001)).toEqual([]);
+  });
+
   it('merges guests into contacts, trashes submissions and archives the event', async () => {
     const calls = stubCms(fixture());
     const response = await plugin.fetch(request('/__plugin/admin/events/100/archive', {
@@ -326,37 +374,34 @@ describe('archive apply', () => {
     expect(createdLect.position).toEqual([{ type: 'work', organization_name: { en: 'Acme' }, title: { en: 'CTO' } }]);
     expect(createdLect.event_history).toMatchObject([{ event_name: 'Gala', date: '2026-05-01', rsvp: 'confirmed', _ref: 'uuid-4' }]);
 
+    const updateBatch = calls.find((call) => call.method === 'PATCH' && call.path === '/__cms/pages/batch');
+    const updates = (updateBatch?.body?.pages ?? []) as Array<Record<string, unknown>>;
+    const updateLect = (id: number) => (updates.find((update) => update.id === id)?.lect ?? {}) as Record<string, unknown>;
+
     // Linked contact 300 gets guest 1's activity (status, check-in, list name).
-    const contact300 = calls.filter((call) => call.method === 'PUT' && call.path === '/__cms/pages/300');
-    expect(contact300).toHaveLength(1);
-    expect(lectOf(contact300[0]).event_history).toMatchObject([{
+    expect(updateLect(300).event_history).toMatchObject([{
       event_name: 'Gala', date: '2026-05-01', rsvp: 'confirmed', group_rsvp: '1',
       remark: 'List: VIP · checked in · 1 RSVP response(s)', _ref: 'uuid-1',
     }]);
 
-    // Likely-duplicate contact 301 collects BOTH copies of Grace (guests 2 and 5).
-    const contact301 = calls.filter((call) => call.method === 'PUT' && call.path === '/__cms/pages/301');
-    expect(contact301).toHaveLength(2);
-    expect(lectOf(contact301[1]).event_history).toMatchObject([
+    // Likely-duplicate contact 301 collects BOTH copies of Grace in one update.
+    expect(updateLect(301).event_history).toMatchObject([
       { rsvp: 'declined', _ref: 'uuid-2' },
       { rsvp: 'confirmed', _ref: 'uuid-5' },
     ]);
 
     // Name-matched contact 302 gets guest 3's entry.
-    const contact302 = calls.filter((call) => call.method === 'PUT' && call.path === '/__cms/pages/302');
-    expect(lectOf(contact302[0]).event_history).toMatchObject([{ _ref: 'uuid-3', rsvp: 'invited' }]);
+    expect(updateLect(302).event_history).toMatchObject([{ _ref: 'uuid-3', rsvp: 'invited' }]);
 
     // Every guest is stamped and pointed at its contact.
     for (const [guestId, contactId] of [[1, '300'], [2, '301'], [3, '302'], [5, '301']] as Array<[number, string]>) {
-      const stamp = calls.find((call) => call.method === 'PUT' && call.path === `/__cms/pages/${guestId}`);
-      const lect = lectOf(stamp);
+      const lect = updateLect(guestId);
       expect(lect.contact_merged_at).toBeTruthy();
       expect((lect._pointers as Record<string, string>).contact).toBe(contactId);
       // Existing pointers survive the stamp.
       expect((lect._pointers as Record<string, string>).mail_list).toBeTruthy();
     }
-    const guest4Stamp = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/4');
-    expect((lectOf(guest4Stamp)._pointers as Record<string, string>).contact).toBe('9001');
+    expect((updateLect(4)._pointers as Record<string, string>).contact).toBe('9001');
 
     // Only THIS event's submissions are trashed.
     const batchDeletes = calls.filter((call) => call.method === 'DELETE' && call.path === '/__cms/pages/batch');
@@ -390,6 +435,7 @@ describe('archive apply', () => {
     expect(fresh.filter((call) => call.method === 'POST' && ['/__cms/pages', '/__cms/pages/batch'].includes(call.path))).toEqual([]);
     expect(fresh.filter((call) => call.method === 'GET' && call.path === '/__cms/pages' && call.search.page_type === 'contact')).toEqual([]);
     expect(fresh.filter((call) => call.method === 'PUT' && /\/pages\/(1|2|3|4|5|30\d)$/.test(call.path))).toEqual([]);
+    expect(fresh.filter((call) => call.method === 'PATCH' && call.path === '/__cms/pages/batch')).toEqual([]);
     expect(fresh.filter((call) => call.method === 'DELETE')).toEqual([]);
   });
 

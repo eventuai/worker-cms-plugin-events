@@ -81,6 +81,12 @@ export interface DuplicateChildrenInput {
   dropLect?: string[];
 }
 
+export interface CmsBatchUpdateInput {
+  id: number;
+  lect: Record<string, unknown>;
+  versionAction?: string;
+}
+
 /** One quota from the host's `GET /__cms/limits` — declared in this plugin's
  *  manifest, configured (or defaulted) host-side, and enforced by the host on
  *  every create. `value: null` means unlimited; scoped `usage` is only present
@@ -325,6 +331,40 @@ export class CmsClient extends BaseCmsClient {
       throw new CmsApiError(response.status, code, 'POST', '/ingest/submissions');
     }
     return await response.json() as { scanned: number; created: number; more: boolean };
+  }
+
+  /** Bulk partial-lect update through CMS `PATCH /__cms/pages/batch`. The host
+   * merges every patch, versions every page, and commits the chunk atomically. */
+  async batchUpdate(inputs: CmsBatchUpdateInput[]): Promise<CmsPage[]> {
+    if (!inputs.length) return [];
+    const response = await globalThis.fetch(`${this.link.base}/__cms/pages/batch`, {
+      method: 'PATCH',
+      headers: this.linkHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({
+        pages: inputs.map((input) => ({
+          id: input.id,
+          lect: input.lect,
+          version_action: input.versionAction,
+        })),
+      }),
+    });
+    if (!response.ok) {
+      const code = await response.text()
+        .then((text) => {
+          try { return (JSON.parse(text) as { error?: string }).error || 'error'; } catch { return text.trim().slice(0, 160) || 'error'; }
+        })
+        .catch(() => 'error');
+      throw new CmsApiError(response.status, code, 'PATCH', '/pages/batch');
+    }
+    const result = await response.json() as {
+      updated: CmsPage[];
+      errors: Array<{ index: number; error: string }>;
+    };
+    if (result.errors.length) {
+      const first = result.errors[0];
+      throw new CmsApiError(400, first.error, 'PATCH', `/pages/batch[${first.index}]`);
+    }
+    return result.updated;
   }
 
   /**
