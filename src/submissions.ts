@@ -23,6 +23,7 @@ import {
   CmsApiError,
   CmsClient,
   attr,
+  guestSlug,
   items,
   type CmsPage,
 } from './cms';
@@ -266,6 +267,7 @@ export async function convertRegistration(cms: CmsClient, eventId: number, regis
       page_type: 'guest',
       page_id: list.id,
       name,
+      slug: guestSlug(),
       lect: {
         _type: 'guest',
         prefix: attr(registration.lect, 'salutation'),

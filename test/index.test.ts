@@ -736,7 +736,8 @@ describe('events admin', () => {
     const guestCreate = cmsRequests.at(-1)?.init;
     expect(guestCreate?.method).toBe('POST');
     expect(new Headers(guestCreate?.headers).get('x-plugin-id')).toBe('events');
-    expect(JSON.parse(String(guestCreate?.body))).toMatchObject({
+    const createdGuest = JSON.parse(String(guestCreate?.body)) as { slug?: string };
+    expect(createdGuest).toMatchObject({
       page_type: 'guest',
       name: 'Ada',
       page_id: 8,
@@ -747,6 +748,9 @@ describe('events admin', () => {
         checkin: [{ status: 'checked-in' }],
       },
     });
+    // Pseudonymous slug — the host must not derive a public identifier from
+    // the guest's name (guest pages auto-publish).
+    expect(createdGuest.slug).toMatch(/^g-[0-9a-f-]{36}$/);
   });
 
   it('creates a list under its selected event', async () => {
@@ -3389,6 +3393,10 @@ describe('legacy guest import', () => {
 
     expect(response.status).toBe(302);
     expect(batches).toHaveLength(1);
+    // Every imported guest gets a pseudonymous slug, never a name-derived one.
+    for (const page of batches[0].pages as Array<{ slug?: string }>) {
+      expect(page.slug).toMatch(/^g-[0-9a-f-]{36}$/);
+    }
     const guests = new Map(batches[0].pages.map((p) => [p.name, p.lect]));
     expect(checkins(guests.get('Ada')!)).toHaveLength(1);
     expect((guests.get('Ada')!.checkin as Array<Record<string, string>>)[0]).toMatchObject({ status: 'checked-in', date: '2026-06-10T01:00:00Z', message: 'from kiosk' });

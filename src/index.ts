@@ -24,6 +24,7 @@ import {
   compareByWeightThenName,
   computeGuestListSummary,
   emptyGuestListSummary,
+  guestSlug,
   items,
   listByEvent,
   localized,
@@ -1068,6 +1069,7 @@ async function adhocCheckinSubmit(cms: CmsClient, eventId: number, request: Requ
   await cms.create({
     page_type: 'guest',
     name,
+    slug: guestSlug(),
     page_id: guestList.id,
     lect: {
       _type: 'guest',

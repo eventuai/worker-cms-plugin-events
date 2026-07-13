@@ -479,7 +479,7 @@ async function createNewContacts(
     const result = await cms.batchCreate(chunk.map((row) => contactInputFromGuest(event, row)));
     if (result.errors.length) {
       const first = result.errors[0];
-      throw new CmsApiError(400, `batch_item_${first.index}:${first.error}`, 'POST', '/pages/batch');
+      throw new CmsApiError(400, first.error, 'POST', `/pages/batch[${first.index}]`);
     }
     for (const [index, contact] of result.created.entries()) {
       const row = chunk[index];

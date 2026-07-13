@@ -80,7 +80,7 @@ interface RecordedCall {
  * POST /pages appends, PUT /pages/:id shallow-merges lect, DELETE (single and
  * /pages/batch) removes rows. Records every call.
  */
-function stubCms(pages: FakePage[]): RecordedCall[] {
+function stubCms(pages: FakePage[], options: { forbidContactBatch?: boolean } = {}): RecordedCall[] {
   const calls: RecordedCall[] = [];
   let nextId = 9000;
   let rows = pages.map((page) => ({
@@ -114,6 +114,9 @@ function stubCms(pages: FakePage[]): RecordedCall[] {
       return Response.json({ removed: ids.size });
     }
     if (url.pathname === '/__cms/pages/batch' && method === 'POST') {
+      if (options.forbidContactBatch) {
+        return Response.json({ created: [], errors: [{ index: 0, error: 'forbidden_page_type' }] });
+      }
       const created = ((call.body?.pages ?? []) as Array<Record<string, unknown>>).map((body) => {
         nextId += 1;
         const page = {
@@ -261,6 +264,21 @@ describe('archive preview', () => {
 });
 
 describe('archive apply', () => {
+  it('explains how to approve contact writes when batch creation is forbidden', async () => {
+    stubCms(fixture(), { forbidContactBatch: true });
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/100/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'action=apply',
+    }), env());
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('not approved to write contact pages');
+    expect(html).toContain('Plugins → events → Page types');
+  });
+
   it('creates multiple unmatched contacts in one host batch', async () => {
     const pages = fixture();
     pages.push({

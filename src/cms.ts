@@ -523,6 +523,17 @@ export async function listByEvent(
 }
 
 /**
+ * Pseudonymous slug for a new guest page. Without an explicit slug the host
+ * derives one from the page NAME — for guests that puts the person's real
+ * name in a public identifier (guest pages are auto-published, and slugs
+ * surface in URLs, sitemaps, and the published DB even where rendering is
+ * blocked). Every guest create must pass this instead.
+ */
+export function guestSlug(): string {
+  return `g-${crypto.randomUUID()}`;
+}
+
+/**
  * Real check-in entries for a guest. The host seeds every blueprint block,
  * including `checkin`, with one empty row when a page is created. A row counts
  * only once it carries an actual status or date.

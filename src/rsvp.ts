@@ -7,6 +7,7 @@ import {
   chargeCreditAction,
   checkins,
   compareByWeightThenName,
+  guestSlug,
   items,
   listByEvent,
   localized,
@@ -612,7 +613,7 @@ async function createGuest(request: Request, cms: CmsClient, listId: number): Pr
   if (!input.name) return redirect(`${ADMIN_BASE}/rsvp/${listId}/guests/new`);
 
   applyAdminCustomResponse(input.lect, form, adminCustomFieldsForGuest(context.event, context.list));
-  await cms.create({ page_type: 'guest', page_id: listId, name: input.name, lect: input.lect });
+  await cms.create({ page_type: 'guest', page_id: listId, name: input.name, slug: input.slug, lect: input.lect });
   return redirect(safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`);
 }
 
@@ -2905,7 +2906,7 @@ function guestInput(
   eventId: number | null,
   listId: number,
   existing?: CmsPage,
-): { name: string; lect: Record<string, unknown> } {
+): { name: string; slug: string; lect: Record<string, unknown> } {
   const name = formText(form, 'name') || formLocalizedText(form, 'name');
   const fields = new Map<string, string>([
     ['first_name', formText(form, 'first_name') || formLocalizedText(form, 'first_name')],
@@ -2942,7 +2943,7 @@ function guestInput(
     ['no', formText(form, 'no') || formText(form, '@no')],
   ]);
   const input = guestPageInput(name, fields, eventId, listId);
-  return { name, lect: { ...(existing?.lect ?? {}), ...input.lect, ...nativeCustomGuestFields(form) } };
+  return { name, slug: input.slug ?? guestSlug(), lect: { ...(existing?.lect ?? {}), ...input.lect, ...nativeCustomGuestFields(form) } };
 }
 
 function guestPageInput(name: string, fields: Map<string, string>, eventId: number | null, listId: number): CmsPageInput {
@@ -2951,6 +2952,7 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
     page_type: 'guest',
     page_id: listId,
     name,
+    slug: guestSlug(),
     lect: {
       _type: 'guest',
       name: { en: name },
