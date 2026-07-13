@@ -1,18 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { qrMatrix, qrSvg, qrTicketSvg } from '../src/qr';
+import { qrMatrix, qrMetadata, qrSvg, qrTicketSvg } from '../src/qr';
 import { compactCheckinCode } from '../src/crypto';
 
 describe('qr encoder', () => {
-  it('uses ECC level Q format information', () => {
-    const matrix = qrMatrix('format-level');
-    const positions = [[8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8], [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]];
-    const actual = positions.reduce((bits, [row, column], index) => bits | (matrix[row][column] ? 1 << index : 0), 0);
-    const bch15 = (format: number): number => {
-      let value = format << 10;
-      for (let bit = 14; bit >= 10; bit--) if ((value >> bit) & 1) value ^= 0x537 << (bit - 10);
-      return ((format << 10) | value) ^ 0x5412;
-    };
-    expect(Array.from({ length: 8 }, (_unused, mask) => bch15((0b11 << 3) | mask))).toContain(actual);
+  it('uses @verevoir/qrcode with at least ECC level Q for compact codes', () => {
+    const metadata = qrMetadata(compactCheckinCode(21996952637102, 22012755208409));
+    expect(['Q', 'H']).toContain(metadata.errorLevel);
+    expect(metadata.version).toBeGreaterThan(0);
+    expect(metadata.size).toBe(metadata.version * 4 + 17);
   });
 
   it('encodes the compact legacy Eventuai check-in payload in radix 32 with BLAKE3', () => {
@@ -48,9 +43,9 @@ describe('qr encoder', () => {
     }
   });
 
-  it('is deterministic and rejects oversized payloads', () => {
+  it('is deterministic and supports payloads beyond the old version-10 limit', () => {
     expect(JSON.stringify(qrMatrix('same'))).toBe(JSON.stringify(qrMatrix('same')));
-    expect(() => qrMatrix('x'.repeat(500))).toThrow(/too large/);
+    expect(qrMatrix('x'.repeat(500)).length).toBeGreaterThan(57);
   });
 
   it('renders an SVG with a quiet zone and module rects', () => {
@@ -73,6 +68,8 @@ describe('qr encoder', () => {
     expect(svg).toContain('Elliott &lt;Tse&gt;');
     expect(svg).toContain('Occasions &amp; Asia Pacific');
     expect((svg.match(/<svg/g) ?? [])).toHaveLength(1);
+    // Ticket QR uses the standard four-module quiet zone for scanner reliability.
+    expect(svg).toContain('translate(20 10)');
     expect((svg.match(/<text /g) ?? []).length).toBeGreaterThan(3);
     expect(svg).not.toContain('deliberately very long attendee name that wraps</text>');
   });

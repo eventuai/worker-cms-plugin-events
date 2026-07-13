@@ -15,6 +15,7 @@
     "@fontsource/noto-sans-tc": "^5.2.9",
     "@lionrockjs/worker-cms-plugin": "0.2.0",
     "@noble/hashes": "^2.2.0",
+    "@verevoir/qrcode": "^1.0.1",
     "liquidjs": "^10.27.2"
   },
   "devDependencies": {
