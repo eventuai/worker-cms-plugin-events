@@ -29,41 +29,46 @@
   </div>
 </div>
 
+{% comment %} Each section is a native <details> so the (often long) guest table
+collapses with no client JS. The table sits in a capped-height scroll box so an
+expanded section never dominates the page and stays scrollable on narrow screens. {% endcomment %}
 {% for section in sections %}
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem">
-  <div class="flex items-center justify-between gap-4 mb-1">
-    <h2 class="text-lg font-bold text-gray-900">{{ section.label | escape }}</h2>
-    <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ section.count }}</span>
-  </div>
-  <p class="mt-1 text-sm text-gray-500 mb-4">{{ section.hint | escape }}</p>
+<details class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem"{% if section.count > 0 %} open{% endif %}>
+  <summary class="text-lg font-bold text-gray-900" style="cursor:pointer">
+    {{ section.label | escape }}
+    <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700" style="margin-left:.5rem;vertical-align:middle">{{ section.count }}</span>
+  </summary>
+  <p class="mt-2 text-sm text-gray-500 mb-4">{{ section.hint | escape }}</p>
   {% if section.count > 0 %}
-  <table class="w-full text-left text-sm">
-    <thead>
-      <tr class="text-xs text-gray-500">
-        <th class="px-6 py-2 font-semibold">Guest</th>
-        <th class="px-6 py-2 font-semibold">Guest list</th>
-        <th class="px-6 py-2 font-semibold">Email</th>
-        <th class="px-6 py-2 font-semibold">Detail</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-100">
-      {% for row in section.rows %}
-      <tr>
-        <td class="px-6 py-3 text-sm text-gray-700">{{ row.name | escape }}</td>
-        <td class="px-6 py-3 text-sm text-gray-700">{{ row.listName | escape }}</td>
-        <td class="px-6 py-3 text-sm text-gray-700">{{ row.email | escape }}</td>
-        <td class="px-6 py-3 text-sm text-gray-500">{{ row.detail | escape }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div style="max-height:24rem;overflow:auto">
+    <table class="w-full text-left text-sm">
+      <thead>
+        <tr class="text-xs text-gray-500">
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Guest</th>
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Guest list</th>
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Email</th>
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Detail</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for row in section.rows %}
+        <tr>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ row.name | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ row.listName | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ row.email | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-500">{{ row.detail | escape }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% if section.moreCount > 0 %}
   <p class="mt-2 text-sm text-gray-400">…and {{ section.moreCount }} more not shown.</p>
   {% endif %}
   {% else %}
   <p class="text-sm text-gray-400">None.</p>
   {% endif %}
-</div>
+</details>
 {% endfor %}
 
 <script src="/admin/plugins/events/assets/long-running-submit.js" defer></script>
