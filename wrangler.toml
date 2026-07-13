@@ -89,6 +89,7 @@ CMS_URL = "https://cms.eventuai.com"
 # queue = "cms-edm-mail"
 # [[queues.consumers]]
 # queue = "cms-edm-mail"
+# max_concurrency = 1   # required for the admin-configured per-second send limit
 
 # Scheduled blasts — drain due mail_list rows on a cron tick:
 # [triggers]

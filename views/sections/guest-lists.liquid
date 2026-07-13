@@ -12,6 +12,7 @@
     <span class="hidden lg:inline">New guest list</span>
   </a>{% endif %}
 </div>
+{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">This event is archived. Its guest lists and guests are read-only.</p>{% endif %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
   <table class="w-full min-w-[560px] text-left relative"{% if reorderAction != blank %} data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only{% endif %}>
     <thead class="bg-gray-50 border-b border-gray-200"><tr>{% if reorderAction != blank %}<th class="px-4 py-3 w-10"></th>{% endif %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Event</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>

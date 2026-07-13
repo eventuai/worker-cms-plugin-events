@@ -32,9 +32,9 @@ import {
   type GuestListSummary,
 } from './cms';
 import { signPayload, verifyPayload } from './crypto';
-import { deliverQueuedEmail, dispatchDueMailLists, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
+import { deliverQueuedEmail, dispatchDueMailLists, emailSendRate, handleEdmAdmin, handleEdmEditView, type EdmEnv, type EmailDelivery } from './edm';
 import { handleLabelsAdmin } from './labels';
-import { cmsUserId, eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
+import { archivedEventImmutable, cmsUserId, eventAdminAccessForRequest, forbidden, type EventAdminAccess } from './permissions';
 import { archiveEvent, archiveReview, continueEventArchive, isArchived, stopEventArchive } from './archive';
 import {
   ensureAdhocGuestList,
@@ -208,6 +208,7 @@ export default {
   },
 
   async queue(batch: MessageBatch<EmailDelivery>, env: PluginEnv): Promise<void> {
+    const rates = new Map<string, number | null>();
     for (const message of batch.messages) {
       // Re-scope each delivery to its tenant so per-tenant vars (EMAIL_FROM,
       // …) apply. Legacy messages without a tenantId use the sole tenant.
@@ -220,7 +221,18 @@ export default {
         console.error(`[events-suite] dropping queued email for unknown tenant ${message.body.tenantId}`);
         continue;
       }
-      await deliverQueuedEmail(tenant ? tenantClientEnv(env, tenant) : env, message.body);
+      const deliveryEnv = tenant ? tenantClientEnv(env, tenant) : env;
+      const tenantKey = tenant?.id ?? 'default';
+      let rate = rates.get(tenantKey);
+      if (rate === undefined) {
+        rate = await emailSendRate(deliveryEnv);
+        rates.set(tenantKey, rate);
+      }
+      if (rate === 0) {
+        message.retry({ delaySeconds: 60 });
+        continue;
+      }
+      await deliverQueuedEmail(deliveryEnv, message.body, rate);
     }
   },
 
@@ -385,6 +397,13 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
 
     const eventId = segments[1] ? Number(segments[1]) : null;
     const sub = segments[2] ?? '';
+
+    // Archived event trees remain browsable, exportable and restorable, but
+    // mutation workflows are locked even when called directly without a UI.
+    if (eventId && sub && sub !== 'archive' && sub !== 'adhoc-checkin' && sub !== 'duplicate' && sub !== 'export' && sub !== 'lists' && sub !== 'all-guests') {
+      const event = await cms.get(eventId);
+      if (event.page_type === 'event' && isArchived(event.lect)) return archivedEventImmutable();
+    }
 
     if (eventId && sub === 'adhoc-checkin') {
       if (!access.canCheckIn) return forbidden();
@@ -865,11 +884,13 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
   const canManageEmail = access?.canManageEmail ?? true;
   const event = await cms.get(eventId);
   const deleting = isDeleting(event.lect);
+  const archived = isArchived(event.lect);
+  const mutable = !deleting && !archived;
   // Public RSVP submissions live in worker-rsvp's published database. Pull and
   // apply them before reading guest lists so every dashboard visit reflects the
   // latest response. Keep this best-effort: an unavailable ingest endpoint must
   // not make an otherwise readable event dashboard fail.
-  if (!deleting) {
+  if (mutable) {
     try {
       await refreshSubmissions(cms);
     } catch (error) {
@@ -882,7 +903,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     listByEvent(cms, 'mail_list', eventId),
     listByEvent(cms, 'edm', eventId),
   ]);
-  if (!deleting && !guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId));
+  if (mutable && !guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId, event));
   // The CMS page API is generic, so the plugin tallies each list's guests itself
   // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
   // The same fetch also yields the guests who have responded, so the dashboard's
@@ -893,7 +914,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
       list.guest_summary = computeGuestListSummary(guests);
       return {
         guests,
-        responses: guests.filter(hasResponded).map((guest) => responseRow(list, guest)),
+        responses: guests.filter(hasResponded).map((guest) => responseRow(list, guest, !archived)),
       };
     }),
   );
@@ -912,29 +933,30 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     flash: url.searchParams.get('flash') ?? '',
     eventName: event.name,
     deleting,
+    archived,
     eventsHref: `${ADMIN_BASE}/events`,
-    canEdit,
-    canDelete,
+    canEdit: canEdit && !archived,
+    canDelete: canDelete && !archived,
     canImportExport,
-    canCheckIn,
+    canCheckIn: canCheckIn && !archived,
     canManageEmail,
-    adhocCheckinHref: canCheckIn ? `${ADMIN_BASE}/events/${eventId}/adhoc-checkin` : '',
+    adhocCheckinHref: canCheckIn && mutable ? `${ADMIN_BASE}/events/${eventId}/adhoc-checkin` : '',
     guestListsHref: `${ADMIN_BASE}/events/${eventId}/lists`,
     allGuestsHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
-    sessionsHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/sessions` : '',
-    importHref: canImportExport ? `${ADMIN_BASE}/events/${eventId}/import` : '',
+    sessionsHref: canEdit && mutable ? `${ADMIN_BASE}/events/${eventId}/sessions` : '',
+    importHref: canImportExport && mutable ? `${ADMIN_BASE}/events/${eventId}/import` : '',
     exportAllHref: canImportExport ? `${ADMIN_BASE}/events/${eventId}/export` : '',
-    labelsHref: canEdit ? `${ADMIN_BASE}/events/${eventId}/labels` : '',
+    labelsHref: canEdit && mutable ? `${ADMIN_BASE}/events/${eventId}/labels` : '',
     guestSearchHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
     hasGuests: r.guests > 0,
     guestSearchColorOptions: colorTagOptions(),
     statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
-    editHref: canEdit && !deleting ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
+    editHref: canEdit && mutable ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
     duplicateHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
-    registrationsHref: `${ADMIN_BASE}/events/${eventId}/registrations`,
+    registrationsHref: archived ? '' : `${ADMIN_BASE}/events/${eventId}/registrations`,
     archiveHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/archive` : '',
-    deleteHref: canDelete && !deleting ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
-    reorderAction: canEdit && !deleting ? CMS_BATCH_WEIGHT_ACTION : '',
+    deleteHref: canDelete && mutable ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
+    reorderAction: canEdit && mutable ? CMS_BATCH_WEIGHT_ACTION : '',
     reorderEventId: eventId,
     stats: statTiles(r),
     guestLists: orderedLists.map((list) => {
@@ -948,18 +970,18 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
         rsvpStatusCounts: rsvpStatusCounts(summary),
       };
     }),
-    newGuestListHref: canEdit ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : '',
+    newGuestListHref: canEdit && mutable ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : '',
     // Email Templates section — EDMs belonging to this event.
     edms: edms.map((edm) => ({
       name: edm.name,
       subject: localized(edm.lect, 'subject') || edm.name,
       // Edit directly in the page editor (the plugin renders the EDM edit view),
       // returning to this event dashboard.
-      href: canManageEmail ? `/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/events/${eventId}`)}` : '',
+      href: canManageEmail && mutable ? `/admin/pages/${edm.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/events/${eventId}`)}` : '',
       previewHref: `${ADMIN_BASE}/edm/${edm.id}/preview`,
-      duplicateAction: canManageEmail ? `${ADMIN_BASE}/edm/${edm.id}/duplicate` : '',
+      duplicateAction: canManageEmail && mutable ? `${ADMIN_BASE}/edm/${edm.id}/duplicate` : '',
     })),
-    newEdmHref: canManageEmail ? `${ADMIN_BASE}/edm/new?event_id=${eventId}` : '',
+    newEdmHref: canManageEmail && mutable ? `${ADMIN_BASE}/edm/new?event_id=${eventId}` : '',
     // Guest Responses section.
     responses: pagedResponses,
     responsesTotal,
@@ -1012,7 +1034,7 @@ interface ResponseRow {
   href: string;
 }
 
-function responseRow(list: CmsPage, guest: CmsPage): ResponseRow {
+function responseRow(list: CmsPage, guest: CmsPage, editable = true): ResponseRow {
   const date = latestResponseDate(guest);
   const clean = date.replace('T', ' ').replace('Z', '');
   return {
@@ -1023,7 +1045,7 @@ function responseRow(list: CmsPage, guest: CmsPage): ResponseRow {
     contact: attr(guest.lect, 'email') || attr(guest.lect, 'phone'),
     status: (attr(guest.lect, 'status') || '').trim().toLowerCase(),
     checkedIn: checkins(guest.lect).length > 0,
-    href: `/admin/pages/${guest.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${list.id}`)}`,
+    href: editable ? `/admin/pages/${guest.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${list.id}`)}` : '',
   };
 }
 
@@ -1041,6 +1063,7 @@ function latestResponseDate(guest: CmsPage): string {
 
 async function adhocCheckinForm(cms: CmsClient, views: Fetcher, eventId: number, jsonOnly = false): Promise<Response> {
   const event = await cms.get(eventId);
+  if (isArchived(event.lect)) return archivedEventImmutable();
   return adminView(views, `Adhoc check-in — ${event.name}`, 'adhoc-checkin', {
     eventName: event.name,
     eventHref: `${ADMIN_BASE}/events/${eventId}`,
@@ -1062,7 +1085,10 @@ async function adhocCheckinSubmit(cms: CmsClient, eventId: number, request: Requ
   if (!name) return redirect(`${ADMIN_BASE}/events/${eventId}/adhoc-checkin`);
 
   const now = new Date().toISOString();
-  const guestList = await ensureAdhocGuestList(cms, eventId);
+  const event = await cms.get(eventId);
+  if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  if (isArchived(event.lect)) return archivedEventImmutable();
+  const guestList = await ensureAdhocGuestList(cms, eventId, event);
   // Adhoc guests are confirmed and checked-in immediately, mirroring the legacy
   // Event.action_adhoc_checkin_post flow. Stored in the canonical lect shape so
   // the guest is fully editable in the CMS editor.

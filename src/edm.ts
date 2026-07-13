@@ -34,6 +34,7 @@ export interface EdmEnv extends SesEnv {
   EMAIL?: { send(message: OutboundEmail): Promise<unknown> };
   MAIL_QUEUE?: Queue<EmailDelivery>;
   EMAIL_FROM?: string;
+  CMS_URL?: string;
   PLUGIN_SECRET?: string;
   /** Tenant public-token signing key (tenantClientEnv overlay); falls back to PLUGIN_SECRET. */
   SIGN_KEY?: string;
@@ -62,6 +63,11 @@ const RSVP_URL_PLACEHOLDER = 'https://__edm_rsvp_url__/';
 const CHECKIN_QR_IMAGE_PLACEHOLDER = 'https://__edm_checkin_qr_image__/';
 const CHECKIN_CODE_PLACEHOLDER = '__edm_checkin_code__';
 const CHECKIN_URL_PLACEHOLDER = 'https://__edm_checkin_url__/';
+const EMAIL_SEND_RATE_LIMIT_KEY = 'send_email_per_second';
+const DEFAULT_EMAILS_PER_SECOND = 1;
+const emailRateCache = new Map<string, { expiresAt: number; value: number | null }>();
+const emailSendChains = new Map<string, Promise<void>>();
+const lastEmailSentAt = new Map<string, number>();
 
 // ── Plugin edit view (manifest `editViews: ['edm']`) ───────────────────────────
 // The CMS hands the whole edit/new view for `edm` pages to this plugin: it POSTs
@@ -552,7 +558,46 @@ function editorHref(edmId: number, params: Record<string, string> = {}): string 
   return `/admin/pages/${edmId}/edit?${query.toString()}`;
 }
 
-export async function deliverQueuedEmail(env: EdmEnv, delivery: EmailDelivery): Promise<void> {
+export async function emailSendRate(env: EdmEnv): Promise<number | null> {
+  const tenant = env.CMS_TENANT_ID || env.CMS_TENANT_REF || env.CMS_URL || 'default';
+  const now = Date.now();
+  const cached = emailRateCache.get(tenant);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  let value: number | null = DEFAULT_EMAILS_PER_SECOND;
+  try {
+    const limit = (await new CmsClient(env).limits()).find((item) => item.key === EMAIL_SEND_RATE_LIMIT_KEY);
+    if (limit) value = limit.value;
+  } catch (error) {
+    console.error('[events-suite] unable to read email send limit; using the safe default', error);
+  }
+  emailRateCache.set(tenant, { expiresAt: now + 1_000, value });
+  return value;
+}
+
+async function waitForEmailSendSlot(env: EdmEnv, knownRate?: number | null): Promise<void> {
+  const rate = knownRate === undefined ? await emailSendRate(env) : knownRate;
+  if (rate === 0) throw new Error('Email sending is disabled under Plugins → Limits.');
+  if (rate === null) return;
+
+  const tenant = env.CMS_TENANT_ID || env.CMS_TENANT_REF || env.CMS_URL || 'default';
+  const previous = emailSendChains.get(tenant) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(async () => {
+    const interval = 1_000 / Math.max(1, rate);
+    const delay = Math.max(0, (lastEmailSentAt.get(tenant) ?? 0) + interval - Date.now());
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    lastEmailSentAt.set(tenant, Date.now());
+  });
+  emailSendChains.set(tenant, current);
+  try {
+    await current;
+  } finally {
+    if (emailSendChains.get(tenant) === current) emailSendChains.delete(tenant);
+  }
+}
+
+export async function deliverQueuedEmail(env: EdmEnv, delivery: EmailDelivery, knownRate?: number | null): Promise<void> {
+  await waitForEmailSendSlot(env, knownRate);
   const from = delivery.from || env.EMAIL_FROM;
   if (!from) throw new Error('EMAIL_FROM (or the EDM sender) must be configured before sending EDMs');
   // AWS SES takes precedence over the Cloudflare Email binding: the binding

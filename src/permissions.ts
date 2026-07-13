@@ -105,3 +105,8 @@ function cmsUserPermissions(request: Request): string[] {
 export function forbidden(): Response {
   return new Response('Forbidden', { status: 403 });
 }
+
+/** Archived event trees are read-only until the event is restored. */
+export function archivedEventImmutable(): Response {
+  return new Response('Archived events are read-only. Restore the event before making changes.', { status: 409 });
+}

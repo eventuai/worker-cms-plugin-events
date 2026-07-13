@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CmsClient, checkins } from '../src/cms';
 import { compactCheckinCode, signPayload } from '../src/crypto';
+import { deliverQueuedEmail, type EdmEnv } from '../src/edm';
 import worker from '../src/index';
 import { renderView } from '../src/templates/liquid';
 
@@ -134,7 +135,6 @@ describe('plugin contract', () => {
       ],
       assets: [
         { path: '/assets/event-new.js', label: 'New event auto slug' },
-        { path: '/assets/picture-upload.js', label: 'Picture field upload' },
         { path: '/assets/long-running-submit.js', label: 'Long-running form loading state' },
         { path: '/assets/import-continue.js', label: 'Resumable import and deletion continuation' },
       ],
@@ -148,6 +148,11 @@ describe('plugin contract', () => {
           event: ['event-type', 'event-categories'],
         },
       },
+    });
+    expect((manifest as unknown as { limits: Array<Record<string, unknown>> }).limits[0]).toMatchObject({
+      key: 'send_email_per_second',
+      scope: 'per_second',
+      default: 1,
     });
     expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');
     expect(manifest.contentTypes.blueprint.guest).toContain('@paired_qrcode');
@@ -590,6 +595,118 @@ describe('events admin', () => {
     expect(html).not.toContain('title="Edit event"');
     expect(html).not.toContain('title="Delete event"');
     expect(cmsFetch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('renders archived events read-only without check-in or registration actions', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (init?.method && init.method !== 'GET') throw new Error('archived dashboard must not write');
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Past launch', lect: { archived: 'yes' } } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [{ id: 50, page_type: 'edm', name: 'Invite', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [{ id: 55, page_type: 'guest', name: 'Ada', lect: { status: 'confirmed', _pointers: { mail_list: '8' } } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+    const testEnv = env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' });
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), testEnv);
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('This event is archived and read-only.');
+    expect(html).toContain('href="/admin/plugins/events/edm/50/preview"');
+    expect(html).not.toContain('title="Adhoc check-in"');
+    expect(html).not.toContain('title="Public registrations"');
+    expect(html).not.toContain('title="Edit event"');
+    expect(html).not.toContain('title="New guest list"');
+    expect(html).not.toContain('aria-label="Import guests"');
+    expect(html).not.toContain('title="Add template"');
+    expect(html).not.toContain('title="Edit email template"');
+    expect(html).not.toContain('title="Duplicate email template"');
+    expect(html).not.toContain('/admin/pages/55/edit');
+
+    for (const path of [
+      '/__plugin/admin/events/7/adhoc-checkin',
+      '/__plugin/admin/events/7/registrations',
+    ]) {
+      const blocked = await plugin.fetch(request(path, {
+        headers: { 'x-plugin-secret': 'shared-secret' },
+      }), testEnv);
+      expect(blocked.status).toBe(409);
+      expect(await blocked.text()).toContain('Archived events are read-only');
+    }
+  });
+
+  it('makes archived guest lists and guest editors read-only and rejects direct writes', async () => {
+    const writes: RequestInit[] = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (init?.method === 'PUT' || init?.method === 'POST' || init?.method === 'DELETE') writes.push(init);
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Past launch', lect: { archived: 'yes' } } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [{ id: 55, page_type: 'guest', name: 'Ada', lect: { email: 'ada@example.com', status: 'confirmed', _pointers: { mail_list: '8' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+    const testEnv = env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' });
+
+    const listResponse = await plugin.fetch(request('/__plugin/admin/rsvp/8', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), testEnv);
+    const listHtml = await renderedText(listResponse);
+    expect(listHtml).toContain('belongs to an archived event and is read-only');
+    expect(listHtml).toContain('title="Export CSV"');
+    expect(listHtml).not.toContain('title="Edit guest list"');
+    expect(listHtml).not.toContain('title="New guest"');
+    expect(listHtml).not.toContain('type="submit">Check in</button>');
+    expect(listHtml).not.toContain('Edit →');
+    expect(listHtml).not.toContain('Email template (EDM)');
+
+    const blocked = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ status: 'declined' }),
+    }), testEnv);
+    expect(blocked.status).toBe(409);
+
+    const editResponse = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-plugin-secret': 'shared-secret' },
+      body: JSON.stringify({
+        mode: 'edit',
+        action: '/admin/pages/55',
+        backHref: '/admin/plugins/events/rsvp/8',
+        pageType: 'guest',
+        page: { id: 55, name: 'Ada', slug: 'ada', weight: 0, page_id: 8, lect: JSON.stringify({ email: 'ada@example.com', _pointers: { mail_list: '8' } }) },
+      }),
+    }), testEnv);
+    const editHtml = await renderedText(editResponse);
+    expect(editHtml).toContain('belongs to an archived event and is read-only');
+    expect(editHtml).toContain('<fieldset disabled');
+    expect(editHtml).not.toContain('Save guest');
+    expect(editHtml).not.toContain('Update from contact');
+    expect(editHtml).not.toContain('>Delete</button>');
+    expect(writes).toEqual([]);
   });
 
   it('paginates event guest responses at 25 rows per page', async () => {
@@ -2014,6 +2131,49 @@ describe('EDM and labels', () => {
     });
   });
 
+  it('does not send when the email-per-second limit is zero', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/limits') {
+        return Response.json({ limits: [{ key: 'send_email_per_second', value: 0 }] });
+      }
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: {
+          id: 12, page_type: 'edm', name: 'Invite', page_id: 7,
+          lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' }, sender: 'events@example.com' },
+        } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+    const EMAIL = { send: vi.fn(async () => undefined) };
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/send-test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ recipient: 'guest@example.com' }),
+    }), env({ CMS_URL: 'https://cms.disabled.test', PLUGIN_SECRET: 'shared-secret', EMAIL }));
+
+    expect(response.status).toBe(200);
+    expect(await renderedText(response)).toContain('Email sending is disabled under Plugins → Limits.');
+    expect(EMAIL.send).not.toHaveBeenCalled();
+  });
+
+  it('paces consecutive deliveries to the configured per-second rate', async () => {
+    const sentAt: number[] = [];
+    const delivery = { from: 'events@example.com', to: 'guest@example.com', subject: 'Hi', html: '<p>Hi</p>', text: 'Hi', edmId: 12 };
+    const deliveryEnv = {
+      CMS_URL: 'https://cms.pacing.test',
+      EMAIL: { send: vi.fn(async () => { sentAt.push(Date.now()); }) },
+    } satisfies EdmEnv;
+
+    await deliverQueuedEmail(deliveryEnv, delivery, 20);
+    await deliverQueuedEmail(deliveryEnv, delivery, 20);
+
+    expect(sentAt).toHaveLength(2);
+    expect(sentAt[1] - sentAt[0]).toBeGreaterThanOrEqual(45);
+  });
+
   it('sends the test email through AWS SES when the AWS vars are configured', async () => {
     let sesBody: string | undefined;
     let sesAuth: string | null | undefined;
@@ -2282,7 +2442,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).not.toContain('type="url" name="#1@picture"');
     expect(html).toContain('data-picture-url type="text" name="@thankyou_picture"');
     expect(html).not.toContain('type="url" name="@thankyou_picture"');
-    expect(html).toContain('<script src="/admin/plugins/events/assets/picture-upload.js"></script>');
+    expect(html).not.toContain('/admin/plugins/events/assets/picture-upload.js');
 
     const htmlWithPresence = await renderView(views(), '/sections/edm-edit.liquid', {
       ...payload,
@@ -2740,6 +2900,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       }
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
       if (url.pathname === '/__cms/pages/9') return Response.json({ page: { id: 9, page_type: 'mail_list', name: 'General', lect: { _pointers: { event: '7' } } } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);

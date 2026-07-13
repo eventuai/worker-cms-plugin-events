@@ -281,6 +281,38 @@ describe('archive preview', () => {
     expect(text).toContain('contact #300');
   });
 
+  it('keeps duplicated guests visible after every guest has been merged', async () => {
+    const pages = fixture();
+    const contactByGuest = new Map<number, string>([
+      [1, '300'],
+      [2, '301'],
+      [3, '302'],
+      [4, '9001'],
+      [5, '301'],
+    ]);
+    for (const page of pages) {
+      const lect = page.lect ?? (page.lect = {});
+      if (page.page_type === 'event' && page.id === 100) lect.archived = 'yes';
+      const contactId = contactByGuest.get(page.id);
+      if (page.page_type === 'guest' && contactId) {
+        lect.contact_merged_at = '2026-05-02T00:00:00.000Z';
+        lect._pointers = {
+          ...((lect._pointers ?? {}) as Record<string, unknown>),
+          contact: contactId,
+        };
+      }
+    }
+    stubCms(pages);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/100/archive'), env());
+    expect(response.status).toBe(200);
+    const text = await renderedText(response);
+
+    expect(text).toMatch(/>1<\/b><span[^>]*>Duplicated guests<\/span>/);
+    expect(text).toMatch(/>5<\/b><span[^>]*>Already merged<\/span>/);
+    expect(text).toContain('same person as Grace Hopper (VIP)');
+  });
+
   it('makes no writes', async () => {
     const calls = stubCms(fixture());
     await plugin.fetch(request('/__plugin/admin/events/100/archive'), env());

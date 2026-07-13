@@ -87,16 +87,17 @@ export interface CmsBatchUpdateInput {
   versionAction?: string;
 }
 
-/** One quota from the host's `GET /__cms/limits` — declared in this plugin's
- *  manifest, configured (or defaulted) host-side, and enforced by the host on
- *  every create. `value: null` means unlimited; scoped `usage` is only present
- *  when the matching query param (pointer_value / page_id) was sent. */
+/** One limit from the host's `GET /__cms/limits` — declared in this plugin's
+ *  manifest and configured (or defaulted) host-side. Page quotas are enforced
+ *  by the host; operational limits are enforced by the plugin. `value: null`
+ *  means unlimited; scoped `usage` is only present when the matching query
+ *  param (pointer_value / page_id) was sent. */
 export interface CmsLimit {
   key: string;
   label: string;
   description: string;
-  page_type: string;
-  scope: 'total' | 'per_parent' | 'per_pointer';
+  page_type: string | null;
+  scope: 'total' | 'per_parent' | 'per_pointer' | 'per_second';
   pointer_key: string | null;
   value: number | null;
   configured: boolean;

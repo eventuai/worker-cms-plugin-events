@@ -124,6 +124,10 @@ interface ArchiveRow {
   listName: string;
   /** Identity within the event: email if present, else normalized full name. */
   matchKey: string;
+  /** Whether an earlier guest in this event has the same identity. */
+  duplicate: boolean;
+  /** Duplicate-specific preview text, independent of merge progress. */
+  duplicateDetail: string;
   category: ArchiveCategory;
   /** Merge target when already resolved (linked / likely / merged). */
   contactId: string;
@@ -169,7 +173,20 @@ function classifyGuest(
   const email = attr(guest.lect, 'email').trim().toLowerCase();
   const fullName = guestFullName(guest);
   const matchKey = guestMatchKey(fullName, email);
-  const base = { guest, listName, matchKey, contactId: '', contact: null as CmsPage | null, detail: '' };
+  const primary = byKey.get(matchKey);
+  const duplicateDetail = primary
+    ? `same person as ${primary.guest.name || 'guest'} (${primary.listName})`
+    : '';
+  const base = {
+    guest,
+    listName,
+    matchKey,
+    duplicate: Boolean(primary),
+    duplicateDetail,
+    contactId: '',
+    contact: null as CmsPage | null,
+    detail: '',
+  };
 
   // Already stamped by an earlier pass — skip on apply, but still claim the
   // match key so duplicates of this guest resolve to the same contact.
@@ -185,12 +202,11 @@ function classifyGuest(
     return row;
   }
 
-  const primary = byKey.get(matchKey);
   if (primary) {
     return {
       ...base,
       category: 'duplicate',
-      detail: `same person as ${primary.guest.name || 'guest'} (${primary.listName})`,
+      detail: duplicateDetail,
     };
   }
 
@@ -267,13 +283,21 @@ export async function archiveReview(cms: CmsClient, views: Fetcher, eventId: num
 
   const plan = await buildArchivePlan(cms, eventId);
   const byCategory = (category: ArchiveCategory) => plan.rows.filter((row) => row.category === category);
-  const duplicates = byCategory('duplicate');
+  // Duplicate identity is independent of archive progress: after a successful
+  // run a row can be both a duplicated guest and already merged.
+  const duplicates = plan.rows.filter((row) => row.duplicate);
   const linked = byCategory('linked');
   const likely = byCategory('likely');
   const fresh = byCategory('new');
   const merged = byCategory('merged');
 
-  const section = (key: string, label: string, hint: string, rows: ArchiveRow[]) => ({
+  const section = (
+    key: string,
+    label: string,
+    hint: string,
+    rows: ArchiveRow[],
+    detailFor: (row: ArchiveRow) => string = (row) => row.detail,
+  ) => ({
     key,
     label,
     hint,
@@ -282,7 +306,7 @@ export async function archiveReview(cms: CmsClient, views: Fetcher, eventId: num
       name: row.guest.name,
       listName: row.listName,
       email: attr(row.guest.lect, 'email'),
-      detail: row.detail,
+      detail: detailFor(row),
       // Linked / likely / merged rows resolve to a contact page; the preview
       // links it (opened in a new tab) so the reviewer can check the match.
       contactHref: row.contactId ? `/admin/pages/${row.contactId}/edit` : '',
@@ -307,7 +331,7 @@ export async function archiveReview(cms: CmsClient, views: Fetcher, eventId: num
       ...(merged.length ? [{ label: 'Already merged', value: merged.length }] : []),
     ],
     sections: [
-      section('duplicates', 'Duplicated guests', 'The same person appears more than once on this event — every copy\'s activity merges into one contact.', duplicates),
+      section('duplicates', 'Duplicated guests', 'The same person appears more than once on this event — every copy\'s activity merges into one contact.', duplicates, (row) => row.duplicateDetail),
       section('linked', 'Duplicated contacts (contact ID matched)', 'Guests linked to a contact record — event activity is added to that contact.', linked),
       section('likely', 'Likely duplicated contacts', 'Not linked, but a contact shares the guest\'s email or exact name — activity merges into the matched contact.', likely),
       section('new', 'New contacts', 'No contact matched — a contact record is created from the guest.', fresh),

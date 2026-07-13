@@ -13,6 +13,7 @@
   </div>
 </div>
 
+{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">This guest list belongs to an archived event and is read-only.</p>{% endif %}
 {% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | escape }}</p>{% endif %}
 
 {%- comment -%} ── Email campaign: link an EDM, then send / auto-send to guests ── {%- endcomment -%}

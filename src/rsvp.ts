@@ -28,7 +28,7 @@ import {
   type EdmEnv,
 } from './edm';
 import { chineseSearchVariants } from './chinese';
-import { forbidden, type EventAdminAccess } from './permissions';
+import { archivedEventImmutable, forbidden, type EventAdminAccess } from './permissions';
 import { adminView } from './templates/views';
 import { redirect } from '@lionrockjs/worker-cms-plugin';
 
@@ -79,6 +79,10 @@ interface GuestListContext {
   list: CmsPage;
   event: CmsPage | null;
   eventId: number | null;
+}
+
+function eventIsArchived(event: CmsPage | null | undefined): boolean {
+  return attr(event?.lect ?? {}, 'archived').trim().toLowerCase() === 'yes';
 }
 
 interface EditViewContext {
@@ -191,13 +195,26 @@ export async function handleRsvpAdmin(
   // those links working by routing them through that event's Adhoc list.
   const target = await cms.get(listId);
   if (target.page_type === 'event') {
-    const adhocList = await ensureAdhocGuestList(cms, target.id);
+    if (eventIsArchived(target)) return archivedEventImmutable();
+    const adhocList = await ensureAdhocGuestList(cms, target.id, target);
     if (segments[1] === 'guests' && segments[2] === 'new' && request.method === 'POST') {
       if (!canCheckIn) return forbidden();
       return createGuest(request, cms, adhocList.id);
     }
     const rest = segments.slice(1).join('/');
     return redirect(`${ADMIN_BASE}/rsvp/${adhocList.id}${rest ? `/${rest}` : ''}`);
+  }
+
+  const archivedWorkflow = request.method === 'POST' || (
+    segments[1] === 'contacts'
+    || segments[1] === 'dedupe'
+    || segments[1] === 'import'
+    || (segments[1] === 'guests' && segments[2] === 'new')
+  );
+  if (archivedWorkflow) {
+    const targetEventId = pageId(pointer(target.lect, 'event'));
+    const targetEvent = targetEventId ? await cms.get(targetEventId).catch(() => null) : null;
+    if (targetEvent?.page_type === 'event' && eventIsArchived(targetEvent)) return archivedEventImmutable();
   }
 
   if (segments[1] === 'delete' && request.method === 'POST') {
@@ -356,14 +373,16 @@ export async function eventGuestLists(cms: CmsClient, views: Fetcher, eventId: n
   const canEdit = access?.canEdit ?? true;
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  const archived = eventIsArchived(event);
   const pages = await listByEvent(cms, 'mail_list', eventId);
-  if (!pages.some(isAdhocList)) pages.push(await createAdhocGuestList(cms, eventId));
+  if (!archived && !pages.some(isAdhocList)) pages.push(await createAdhocGuestList(cms, eventId));
   return adminView(views, `Guest lists — ${event.name}`, 'guest-lists', {
     title: `Guest lists — ${event.name}`,
     subtitle: 'Drag a list to reorder it; the order is shared across the event.',
     backHref: `${ADMIN_BASE}/events/${eventId}`,
-    newHref: canEdit ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : '',
-    reorderAction: canEdit ? CMS_BATCH_WEIGHT_ACTION : '',
+    archived,
+    newHref: canEdit && !archived ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : '',
+    reorderAction: canEdit && !archived ? CMS_BATCH_WEIGHT_ACTION : '',
     reorderEventId: eventId,
     lists: sortByWeight(pages).map((list) => ({ ...guestListRow(list, event, access), id: list.id })),
   }, jsonOnly);
@@ -382,9 +401,10 @@ function createAdhocGuestList(cms: CmsClient, eventId: number): Promise<CmsPage>
 }
 
 /** Ensures the event's Adhoc list exists, creating it if needed. */
-export async function ensureAdhocGuestList(cms: CmsClient, eventId: number): Promise<CmsPage> {
-  const event = await cms.get(eventId);
+export async function ensureAdhocGuestList(cms: CmsClient, eventId: number, knownEvent?: CmsPage): Promise<CmsPage> {
+  const event = knownEvent ?? await cms.get(eventId);
   if (event.page_type !== 'event') throw new Error('Event not found');
+  if (eventIsArchived(event)) throw new Error('Archived events are read-only. Restore the event before making changes.');
   const pages = await listByEvent(cms, 'mail_list', eventId);
   return pages.find(isAdhocList) ?? createAdhocGuestList(cms, eventId);
 }
@@ -409,13 +429,15 @@ async function rsvpIndex(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = fa
 }
 
 async function guestListForm(cms: CmsClient, views: Fetcher, url: URL, jsonOnly = false): Promise<Response> {
-  const { pages } = await cms.list('event', { limit: 500 });
+  const { pages: allEvents } = await cms.list('event', { limit: 500 });
+  const pages = allEvents.filter((event) => !eventIsArchived(event));
   const selectedEventId = pageId(url.searchParams.get('event_id'));
-  const listedEvent = selectedEventId ? pages.find((event) => event.id === selectedEventId) : undefined;
+  const listedEvent = selectedEventId ? allEvents.find((event) => event.id === selectedEventId) : undefined;
   const fetchedEvent = selectedEventId && !listedEvent
     ? await cms.get(selectedEventId).catch(() => null)
     : null;
   const selectedEvent = listedEvent ?? (fetchedEvent?.page_type === 'event' ? fetchedEvent : null);
+  if (eventIsArchived(selectedEvent)) return archivedEventImmutable();
   const title = selectedEvent ? `New guest list — ${selectedEvent.name}` : 'New guest list';
   return adminView(views, title, 'guest-list-form', {
     title,
@@ -438,6 +460,7 @@ async function createGuestList(request: Request, cms: CmsClient): Promise<Respon
 
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  if (eventIsArchived(event)) return archivedEventImmutable();
 
   // Grouped to its event by the `event` pointer (not parent page).
   const list = await cms.create({
@@ -460,6 +483,8 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const canManageEmail = access?.canManageEmail ?? true;
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
+  const archived = eventIsArchived(context.event);
+  const mutable = !archived;
 
   const q = url.searchParams.get('q')?.trim() ?? '';
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
@@ -489,29 +514,30 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     listsHref: context.event ? `${ADMIN_BASE}/events/${context.event.id}` : `${ADMIN_BASE}/rsvp`,
-    canEdit,
-    canDelete,
+    archived,
+    canEdit: canEdit && mutable,
+    canDelete: canDelete && mutable,
     canImportExport,
-    canManageEmail,
-    newGuestHref: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/guests/new` : '',
-    editHref: canEdit ? `/admin/pages/${listId}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
-    importHref: canImportExport ? `${ADMIN_BASE}/rsvp/${listId}/import` : '',
+    canManageEmail: canManageEmail && mutable,
+    newGuestHref: canEdit && mutable ? `${ADMIN_BASE}/rsvp/${listId}/guests/new` : '',
+    editHref: canEdit && mutable ? `/admin/pages/${listId}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
+    importHref: canImportExport && mutable ? `${ADMIN_BASE}/rsvp/${listId}/import` : '',
     exportHref: canImportExport ? `${ADMIN_BASE}/rsvp/${listId}/export` : '',
-    dedupeHref: canDelete ? `${ADMIN_BASE}/rsvp/${listId}/dedupe` : '',
-    contactsHref: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/contacts` : '',
-    updateFromContactsAction: canEdit ? `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts` : '',
-    deleteAction: canDelete && !isAdhocList(context.list) ? `${ADMIN_BASE}/rsvp/${listId}/delete` : '',
+    dedupeHref: canDelete && mutable ? `${ADMIN_BASE}/rsvp/${listId}/dedupe` : '',
+    contactsHref: canEdit && mutable ? `${ADMIN_BASE}/rsvp/${listId}/contacts` : '',
+    updateFromContactsAction: canEdit && mutable ? `${ADMIN_BASE}/rsvp/${listId}/update-from-contacts` : '',
+    deleteAction: canDelete && mutable && !isAdhocList(context.list) ? `${ADMIN_BASE}/rsvp/${listId}/delete` : '',
     flash: url.searchParams.get('flash') ?? '',
     // EDM controls.
-    setEdmAction: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/edm` : '',
-    edmOptions: canManageEmail ? eventEdms.map((edm) => ({ id: edm.id, name: edm.name, selected: edm.id === selectedEdmId })) : [],
-    hasEdmOptions: canManageEmail && eventEdms.length > 0,
-    hasEdm: canManageEmail && hasEdm,
+    setEdmAction: canManageEmail && mutable ? `${ADMIN_BASE}/rsvp/${listId}/edm` : '',
+    edmOptions: canManageEmail && mutable ? eventEdms.map((edm) => ({ id: edm.id, name: edm.name, selected: edm.id === selectedEdmId })) : [],
+    hasEdmOptions: canManageEmail && mutable && eventEdms.length > 0,
+    hasEdm: canManageEmail && mutable && hasEdm,
     edmName: hasEdm ? selectedEdm!.name : '',
     edmEditHref: hasEdm ? `/admin/pages/${selectedEdm!.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${listId}`)}` : '',
-    autoSendGoodAction: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=good` : '',
-    autoSendRiskyAction: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=risky` : '',
-    reorderAction: canEdit && noFilter ? CMS_BATCH_WEIGHT_ACTION : '',
+    autoSendGoodAction: canManageEmail && mutable ? `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=good` : '',
+    autoSendRiskyAction: canManageEmail && mutable ? `${ADMIN_BASE}/rsvp/${listId}/send-edm?quality=risky` : '',
+    reorderAction: canEdit && mutable && noFilter ? CMS_BATCH_WEIGHT_ACTION : '',
     q,
     selectedStatus: selectedStatus ?? '',
     selectedColor,
@@ -526,13 +552,14 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
     hasCustomFields: customFields.length > 0,
     selectedCustomFieldKey: selectedCustomField?.key ?? '',
     total: noFilter ? pages.length : filteredGuests.length,
-    guests: guests.map((guest) => guestRow(guest, listId, canManageEmail && hasEdm ? selectedEdm!.id : null, selectedCustomField, '', q, access)),
+    guests: guests.map((guest) => guestRow(guest, listId, canManageEmail && mutable && hasEdm ? selectedEdm!.id : null, selectedCustomField, '', q, access, archived)),
   }, jsonOnly);
 }
 
 async function guestForm(cms: CmsClient, views: Fetcher, listId: number, guestId?: number, jsonOnly = false): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
+  if (!guestId && eventIsArchived(context.event)) return archivedEventImmutable();
 
   const guest = guestId ? await cms.get(guestId) : undefined;
   if (guest && (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId))) return new Response('not found', { status: 404 });
@@ -558,13 +585,14 @@ async function guestFormView(
   } = {},
 ): Promise<Response> {
   const values = guest ? guestValues(guest) : emptyGuestValues();
-  const action = options.action ?? (guest
+  const readOnly = eventIsArchived(context.event);
+  const action = readOnly ? '' : options.action ?? (guest
     ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}`
     : `${ADMIN_BASE}/rsvp/${listId}/guests/new`);
 
   // Sibling lists of the same event a guest can be moved into (edit only).
   let moveLists: Array<{ id: number; name: string }> = [];
-  if (guest && context.eventId) {
+  if (guest && context.eventId && !readOnly) {
     const pages = await listByEvent(cms, 'mail_list', context.eventId);
     moveLists = pages.filter((list) => list.id !== listId).map((list) => ({ id: list.id, name: list.name }));
   }
@@ -574,6 +602,8 @@ async function guestFormView(
 
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
     title: options.title ?? (guest ? 'Edit guest' : 'New guest'),
+    readOnly,
+    existingGuest: Boolean(guest),
     eventName: context.event?.name ?? 'Event',
     listName: context.list.name,
     listHref: options.backHref ?? `${ADMIN_BASE}/rsvp/${listId}`,
@@ -595,12 +625,12 @@ async function guestFormView(
     hasAdminCustomFields: adminCustomFields.length > 0,
     activity,
     hasActivity: activity.length > 0,
-    deleteAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
+    deleteAction: guest && !readOnly ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
     qrHref: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode` : '',
-    updateFromContactAction: guest && guestContactId(guest)
+    updateFromContactAction: guest && !readOnly && guestContactId(guest)
       ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/update-from-contact`
       : '',
-    moveAction: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/move` : '',
+    moveAction: guest && !readOnly ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/move` : '',
     moveLists,
   }, options.jsonOnly ?? false);
 }
@@ -1199,6 +1229,7 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
   const ticket = await guestQrTicket(cms, listId, guestId);
   if (!ticket) return new Response('not found', { status: 404 });
   const { context, guest, payload, values } = ticket;
+  const readOnly = eventIsArchived(context.event);
   const plusGuestQrs = plusGuestQrCodes(listId, guestId, values.plus_guests);
 
   return adminView(views, `QR — ${values.name}`, 'guest-qr', {
@@ -1206,10 +1237,10 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     organization: values.organization,
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
-    editHref: access?.canEdit === false ? '' : guestEditHref(guestId, listId),
+    editHref: access?.canEdit === false || readOnly ? '' : guestEditHref(guestId, listId),
     checkedIn: checkins(guest.lect).length > 0,
     pairedQrCode: values.paired_qrcode,
-    pairAction: access?.canCheckIn === false ? '' : `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/pair-qrcode`,
+    pairAction: access?.canCheckIn === false || readOnly ? '' : `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/pair-qrcode`,
     payload,
     // Compatibility for CMS isolates that still hold the previous immutable
     // Liquid view during the deploy-revision cache rollover.
@@ -1398,6 +1429,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const canImportExport = access?.canImportExport ?? true;
   const event = await cms.get(eventId);
   if (event.page_type !== 'event') return new Response('not found', { status: 404 });
+  const archived = eventIsArchived(event);
 
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
   const q = url.searchParams.get('q')?.trim() ?? '';
@@ -1419,9 +1451,9 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
       if (!guestMatchesFilters(guest, '', selectedStatus ?? undefined, selectedColor)) continue;
       rows.push({
         // No EDM id here: email sending lives on the per-list guest list, not this cross-list view.
-        ...guestRow(guest, list.id, null, selectedCustomField, returnTo, q, access),
+        ...guestRow(guest, list.id, null, selectedCustomField, returnTo, q, access, archived),
         listName: list.name,
-        editHref: access?.canEdit === false ? '' : guestEditHref(guest.id, list.id, returnTo),
+        editHref: access?.canEdit === false || archived ? '' : guestEditHref(guest.id, list.id, returnTo),
         // No check-in action here either: checking guests in happens on the per-list guest list (status still shows).
         checkinAction: '',
       });
@@ -1431,6 +1463,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
 
   return adminView(views, `All guests — ${event.name}`, 'all-guests', {
     eventName: event.name,
+    archived,
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     canImportExport,
     exportHref: canImportExport ? `${ADMIN_BASE}/events/${eventId}/export` : '',
@@ -2383,13 +2416,14 @@ async function guestListContext(cms: CmsClient, listId: number): Promise<GuestLi
 
 function guestListRow(list: CmsPage, event?: CmsPage, access?: EventAdminAccess): Record<string, unknown> {
   const canDelete = access?.canDelete ?? true;
+  const archived = eventIsArchived(event);
   return {
     name: list.name,
     eventName: event?.name ?? 'Unknown event',
     eventHref: event ? `${ADMIN_BASE}/events/${event.id}` : '',
     href: `${ADMIN_BASE}/rsvp/${list.id}`,
-    canDelete: canDelete && !isAdhocList(list),
-    deleteAction: canDelete && !isAdhocList(list) ? `${ADMIN_BASE}/rsvp/${list.id}/delete` : '',
+    canDelete: canDelete && !archived && !isAdhocList(list),
+    deleteAction: canDelete && !archived && !isAdhocList(list) ? `${ADMIN_BASE}/rsvp/${list.id}/delete` : '',
     allowCheckin: attr(list.lect, 'allow_checkin') !== 'no',
   };
 }
@@ -2398,10 +2432,10 @@ function guestEditHref(guestId: number, listId: number, returnTo = `${ADMIN_BASE
   return `/admin/pages/${guestId}/edit?return_to=${encodeURIComponent(returnTo)}`;
 }
 
-function guestRow(guest: CmsPage, listId: number, edmId: number | null, customField?: AdminCustomField | null, returnTo = '', searchQuery = '', access?: EventAdminAccess): Record<string, unknown> {
-  const canEdit = access?.canEdit ?? true;
-  const canCheckIn = access?.canCheckIn ?? true;
-  const canManageEmail = access?.canManageEmail ?? true;
+function guestRow(guest: CmsPage, listId: number, edmId: number | null, customField?: AdminCustomField | null, returnTo = '', searchQuery = '', access?: EventAdminAccess, readOnly = false): Record<string, unknown> {
+  const canEdit = (access?.canEdit ?? true) && !readOnly;
+  const canCheckIn = (access?.canCheckIn ?? true) && !readOnly;
+  const canManageEmail = (access?.canManageEmail ?? true) && !readOnly;
   const values = guestValues(guest);
   const quality = emailQuality(values.email);
   const searchTextParts = [String(guest.id), values.name, values.last_name, values.email, values.phone];

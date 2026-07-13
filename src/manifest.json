@@ -39,6 +39,7 @@
     { "key": "reorder_guest_list_guests", "label": "Reorder guests", "description": "Charged per guest reorder operation inside a guest list. Free until priced.", "charge": "metered", "unit": "operation" }
   ],
   "limits": [
+    { "key": "send_email_per_second", "label": "Emails per second", "description": "Maximum email delivery rate. Set to 0 to disable email sending.", "scope": "per_second", "default": 1 },
     { "key": "max_events", "label": "Maximum events", "description": "Total number of events.", "page_type": "event", "scope": "total" },
     { "key": "max_guest_lists", "label": "Maximum guest lists", "description": "Total guest lists across all events.", "page_type": "mail_list", "scope": "total" },
     { "key": "max_lists_per_event", "label": "Guest lists per event", "description": "Guest lists attached to a single event.", "page_type": "mail_list", "scope": "per_pointer", "pointer_key": "event" },
@@ -47,7 +48,6 @@
   ],
   "assets": [
     { "path": "/assets/event-new.js", "label": "New event auto slug" },
-    { "path": "/assets/picture-upload.js", "label": "Picture field upload" },
     { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
     { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" }
   ],
