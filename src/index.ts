@@ -44,6 +44,7 @@ import {
   eventSessions,
   exportEventGuests,
   flatAllGuests,
+  guestsByMailList,
   handleGuestEditView,
   handleRsvpAdmin,
   confirmEventGuestImport,
@@ -400,7 +401,7 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
 
     // Archived event trees remain browsable, exportable and restorable, but
     // mutation workflows are locked even when called directly without a UI.
-    if (eventId && sub && sub !== 'archive' && sub !== 'adhoc-checkin' && sub !== 'duplicate' && sub !== 'export' && sub !== 'lists' && sub !== 'all-guests') {
+    if (eventId && sub && sub !== 'archive' && sub !== 'adhoc-checkin' && sub !== 'delete' && sub !== 'duplicate' && sub !== 'export' && sub !== 'lists' && sub !== 'all-guests') {
       const event = await cms.get(eventId);
       if (event.page_type === 'event' && isArchived(event.lect)) return archivedEventImmutable();
     }
@@ -904,20 +905,17 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     listByEvent(cms, 'edm', eventId),
   ]);
   if (mutable && !guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId, event));
-  // The CMS page API is generic, so the plugin tallies each list's guests itself
-  // (one fetch per list) rather than asking the CMS for RSVP-specific figures.
-  // The same fetch also yields the guests who have responded, so the dashboard's
-  // response feed costs no extra subrequests.
-  const guestListDetails = await Promise.all(
-    guestLists.map(async (list) => {
-      const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
-      list.guest_summary = computeGuestListSummary(guests);
-      return {
-        guests,
-        responses: guests.filter(hasResponded).map((guest) => responseRow(list, guest, !archived)),
-      };
-    }),
-  );
+  // Fetch every list's guests through one generic multi-pointer query, then
+  // tally each list locally. The same rows also power the response feed.
+  const groupedGuests = await guestsByMailList(cms, guestLists);
+  const guestListDetails = guestLists.map((list) => {
+    const guests = groupedGuests.get(String(list.id)) ?? [];
+    list.guest_summary = computeGuestListSummary(guests);
+    return {
+      guests,
+      responses: guests.filter(hasResponded).map((guest) => responseRow(list, guest, !archived)),
+    };
+  });
   // Most recent response first, mirroring the legacy event "Guest Responses" feed.
   const responses = guestListDetails.flatMap((detail) => detail.responses).sort((a, b) => b.date.localeCompare(a.date));
   const responsesTotal = responses.length;
@@ -955,7 +953,9 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     duplicateHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
     registrationsHref: archived ? '' : `${ADMIN_BASE}/events/${eventId}/registrations`,
     archiveHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/archive` : '',
-    deleteHref: canDelete && mutable ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
+    // Deletion is the intentional exception to archived immutability: an
+    // archived event can still be moved to trash by an authorized user.
+    deleteHref: canDelete && !deleting ? `${ADMIN_BASE}/events/${eventId}/delete` : '',
     reorderAction: canEdit && mutable ? CMS_BATCH_WEIGHT_ACTION : '',
     reorderEventId: eventId,
     stats: statTiles(r),

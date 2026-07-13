@@ -63,6 +63,32 @@ const IMPORT_CREATE_BATCH = 25;
  */
 const IMPORT_PASS_WRITE_BUDGET = 40;
 
+/** Maximum pointer values accepted by the generic CMS page search API. */
+const CMS_POINTER_VALUES_LIMIT = 500;
+
+/**
+ * Fetch guests for many lists through the CMS's generic multi-pointer search,
+ * then restore the per-list shape the event views and import planner need.
+ * This replaces one paginated request chain per guest list with one chain per
+ * 500 list ids, while still allowing the CMS client to paginate large results.
+ */
+export async function guestsByMailList(cms: CmsClient, lists: CmsPage[], q = ''): Promise<Map<string, CmsPage[]>> {
+  const grouped = new Map<string, CmsPage[]>();
+  const ids = [...new Set(lists.map((list) => String(list.id)))];
+  for (const id of ids) grouped.set(id, []);
+
+  for (let offset = 0; offset < ids.length; offset += CMS_POINTER_VALUES_LIMIT) {
+    const values = ids.slice(offset, offset + CMS_POINTER_VALUES_LIMIT);
+    const guests = await cms.listAll('guest', { pointer: { key: 'mail_list', values }, q });
+    for (const guest of guests) {
+      const listId = pointer(guest.lect, 'mail_list');
+      const bucket = grouped.get(listId);
+      if (bucket) bucket.push(guest);
+    }
+  }
+  return grouped;
+}
+
 /** Guest value fields the import compares and can add/update on an existing guest. */
 const IMPORT_FIELDS = [
   'last_name', 'email', 'phone', 'organization', 'job_title',
@@ -1438,9 +1464,8 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const selectedColor = normalizeColor(url.searchParams.get('color'));
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const ordered = sortByWeight(lists);
-  const guestsByList = await Promise.all(
-    ordered.map((list) => cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id }, q })),
-  );
+  const groupedGuests = await guestsByMailList(cms, ordered, q);
+  const guestsByList = ordered.map((list) => groupedGuests.get(String(list.id)) ?? []);
 
   const colorOptions = colorTagOptions(selectedColor);
   const customFields = uniqueAdminCustomFields(ordered.flatMap((list) => adminCustomFieldsForGuest(event, list)));
@@ -1565,8 +1590,28 @@ export async function confirmEventGuestImport(request: Request, cms: CmsClient, 
   const backHref = `${ADMIN_BASE}/events/${eventId}/all-guests`;
 
   const pass = new ImportPass();
+  let existingGuestsByList: Map<string, CmsPage[]>;
+  try {
+    const matchedLists = groups
+      .map((group) => listByName.get(eventImportListKey(group.listName)))
+      .filter((list): list is CmsPage => Boolean(list));
+    existingGuestsByList = await guestsByMailList(cms, matchedLists);
+  } catch (error) {
+    if (!isSubrequestLimitError(error)) throw error;
+    pass.capped = true;
+    return importProgressView(views, jsonOnly, {
+      heading,
+      confirmAction,
+      backHref,
+      csv,
+      mode,
+      assignNewIds,
+      pass,
+      remainingLabel: `${groups.length} list(s) left`,
+    });
+  }
   let remaining = 0; // rows with pending writes in groups this pass classified
-  let pendingGroups = 0; // groups this pass never got to (no reads spent on them)
+  let pendingGroups = 0; // groups this pass never got to
   for (const group of groups) {
     if (pass.done) {
       pendingGroups += 1;
@@ -1588,10 +1633,7 @@ export async function confirmEventGuestImport(request: Request, cms: CmsClient, 
         });
         pass.listsCreated += 1;
         listByName.set(eventImportListKey(group.listName), list);
-      } else {
-        pass.spent += 1;
-        existingGuests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
-      }
+      } else existingGuests = existingGuestsByList.get(String(list.id)) ?? [];
     } catch (error) {
       if (!isSubrequestLimitError(error)) throw error;
       pass.capped = true;
@@ -1675,13 +1717,17 @@ function parseEventImportGroups(text: string): EventImportGroup[] {
 async function eventImportPreview(cms: CmsClient, eventId: number, groups: EventImportGroup[]): Promise<EventImportPreview> {
   const existing = await listByEvent(cms, 'mail_list', eventId);
   const listByName = new Map(existing.map((list) => [eventImportListKey(list.name), list]));
+  const matchedLists = groups
+    .map((group) => listByName.get(eventImportListKey(group.listName)))
+    .filter((list): list is CmsPage => Boolean(list));
+  const existingGuestsByList = await guestsByMailList(cms, matchedLists);
   const preview: EventImportPreview = { total: 0, newCount: 0, updateCount: 0, unchangedCount: 0, newListCount: 0, groups: [] };
 
   for (const group of groups) {
     const list = listByName.get(eventImportListKey(group.listName));
     let rows: ImportRow[];
     if (list) {
-      const existingGuests = await cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } });
+      const existingGuests = existingGuestsByList.get(String(list.id)) ?? [];
       rows = classifyImport(group.guests, existingGuests, eventId, list.id).rows;
     } else {
       preview.newListCount += 1;
@@ -2374,9 +2420,8 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
   await chargeCreditAction(cms, 'export_guests', 1, { entityType: 'event', entityId: eventId });
 
   const lists = await listByEvent(cms, 'mail_list', eventId);
-  const guestsByList = await Promise.all(
-    lists.map((list) => cms.listAll('guest', { pointer: { key: 'mail_list', value: list.id } })),
-  );
+  const groupedGuests = await guestsByMailList(cms, lists);
+  const guestsByList = lists.map((list) => groupedGuests.get(String(list.id)) ?? []);
 
   const headers = ['id', 'mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];
   const rows: string[][] = [];

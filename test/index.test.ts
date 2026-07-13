@@ -480,6 +480,7 @@ describe('events admin', () => {
   });
 
   it('shows every event guest list with its RSVP summary', async () => {
+    let guestQueries = 0;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/12') {
@@ -503,15 +504,16 @@ describe('events admin', () => {
         });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        if (url.searchParams.get('pointer_value') !== '34') return Response.json({ pages: [], total: 0 });
+        guestQueries += 1;
+        expect(url.searchParams.get('pointer_values')).toBe('34,35');
         // 4 groups → 6 people; one confirmed+checked-in (2 people), one invited,
         // one on hold, one unknown status (counted "to be invited").
         return Response.json({
           pages: [
-            { id: 1, page_type: 'guest', name: 'Ada', lect: { status: 'confirmed', plus_guests: '1', checkin: [{ status: 'checked-in' }], response: [{ status: 'confirmed', date: '2026-09-01T10:30:00Z', message: 'guest response' }] } },
-            { id: 2, page_type: 'guest', name: 'Grace', lect: { status: 'invited' } },
-            { id: 3, page_type: 'guest', name: 'Edith', lect: { status: 'onhold' } },
-            { id: 4, page_type: 'guest', name: 'Lin', lect: { status: 'mystery', plus_guests: '1' } },
+            { id: 1, page_type: 'guest', name: 'Ada', lect: { status: 'confirmed', plus_guests: '1', checkin: [{ status: 'checked-in' }], response: [{ status: 'confirmed', date: '2026-09-01T10:30:00Z', message: 'guest response' }], _pointers: { mail_list: '34' } } },
+            { id: 2, page_type: 'guest', name: 'Grace', lect: { status: 'invited', _pointers: { mail_list: '34' } } },
+            { id: 3, page_type: 'guest', name: 'Edith', lect: { status: 'onhold', _pointers: { mail_list: '34' } } },
+            { id: 4, page_type: 'guest', name: 'Lin', lect: { status: 'mystery', plus_guests: '1', _pointers: { mail_list: '34' } } },
           ],
           total: 4,
         });
@@ -525,6 +527,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
+    expect(guestQueries).toBe(1);
     const html = await renderedText(response);
     expect(html).toContain('Guest lists');
     expect(html).toContain('aria-label="Search guests"');
@@ -629,6 +632,7 @@ describe('events admin', () => {
     expect(html).not.toContain('title="Adhoc check-in"');
     expect(html).not.toContain('title="Public registrations"');
     expect(html).not.toContain('title="Edit event"');
+    expect(html).toContain('title="Delete event"');
     expect(html).not.toContain('title="New guest list"');
     expect(html).not.toContain('aria-label="Import guests"');
     expect(html).not.toContain('title="Add template"');
@@ -720,6 +724,7 @@ describe('events admin', () => {
           email: `guest${day}@example.com`,
           status: 'confirmed',
           response: [{ status: 'confirmed', date: `2026-09-${day}T10:00:00Z` }],
+          _pointers: { mail_list: '8' },
         },
       };
     });
@@ -741,8 +746,8 @@ describe('events admin', () => {
         return Response.json({ pages: [], total: 0 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        if (url.searchParams.get('pointer_value') === '8') return Response.json({ pages: responseGuests, total: responseGuests.length });
-        return Response.json({ pages: [], total: 0 });
+        expect(url.searchParams.get('pointer_values')).toBe('8,9');
+        return Response.json({ pages: responseGuests, total: responseGuests.length });
       }
       return new Response('not found', { status: 404 });
     });
@@ -1382,6 +1387,7 @@ describe('events admin', () => {
   });
 
   it('exports every guest across an event as one CSV', async () => {
+    let guestQueries = 0;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') {
@@ -1394,9 +1400,12 @@ describe('events admin', () => {
         ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
-        const listId = url.searchParams.get('page_id') ?? url.searchParams.get('pointer_value');
-        if (listId === '8') return Response.json({ pages: [{ id: 1, name: 'Ada', lect: { status: 'confirmed', email: 'ada@x.io' } }], total: 1 });
-        return Response.json({ pages: [{ id: 2, name: 'Grace', lect: { status: 'invited' } }], total: 1 });
+        guestQueries += 1;
+        expect(url.searchParams.get('pointer_values')).toBe('8,9');
+        return Response.json({ pages: [
+          { id: 1, name: 'Ada', lect: { status: 'confirmed', email: 'ada@x.io', _pointers: { mail_list: '8' } } },
+          { id: 2, name: 'Grace', lect: { status: 'invited', _pointers: { mail_list: '9' } } },
+        ], total: 2 });
       }
       return new Response('not found', { status: 404 });
     });
@@ -1407,6 +1416,7 @@ describe('events admin', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
+    expect(guestQueries).toBe(1);
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(response.headers.get('content-disposition')).toContain('launch-all-guests.csv');
     const csv = await renderedText(response);
@@ -1685,10 +1695,10 @@ describe('event duplication', () => {
 });
 
 describe('event deletion', () => {
-  it('renders the delete confirmation with guest list and template counts', async () => {
+  it('allows an archived event to open delete confirmation with guest list and template counts', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: { archived: 'yes' } } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         return Response.json({ pages: [
           { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } },
@@ -2966,13 +2976,18 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
   it('imports guests into per-list groups, creating missing lists', async () => {
     const listCreates: Array<Record<string, unknown>> = [];
     const guestCreates: Array<Record<string, unknown>> = [];
+    const guestQueryPointers: string[] = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+        return Response.json({ pages: [
+          { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } },
+          { id: 10, page_type: 'mail_list', name: 'Staff', lect: { _pointers: { event: '7' } } },
+        ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        guestQueryPointers.push(url.searchParams.get('pointer_values') ?? '');
         return Response.json({ pages: [], total: 0 });
       }
       if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
@@ -2985,7 +3000,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     });
     vi.stubGlobal('fetch', cmsFetch);
 
-    const csv = '\uFEFFguest_list_name,name,primary_email,cc_email,company,job_title\nVIP,Ada,ada@x.io,pa@x.io,Analytical Engines,Engineer\nGeneral,Grace,grace@x.io,,Compiler Co,Admiral\n';
+    const csv = '\uFEFFguest_list_name,name,primary_email,cc_email,company,job_title\nVIP,Ada,ada@x.io,pa@x.io,Analytical Engines,Engineer\nStaff,Lin,lin@x.io,,Compiler Co,Engineer\nGeneral,Grace,grace@x.io,,Compiler Co,Admiral\n';
     const file = new File([csv], 'guests.csv', { type: 'text/csv' });
     const form = new FormData();
     form.set('file', file);
@@ -2999,6 +3014,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     const html = await renderedText(preview);
     expect(html).toContain('Preview import');
     expect(html).toContain('VIP');
+    expect(html).toContain('Staff');
     expect(html).toContain('General');
     expect(html).toContain('Will create');
     expect(listCreates).toHaveLength(0);
@@ -3012,15 +3028,18 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/all-guests');
+    // Preview and confirm each read both existing lists in one generic query.
+    expect(guestQueryPointers).toEqual(['8,10', '8,10']);
     // "General" did not exist, so it was created; "VIP" already existed.
     expect(listCreates).toHaveLength(1);
     expect(listCreates[0]).toMatchObject({ page_type: 'mail_list', name: 'General', lect: { _pointers: { event: '7' } } });
-    expect(guestCreates).toHaveLength(2);
-    expect(guestCreates.map((guest) => guest.name)).toEqual(['Ada', 'Grace']);
+    expect(guestCreates).toHaveLength(3);
+    expect(guestCreates.map((guest) => guest.name)).toEqual(['Ada', 'Lin', 'Grace']);
     expect(guestCreates[0].lect).toMatchObject({ email: 'ada@x.io', cc: 'pa@x.io', organization: 'Analytical Engines', job_title: 'Engineer' });
   });
 
   it('renders a flat all-guests view filtered by search, status and color tag', async () => {
+    let guestQueries = 0;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: {
@@ -3040,15 +3059,14 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        guestQueries += 1;
         expect(url.searchParams.get('q')).toBe('5555');
-        const listId = url.searchParams.get('page_id') ?? url.searchParams.get('pointer_value');
-        if (listId === '8') {
-          return Response.json({ pages: [
-            { id: 1, name: '苏生', lect: { email: 'ada@x.io', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue', rsvp_custom_diet: 'vegan' } },
-            { id: 3, name: 'Lin', lect: { email: 'lin@x.io', phone: '+852 5555 1111', status: 'confirmed', color_tag: 'red' } },
-          ], total: 2 });
-        }
-        return Response.json({ pages: [{ id: 2, name: 'Grace', lect: { email: 'grace@x.io', phone: '+852 5555 2222', status: 'invited', color_tag: 'blue' } }], total: 1 });
+        expect(url.searchParams.get('pointer_values')).toBe('8,9');
+        return Response.json({ pages: [
+          { id: 1, name: '苏生', lect: { email: 'ada@x.io', phone: '+852 5555 0000', status: 'confirmed', color_tag: 'blue', rsvp_custom_diet: 'vegan', _pointers: { mail_list: '8' } } },
+          { id: 3, name: 'Lin', lect: { email: 'lin@x.io', phone: '+852 5555 1111', status: 'confirmed', color_tag: 'red', _pointers: { mail_list: '8' } } },
+          { id: 2, name: 'Grace', lect: { email: 'grace@x.io', phone: '+852 5555 2222', status: 'invited', color_tag: 'blue', _pointers: { mail_list: '9' } } },
+        ], total: 3 });
       }
       return new Response('not found', { status: 404 });
     });
@@ -3059,6 +3077,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
+    expect(guestQueries).toBe(1);
     const html = await renderedText(response);
     expect(html).toContain('All guests');
     expect(html).toContain('苏生');

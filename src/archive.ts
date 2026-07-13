@@ -393,7 +393,7 @@ export async function archiveEvent(request: Request, cms: CmsClient, views: Fetc
     await chargeCreditAction(cms, 'archive_event', 1, { entityType: 'event', entityId: eventId, note: 'Archive event (merge into contacts)' });
     await cms.update(eventId, { lect: { archiving: 'yes', archiving_at: new Date().toISOString() } });
   }
-  return runArchivePass(cms, views, eventId, event.name, jsonOnly);
+  return runArchivePass(cms, views, event, jsonOnly);
 }
 
 /** POST /events/:id/archive/continue — next pass of a running apply. */
@@ -404,7 +404,7 @@ export async function continueEventArchive(cms: CmsClient, views: Fetcher, event
     if (isArchived(event.lect)) return redirect(withFlash(`${ADMIN_BASE}/events?archived=1`, `Event “${event.name}” archived`));
     return redirect(`${ADMIN_BASE}/events/${eventId}/archive`);
   }
-  return runArchivePass(cms, views, eventId, event.name, jsonOnly);
+  return runArchivePass(cms, views, event, jsonOnly);
 }
 
 /**
@@ -422,11 +422,13 @@ export async function stopEventArchive(cms: CmsClient, eventId: number): Promise
   return redirect(withFlash(`${ADMIN_BASE}/events/${eventId}`, 'Archiving stopped — progress made so far is kept; open Archive again to continue.'));
 }
 
-async function runArchivePass(cms: CmsClient, views: Fetcher, eventId: number, eventName: string, jsonOnly: boolean): Promise<Response> {
+async function runArchivePass(cms: CmsClient, views: Fetcher, event: CmsPage, jsonOnly: boolean): Promise<Response> {
+  const eventId = event.id;
+  const eventName = event.name;
   const pass = new ArchivePass();
   let done: boolean;
   try {
-    done = await archivePass(cms, eventId, pass);
+    done = await archivePass(cms, event, pass);
   } catch (error) {
     if (error instanceof CmsApiError && error.code === 'forbidden_page_type') {
       return errorPanel(
@@ -455,10 +457,8 @@ async function runArchivePass(cms: CmsClient, views: Fetcher, eventId: number, e
 }
 
 /** One bounded pass. Returns true when nothing is left to do. */
-async function archivePass(cms: CmsClient, eventId: number, pass: ArchivePass): Promise<boolean> {
-  const event = await cms.get(eventId);
-  pass.spend(1);
-  const plan = await buildArchivePlan(cms, eventId);
+async function archivePass(cms: CmsClient, event: CmsPage, pass: ArchivePass): Promise<boolean> {
+  const plan = await buildArchivePlan(cms, event.id);
   pass.spend(plan.readRequests);
 
   // Contacts resolved for a match key — seeded from already-merged guests so
@@ -471,7 +471,7 @@ async function archivePass(cms: CmsClient, eventId: number, pass: ArchivePass): 
   const pending = plan.rows.filter((row) => row.category !== 'merged');
   try {
     if (!(await reconcileGuests(cms, event, pending, contactByKey, plan.contacts, pass))) return false;
-    const trashed = await trashSubmissions(cms, eventId, pass);
+    const trashed = await trashSubmissions(cms, event.id, pass);
     return trashed;
   } catch (error) {
     if (!isSubrequestLimitError(error)) throw error;

@@ -41,7 +41,7 @@ expanded section never dominates the page and stays scrollable on narrow screens
   <p class="mt-2 text-sm text-gray-500 mb-4">{{ section.hint | escape }}</p>
   {% if section.count > 0 %}
   <div style="max-height:24rem;overflow:auto">
-    <table class="w-full text-left text-sm">
+    <table class="w-full min-w-[680px] text-left text-sm" data-privacy-table>
       <thead>
         <tr class="text-xs text-gray-500">
           <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Guest</th>
@@ -53,10 +53,10 @@ expanded section never dominates the page and stays scrollable on narrow screens
       <tbody class="divide-y divide-gray-100">
         {% for row in section.rows %}
         <tr>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ row.name | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="name">{{ row.name | escape }}</span></td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ row.listName | escape }}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ row.email | escape }}</td>
-          <td class="px-6 py-3 text-sm text-gray-500">{{ row.detail | escape }}{% if row.contactHref != blank %} <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.contactHref | escape }}" target="_blank" rel="noopener">View contact ↗</a>{% endif %}</td>
+          <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="email">{{ row.email | escape }}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-500"><span data-private-field="contact">{{ row.detail | escape }}{% if row.contactHref != blank %} <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.contactHref | escape }}" target="_blank" rel="noopener">View contact ↗</a>{% endif %}</span></td>
         </tr>
         {% endfor %}
       </tbody>

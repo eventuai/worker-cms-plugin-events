@@ -269,6 +269,10 @@ describe('archive preview', () => {
     expect(text).toContain('Duplicated contacts (contact ID matched)');
     expect(text).toContain('Likely duplicated contacts');
     expect(text).toContain('New contacts');
+    expect(text).toContain('data-privacy-table');
+    expect(text).toContain('data-private-field="name"');
+    expect(text).toContain('data-private-field="email"');
+    expect(text).toContain('data-private-field="contact"');
 
     // Guest 5 duplicates guest 2 (same email, other list).
     expect(text).toContain('same person as Grace Hopper (VIP)');
@@ -321,6 +325,18 @@ describe('archive preview', () => {
 });
 
 describe('archive apply', () => {
+  it('reuses the route event read inside the archive pass', async () => {
+    const calls = stubCms(fixture());
+
+    await plugin.fetch(request('/__plugin/admin/events/100/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'action=apply',
+    }), env());
+
+    expect(calls.filter((call) => call.method === 'GET' && call.path === '/__cms/pages/100')).toHaveLength(1);
+  });
+
   it('explains how to approve contact writes when batch creation is forbidden', async () => {
     stubCms(fixture(), { forbidContactBatch: true });
 
