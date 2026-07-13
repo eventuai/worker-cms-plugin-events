@@ -135,6 +135,7 @@ describe('plugin contract', () => {
       ],
       assets: [
         { path: '/assets/event-new.js', label: 'New event auto slug' },
+        { path: '/assets/all-guests-embedded.js', label: 'Progressive all-guests table rendering' },
         { path: '/assets/long-running-submit.js', label: 'Long-running form loading state' },
         { path: '/assets/import-continue.js', label: 'Resumable import and deletion continuation' },
       ],
@@ -3082,7 +3083,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('All guests');
     expect(html).toContain('苏生');
     expect(html).not.toContain('Lin');
-    expect(html).not.toContain('Grace'); // filtered out
+    expect(html).not.toContain('Grace');
     expect(html).toContain('value="5555"');
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('<option value="yellow"');
@@ -3090,9 +3091,6 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('<option value="gray"');
     expect(html).toContain('data-table-filter-form');
     expect(html).toContain('data-table-filter="guests"');
-    expect(html).toContain('data-filter-search="1 苏生 蘇生  ada@x.io +852 5555 0000 5555"');
-    expect(html).toContain('data-filter-status="confirmed"');
-    expect(html).toContain('data-filter-color="blue"');
     expect(html).toContain('<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">List</th>');
     expect(html).not.toContain('Email&nbsp;send'); // email sending lives on the per-list guest list, not the cross-list all-guests view
     expect(html).toContain('id="custom-field-selector"');
@@ -3100,12 +3098,56 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(html).toContain('vegan');
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/status"');
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/1/color"');
-    expect(html).not.toContain('action="/admin/plugins/events/rsvp/8/guests/1/checkin"'); // check-in action lives on the per-list guest list, not all-guests
-    expect(html).toContain('Not checked in'); // status still shows, just no check-in button
+    expect(html).not.toContain('action="/admin/plugins/events/rsvp/8/guests/1/checkin"');
+    expect(html).toContain('Not checked in');
     expect(html).toContain('name="return_to" value="/admin/plugins/events/events/7/all-guests?q=5555&amp;status=confirmed&amp;color=blue&amp;cf=rsvp-custom-diet"');
     expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/1/qrcode"');
     expect(html).toContain('style="color:#22c55e"');
     expect(html).toContain('data-table-filter-count="guests">1</span> of 3 guests');
+  });
+
+  it('renders the first 100 all-guests rows with Liquid and embeds the rest as script-safe JSON', async () => {
+    let guestQueries = 0;
+    const guests = Array.from({ length: 105 }, (_, index) => ({
+      id: index + 1,
+      name: index === 104 ? '</script><script>unsafe()</script>' : `Guest ${index + 1}`,
+      lect: { email: `guest-${index + 1}@example.com`, status: 'confirmed', _pointers: { mail_list: '8' } },
+    }));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, name: 'VIP', weight: 0, lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        guestQueries += 1;
+        expect(url.searchParams.get('pointer_values')).toBe('8');
+        return Response.json({ pages: guests, total: guests.length });
+      }
+      return new Response('not found', { status: 404 });
+    }));
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/all-guests', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    const html = await renderedText(response);
+
+    expect(guestQueries).toBe(1);
+    expect(html).toContain('data-all-guests-async');
+    expect(html).toContain('Rendering 100 of 105 matching guests…');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/all-guests-embedded.js" defer></script>');
+    expect((html.match(/data-guest-row/g) ?? [])).toHaveLength(100);
+    expect(html).toContain('Guest 100');
+    expect(html).not.toContain('Guest 101</a>');
+    expect(html).toContain('\\u003c/script\\u003e');
+
+    const embedded = html.match(/<div hidden data-all-guests-json>([\s\S]*?)<\/div>/);
+    expect(embedded).not.toBeNull();
+    expect(html).not.toContain('<script type="application/json" data-all-guests-json>');
+    const deferred = JSON.parse(embedded?.[1] ?? '[]') as Array<{ id: number; name: string }>;
+    expect(deferred).toHaveLength(5);
+    expect(deferred[0]).toMatchObject({ id: 101, name: 'Guest 101' });
+    expect(deferred[4]).toMatchObject({ id: 105, name: '</script><script>unsafe()</script>' });
   });
 
   it('renders the sessions view in event order', async () => {

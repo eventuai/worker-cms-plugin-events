@@ -654,6 +654,8 @@ function contactInputFromGuest(event: CmsPage, row: ArchiveRow, historyRows: Arc
   const phone = attr(lect, 'phone').trim();
   const organization = attr(lect, 'organization').trim();
   const jobTitle = attr(lect, 'job_title').trim();
+  const zhHantName = attr(lect, 'zh_hant_name').trim();
+  const zhHansName = attr(lect, 'zh_hans_name').trim();
   return {
     page_type: 'contact',
     name: fullName || row.guest.name,
@@ -663,13 +665,19 @@ function contactInputFromGuest(event: CmsPage, row: ArchiveRow, historyRows: Arc
       prefix: attr(lect, 'prefix'),
       nationality: attr(lect, 'nationality'),
       prefer_language: attr(lect, 'prefer_language'),
-      first_name: first ? { en: first } : '',
-      last_name: last ? { en: last } : '',
-      full_name: fullName ? { en: fullName } : '',
+      first_name: first || zhHantName || zhHansName
+        ? {
+            ...(first ? { mis: first } : {}),
+            ...(zhHantName ? { 'zh-hant': zhHantName } : {}),
+            ...(zhHansName ? { 'zh-hans': zhHansName } : {}),
+          }
+        : '',
+      last_name: last ? { mis: last } : '',
+      full_name: fullName ? { mis: fullName } : '',
       ...(email ? { email: [{ type: 'other', email }] } : {}),
       ...(phone ? { phone: [{ type: 'mobile', phone }] } : {}),
       ...(organization || jobTitle
-        ? { position: [{ type: 'work', organization_name: { en: organization }, title: { en: jobTitle } }] }
+        ? { position: [{ type: 'work', organization_name: { mis: organization }, title: { mis: jobTitle } }] }
         : {}),
       event_history: historyRows.map((historyRow) => eventHistoryEntry(event, historyRow)),
     },

@@ -48,6 +48,7 @@
   ],
   "assets": [
     { "path": "/assets/event-new.js", "label": "New event auto slug" },
+    { "path": "/assets/all-guests-embedded.js", "label": "Progressive all-guests table rendering" },
     { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
     { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" }
   ],
@@ -56,6 +57,17 @@
   "contentTypes": {
     "readTypes": ["contact"],
     "writeTypes": ["contact"],
+    "publishLect": {
+      "guest": {
+        "keep": [
+          "name", "first_name", "last_name", "prefix", "zh_hant_name", "zh_hans_name",
+          "email", "organization", "job_title", "status", "plus_guests",
+          "prefer_language", "allow_refill", "not_send", "response"
+        ]
+      },
+      "event": { "drop": ["checkin_lite_passcode"] },
+      "edm": { "drop": ["sender", "reply_to", "bcc"] }
+    },
     "blueprint": {
       "event": [
         "@type", "@label", "@rfid:switch",

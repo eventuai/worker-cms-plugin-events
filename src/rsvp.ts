@@ -66,6 +66,9 @@ const IMPORT_PASS_WRITE_BUDGET = 40;
 /** Maximum pointer values accepted by the generic CMS page search API. */
 const CMS_POINTER_VALUES_LIMIT = 500;
 
+/** Rows Liquid renders before the browser appends the rest from embedded JSON. */
+const ALL_GUESTS_INITIAL_RENDER = 100;
+
 /**
  * Fetch guests for many lists through the CMS's generic multi-pointer search,
  * then restore the per-list shape the event views and import planner need.
@@ -1464,29 +1467,27 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const selectedColor = normalizeColor(url.searchParams.get('color'));
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const ordered = sortByWeight(lists);
-  const groupedGuests = await guestsByMailList(cms, ordered, q);
-  const guestsByList = ordered.map((list) => groupedGuests.get(String(list.id)) ?? []);
 
   const colorOptions = colorTagOptions(selectedColor);
   const customFields = uniqueAdminCustomFields(ordered.flatMap((list) => adminCustomFieldsForGuest(event, list)));
   const selectedCustomFieldParam = url.searchParams.get('cf')?.trim() ?? '';
   const selectedCustomField = customFields.find((field) => field.key === selectedCustomFieldParam || field.legacyKey === selectedCustomFieldParam) ?? null;
   const returnTo = `${ADMIN_BASE}/events/${eventId}/all-guests${url.search}`;
+
   const rows: Array<Record<string, unknown>> = [];
-  ordered.forEach((list, index) => {
-    for (const guest of guestsByList[index] ?? []) {
+  let totalCount = 0;
+  const groupedGuests = await guestsByMailList(cms, ordered, q);
+  for (const list of ordered) {
+    const guests = groupedGuests.get(String(list.id)) ?? [];
+    totalCount += guests.length;
+    for (const guest of guests) {
       if (!guestMatchesFilters(guest, '', selectedStatus ?? undefined, selectedColor)) continue;
-      rows.push({
-        // No EDM id here: email sending lives on the per-list guest list, not this cross-list view.
-        ...guestRow(guest, list.id, null, selectedCustomField, returnTo, q, access, archived),
-        listName: list.name,
-        editHref: access?.canEdit === false || archived ? '' : guestEditHref(guest.id, list.id, returnTo),
-        // No check-in action here either: checking guests in happens on the per-list guest list (status still shows).
-        checkinAction: '',
-      });
+      rows.push(allGuestsRow(guest, list, selectedCustomField, returnTo, q, access, archived));
     }
-  });
-  const totalCount = guestsByList.reduce((sum, guests) => sum + guests.length, 0);
+  }
+
+  const initialGuests = jsonOnly ? rows : rows.slice(0, ALL_GUESTS_INITIAL_RENDER);
+  const deferredGuests = jsonOnly ? [] : rows.slice(ALL_GUESTS_INITIAL_RENDER);
 
   return adminView(views, `All guests — ${event.name}`, 'all-guests', {
     eventName: event.name,
@@ -1512,8 +1513,40 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
     selectedCustomFieldKey: selectedCustomField?.key ?? '',
     totalCount,
     filteredCount: rows.length,
-    guests: rows,
+    initialCount: initialGuests.length,
+    guests: initialGuests,
+    asyncGuests: deferredGuests.length > 0,
+    deferredGuestCount: deferredGuests.length,
+    deferredGuestsJson: scriptSafeJson(deferredGuests),
   }, jsonOnly);
+}
+
+function allGuestsRow(
+  guest: CmsPage,
+  list: CmsPage,
+  selectedCustomField: AdminCustomField | null,
+  returnTo: string,
+  q: string,
+  access: EventAdminAccess | undefined,
+  archived: boolean,
+): Record<string, unknown> {
+  return {
+    // Email sending and check-in actions live on the per-list guest screen.
+    ...guestRow(guest, list.id, null, selectedCustomField, returnTo, q, access, archived),
+    listName: list.name,
+    editHref: access?.canEdit === false || archived ? '' : guestEditHref(guest.id, list.id, returnTo),
+    checkinAction: '',
+  };
+}
+
+/** JSON embedded in HTML must stay inert instead of creating markup. */
+function scriptSafeJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 /** Import form for adding guests across multiple lists in one upload. */

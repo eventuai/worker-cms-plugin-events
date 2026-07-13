@@ -229,7 +229,7 @@ function fixture(): FakePage[] {
     // Guest 3 — no email, exact name matches contact 302 (likely duplicate).
     { id: 3, page_type: 'guest', name: 'Alan Turing', lect: { name: { en: 'Alan' }, last_name: { en: 'Turing' }, status: 'invited', _pointers: { mail_list: '200', event: '100' } } },
     // Guest 4 — nobody in the contact database (new contact).
-    { id: 4, page_type: 'guest', name: 'New Person', lect: { name: { en: 'New' }, last_name: { en: 'Person' }, email: 'new@x.com', organization: 'Acme', job_title: 'CTO', status: 'confirmed', _pointers: { mail_list: '200', event: '100' } } },
+    { id: 4, page_type: 'guest', name: 'New Person', lect: { name: { en: 'New' }, last_name: { en: 'Person' }, zh_hant_name: '新繁', zh_hans_name: '新简', email: 'new@x.com', organization: 'Acme', job_title: 'CTO', status: 'confirmed', _pointers: { mail_list: '200', event: '100' } } },
     // Guest 5 — same email as guest 2, on the other list (duplicated guest).
     { id: 5, page_type: 'guest', name: 'Grace Hopper', lect: { name: { en: 'Grace' }, last_name: { en: 'Hopper' }, email: 'grace@x.com', status: 'confirmed', _pointers: { mail_list: '201', event: '100' } } },
 
@@ -418,8 +418,11 @@ describe('archive apply', () => {
     expect(creates[0]).toMatchObject({ page_type: 'contact', name: 'New Person' });
     const createdLect = (creates[0].lect ?? {}) as Record<string, unknown>;
     expect(createdLect.source).toBe('events-archive');
+    expect(createdLect.first_name).toEqual({ mis: 'New', 'zh-hant': '新繁', 'zh-hans': '新简' });
+    expect(createdLect.last_name).toEqual({ mis: 'Person' });
+    expect(createdLect.full_name).toEqual({ mis: 'New Person' });
     expect(createdLect.email).toEqual([{ type: 'other', email: 'new@x.com' }]);
-    expect(createdLect.position).toEqual([{ type: 'work', organization_name: { en: 'Acme' }, title: { en: 'CTO' } }]);
+    expect(createdLect.position).toEqual([{ type: 'work', organization_name: { mis: 'Acme' }, title: { mis: 'CTO' } }]);
     expect(createdLect.event_history).toMatchObject([{ event_name: 'Gala', date: '2026-05-01', rsvp: 'confirmed', _ref: 'uuid-4' }]);
 
     const updateBatch = calls.find((call) => call.method === 'PATCH' && call.path === '/__cms/pages/batch');
