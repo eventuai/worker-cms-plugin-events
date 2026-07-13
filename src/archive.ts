@@ -44,8 +44,21 @@ const ADMIN_BASE = '/admin/plugins/events';
 const CONTACT_CAP = 2000;
 
 /** Approximate subrequests (reads + writes) per apply pass, with headroom under
- *  Cloudflare's free-plan cap of 50 for auth, rendering and the final update. */
-const ARCHIVE_PASS_BUDGET = 40;
+ *  Cloudflare's free-plan cap of 50 for auth, rendering and the final update.
+ *  Tenants on a paid plan (1000 subrequests/invocation) can archive in far
+ *  fewer passes by setting the ARCHIVE_PASS_BUDGET Worker var (clamped ≤900). */
+const DEFAULT_ARCHIVE_PASS_BUDGET = 40;
+
+/** Resolves the per-pass budget from the Worker env, defaulting for free plan. */
+export function archivePassBudget(env: { ARCHIVE_PASS_BUDGET?: string }): number {
+  const value = Number(env.ARCHIVE_PASS_BUDGET);
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_ARCHIVE_PASS_BUDGET;
+  return Math.min(900, Math.max(10, Math.floor(value)));
+}
+
+/** Contacts created per POST /pages/batch — matches the import flow's chunking
+ *  so each host request stays light (~5 D1 ops + audit row per create). */
+const CONTACT_CREATE_BATCH = 25;
 
 /** Ids per DELETE /pages/batch call when trashing submission pages. */
 const TRASH_BATCH = 100;
