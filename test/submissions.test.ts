@@ -1,5 +1,5 @@
 // ============================================================
-// Ingested submissions — response apply (create hook) and the
+// Ingested submissions — response apply (submission hook) and the
 // registration review admin (convert / discard / pull).
 //
 // Drives the plugin Worker directly with a fetch stub standing in for the
@@ -136,10 +136,10 @@ function stubCms(pages: FakePage[], ingest = { scanned: 0, created: 0, more: fal
 }
 
 function hookRequest(page: { id: number; page_type: string }): Request {
-  return request('/__plugin/hooks/create', {
+  return request('/__plugin/hooks/submission', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ event: 'create', page }),
+    body: JSON.stringify({ event: 'submission', page }),
   });
 }
 
@@ -147,7 +147,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('rsvp_response create hook', () => {
+describe('rsvp_response submission hook', () => {
   const responsePage: FakePage = {
     id: 501,
     uuid: 'sub-uuid-1',
@@ -167,6 +167,15 @@ describe('rsvp_response create hook', () => {
       },
     },
   };
+
+  it('ignores generic submissions that do not belong to RSVP handling', async () => {
+    const calls = stubCms([]);
+
+    const response = await plugin.fetch(hookRequest({ id: 7, page_type: 'event' }), env());
+
+    expect(response.status).toBe(200);
+    expect(calls).toHaveLength(0);
+  });
 
   it('applies the response to the guest and stamps the response page', async () => {
     const calls = stubCms([

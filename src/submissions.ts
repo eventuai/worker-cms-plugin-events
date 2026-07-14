@@ -3,7 +3,7 @@
 //
 // worker-rsvp stores public submits as rows in the published DB; worker-cms
 // ingests them into the draft DB as pages (`rsvp_response` /
-// `rsvp_registration`, uuid preserved) and fires this plugin's `create` hook.
+// `rsvp_registration`, uuid preserved) and fires this plugin's `submission` hook.
 // This module is the other half:
 //
 //   rsvp_response      — applied to the guest page automatically from the
@@ -15,7 +15,7 @@
 //                        convert creates a guest on the event's "Adhoc" list
 //                        (dedupe by email, then by prior conversion) or
 //                        discard soft-deletes the page (the host refuses to
-//                        unpublish submission types, so the original
+//                        unpublish submission-origin pages, so the original
 //                        published row always survives).
 // ============================================================
 
@@ -40,7 +40,7 @@ export type ApplyOutcome = 'applied' | 'already_applied' | 'guest_missing' | 'no
 
 /**
  * Applies one ingested rsvp_response page to its guest. Safe to call from the
- * create hook and from the manual pending-apply pass — re-application is a
+ * submission hook and from the manual pending-apply pass — re-application is a
  * no-op via `applied_at` on the response page and `_ref` in the guest log.
  */
 export async function applyResponsePage(cms: CmsClient, response: CmsPage | number): Promise<ApplyOutcome> {
@@ -148,7 +148,7 @@ export interface SubmissionRefreshResult {
 }
 
 /**
- * Fallback for missed create hooks: sweeps unapplied rsvp_response pages and
+ * Fallback for missed submission hooks: sweeps unapplied rsvp_response pages and
  * applies up to APPLY_BATCH of them.
  */
 export async function applyPendingResponses(cms: CmsClient): Promise<ApplyPendingResult> {
@@ -304,7 +304,7 @@ export async function convertRegistration(cms: CmsClient, eventId: number, regis
 
 /**
  * Discards a registration: soft-delete to the CMS trash. The host refuses to
- * unpublish submission page types, so the original published row survives —
+ * unpublish submission-origin pages, so the original published row survives —
  * only the draft review copy goes away.
  */
 export async function discardRegistration(cms: CmsClient, eventId: number, registrationId: number): Promise<Response> {

@@ -340,10 +340,10 @@ export class CmsClient extends BaseCmsClient {
   }
 
   /**
-   * Asks the host to pull new worker-rsvp submission rows (published DB →
-   * draft pages) NOW instead of waiting for its cron tick (CMS
+   * Asks the host to pull live-only submission rows (published DB → draft
+   * pages) NOW instead of waiting for its cron tick (CMS
    * `POST /__cms/ingest/submissions`). Idempotent and bounded per call; each
-   * created page fires this plugin's `create` hook.
+   * created page fires this plugin's `submission` hook.
    */
   async ingestSubmissions(): Promise<{ scanned: number; created: number; more: boolean }> {
     const response = await globalThis.fetch(`${this.link.base}/__cms/ingest/submissions`, {

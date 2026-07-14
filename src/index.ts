@@ -147,6 +147,9 @@ export default {
       if (hookEvent === 'create') {
         for (const page of pages) await handleCreateHook({ ...payload, page }, env);
       }
+      if (hookEvent === 'submission') {
+        for (const page of pages) await handleSubmissionHook({ ...payload, page }, env);
+      }
       return new Response('ok');
     }
 
@@ -265,15 +268,10 @@ async function handleCreateHook(payload: unknown, env: PluginEnv): Promise<void>
   const pageId = parseHookPageId(hook?.page?.id);
   if (pageId == null) return;
 
-  // Ingested public RSVP response (worker-rsvp row pulled into draft by the
-  // host) — apply it to the guest page. Idempotent, so a re-fired hook or an
-  // overlapping manual sweep can't double-log.
+  // Backwards compatibility while hosts that still emit `create` for ingested
+  // rows are upgraded to the dedicated `submission` hook.
   if (hook?.page?.page_type === 'rsvp_response') {
-    try {
-      await applyResponsePage(new CmsClient(env), pageId);
-    } catch (error) {
-      console.error('[events-suite] create hook response apply failed', error);
-    }
+    await handleSubmissionHook(payload, env);
     return;
   }
 
@@ -282,6 +280,21 @@ async function handleCreateHook(payload: unknown, env: PluginEnv): Promise<void>
     await createSampleEdmsForEvent(new CmsClient(env), pageId);
   } catch (error) {
     console.error('[events-suite] create hook sample EDM creation failed', error);
+  }
+}
+
+async function handleSubmissionHook(payload: unknown, env: PluginEnv): Promise<void> {
+  const hook = payload as CmsHookPayload;
+  if (hook?.page?.page_type !== 'rsvp_response') return;
+  const pageId = parseHookPageId(hook.page.id);
+  if (pageId == null) return;
+
+  // Apply an ingested public RSVP response to its guest. Other generic
+  // submission types are intentionally ignored by the events plugin.
+  try {
+    await applyResponsePage(new CmsClient(env), pageId);
+  } catch (error) {
+    console.error('[events-suite] submission hook response apply failed', error);
   }
 }
 

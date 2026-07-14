@@ -14,7 +14,7 @@
 // `writeTypes: ["contact"]` to be admin-approved), stamps the guest with the
 // contact pointer + `contact_merged_at`, then moves the event's ingested
 // `rsvp_response` / `rsvp_registration` pages to trash (the host refuses to
-// unpublish submission types, so worker-rsvp's published rows survive) and
+// unpublish submission-origin pages, so worker-rsvp's published rows survive) and
 // finally marks the event `archived: yes`.
 //
 // Every step is idempotent — guests are skipped once stamped, history entries
@@ -686,7 +686,7 @@ function contactInputFromGuest(event: CmsPage, row: ArchiveRow, historyRows: Arc
 
 /**
  * Moves the event's ingested submission pages to the CMS trash. The host
- * refuses to unpublish submission types, so worker-rsvp's published rows (its
+ * refuses to unpublish submission-origin pages, so worker-rsvp's published rows (its
  * already-responded checks) are untouched — only the draft copies go away.
  * Returns true when none remain.
  */
