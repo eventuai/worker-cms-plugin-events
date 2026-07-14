@@ -56,3 +56,16 @@
   </div>
 </div>
 {% endif %}
+{% if hasLinkedCompanionQrs %}
+<div class="mt-6" style="max-width:42rem">
+  <h2 class="text-lg font-bold text-gray-900">Named companion QR codes</h2>
+  <div class="mt-3 divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white px-4">
+    {% for companion in linkedCompanionQrs %}
+      <div class="flex flex-wrap items-center justify-between gap-3 py-3">
+        <div><p class="text-sm font-semibold text-gray-900">{{ companion.name | escape }}</p>{% if companion.organization != blank %}<p class="text-xs text-gray-500">{{ companion.organization | escape }}</p>{% endif %}</div>
+        <a class="text-sm font-semibold text-indigo-600 hover:text-indigo-800" href="{{ companion.qrHref | escape }}">Open individual QR ticket</a>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

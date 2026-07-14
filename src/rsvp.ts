@@ -18,7 +18,7 @@ import {
 } from './cms';
 import { compactCheckinCode } from './crypto';
 import { qrSvg, qrTicketSvg } from './qr';
-import { plusGuestDetails, type PlusGuestDetail } from './plus-guests';
+import { materializedCompanionLinks, plusGuestDetails, type PlusGuestDetail } from './plus-guests';
 import { Resvg } from '@cf-wasm/resvg';
 import notoSansTcLatin from '@fontsource/noto-sans-tc/files/noto-sans-tc-latin-400-normal.woff2';
 import notoSansTcTraditional from '@fontsource/noto-sans-tc/files/noto-sans-tc-chinese-traditional-400-normal.woff2';
@@ -647,6 +647,18 @@ async function guestFormView(
   const adminCustomFields = adminCustomFieldsForGuest(context.event, context.list, guest);
   const activity = guest ? await guestActivity(cms, guest) : [];
   const plusGuests = guest ? plusGuestDetails(guest.lect) : [];
+  const linkedCompanions = guest ? materializedCompanionLinks(guest.lect).map((companion) => ({
+    ...companion,
+    editHref: guestEditHref(companion.guestId, listId, guestEditHref(guest.id, listId)),
+    qrHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${companion.guestId}/qrcode`,
+  })) : [];
+  const companionPrimaryId = pageId(values.primary_guest);
+  const companionAnswers = guest && Array.isArray(guest.lect.companion_answers)
+    ? guest.lect.companion_answers.filter((answer): answer is Record<string, unknown> => Boolean(answer) && typeof answer === 'object' && !Array.isArray(answer)).map((answer) => ({
+      label: String(answer.label ?? ''),
+      value: String(answer.value ?? ''),
+    })).filter((answer) => answer.label && answer.value)
+    : [];
 
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
     title: options.title ?? (guest ? 'Edit guest' : 'New guest'),
@@ -669,6 +681,15 @@ async function guestFormView(
     rsvpFields: guestRsvpFields(values),
     plusGuests,
     hasPlusGuests: plusGuests.length > 0,
+    linkedCompanions,
+    hasLinkedCompanions: linkedCompanions.length > 0,
+    companionOf: companionPrimaryId ? {
+      id: companionPrimaryId,
+      name: attr(guest?.lect ?? {}, 'primary_guest_name') || `Guest ${values.primary_guest}`,
+      editHref: guest ? guestEditHref(companionPrimaryId, listId, guestEditHref(guest.id, listId)) : '',
+    } : null,
+    companionAnswers,
+    hasCompanionAnswers: companionAnswers.length > 0,
     noteFields: guestNoteFields(values),
     ticketFields: guestTicketFields(values),
     adminCustomFields,
@@ -1281,6 +1302,10 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
   const { context, guest, payload, values } = ticket;
   const readOnly = eventIsArchived(context.event);
   const plusGuestQrs = plusGuestQrCodes(listId, guestId, guest, values.name);
+  const linkedCompanionQrs = materializedCompanionLinks(guest.lect).map((companion) => ({
+    ...companion,
+    qrHref: `${ADMIN_BASE}/rsvp/${listId}/guests/${companion.guestId}/qrcode`,
+  }));
   const attendance = guestAttendance(guest.lect);
 
   return adminView(views, `QR — ${values.name}`, 'guest-qr', {
@@ -1300,6 +1325,8 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     qrPngSrc: `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/qrcode.png${guest.updated_at ? `?r=${encodeURIComponent(guest.updated_at)}` : ''}`,
     plusGuestQrs,
     hasPlusGuestQrs: plusGuestQrs.length > 0,
+    linkedCompanionQrs,
+    hasLinkedCompanionQrs: linkedCompanionQrs.length > 0,
   }, jsonOnly);
 }
 
@@ -2648,7 +2675,7 @@ function guestValues(guest: CmsPage): Record<string, string> {
     nationality: attr(guest.lect, 'nationality'),
     parent: attr(guest.lect, 'parent'),
     allow_refill: switchValue(guest.lect, 'allow_refill'),
-    primary_guest: switchValue(guest.lect, 'primary_guest'),
+    primary_guest: String(pointer(guest.lect, 'primary_guest') || attr(guest.lect, 'primary_guest')).trim(),
     not_send: switchValue(guest.lect, 'not_send'),
     plus_guests: attr(guest.lect, 'plus_guests') || '0',
     total_guests: attr(guest.lect, 'total_guests'),
@@ -2722,7 +2749,7 @@ function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
       options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
     }),
     guestFormField('@allow_refill', 'Allow refill', values.allow_refill, 'switch'),
-    guestFormField('@primary_guest', 'Primary guest', values.primary_guest, 'switch'),
+    guestFormField('@primary_guest', 'Primary guest ID', values.primary_guest, 'number'),
     guestFormField('@parent', 'Primary guest', values.parent),
     guestFormField('@not_send', 'Pause email sends', values.not_send, 'switch'),
     guestFormField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),

@@ -2747,7 +2747,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
             job_title: 'Mathematician',
             contact_id: '200',
             allow_refill: 'yes',
-            primary_guest: 'true',
+            primary_guest: '123',
             max_main_checkin: '2',
             nationality: 'GB',
             parent: 'Ada Sr.',
@@ -2763,7 +2763,9 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
             zh_hans_name: 'Ada ZH-Hans',
             wechat: 'ada-wechat',
             total_guests: '3',
-            plus_guests: '2',
+            plus_guests: '1',
+            companion_model: 'linked-v1',
+            companion_links: [{ guest_id: 44, source_key: 'rsvp-plus-one-1', name: 'Charles Babbage', organization: 'Difference Engine Ltd' }],
             latest_response: {
               latest: {
                 'rsvp-plus-one-1:name': 'Charles Babbage',
@@ -2799,6 +2801,8 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('value="/media/pictures/ada.jpg"');
     expect(html).toContain('name="@allow_refill"');
     expect(html).toContain('name="@primary_guest"');
+    expect(html).toContain('>Primary guest ID</span>');
+    expect(html).toContain('value="123"');
     expect(html).toContain('name="@max_main_checkin"');
     expect(html).toContain('value="2"');
     expect(html).toContain('name="@nationality"');
@@ -2814,11 +2818,12 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('value="Ada ZH-Hant"');
     expect(html).toContain('name="@total_guests"');
     expect(html).toContain('value="3"');
-    expect(html).toContain('Plus guests');
+    expect(html).toContain('Named companion guests');
+    expect(html).toContain('Unnamed plus guests');
     expect(html).toContain('Charles Babbage');
     expect(html).toContain('Difference Engine Ltd');
-    expect(html).toContain('Vegetarian');
     expect(html).toContain('Unnamed plus guest');
+    expect(html).toContain('/admin/plugins/events/rsvp/8/guests/44/qrcode');
     expect(html).toContain('name="@color_tag"');
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('name="@qrcode"');
@@ -2839,6 +2844,43 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(htmlWithPresence).toContain('id="presence-bar"');
     expect(htmlWithPresence).toContain('data-page-id="9"');
     expect(htmlWithPresence).toContain('data-editor-form');
+  });
+
+  it('renders an RSVP-created companion as an independent guest linked to its primary', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({
+        action: '/admin/pages/55',
+        backHref: '/admin/plugins/events/rsvp/8',
+        pageType: 'guest',
+        page: {
+          id: 55,
+          name: 'Charles Babbage',
+          slug: 'charles-babbage',
+          pageType: 'guest',
+          page_id: 8,
+          lect: JSON.stringify({ primary_guest: '9', primary_guest_name: 'Ada Lovelace', companion_answers: [{ label: 'Diet', value: 'Vegetarian' }], organization: 'Difference Engine Ltd', _pointers: { mail_list: '8', event: '7', primary_guest: '9' } }),
+        },
+      })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    const html = await renderedText(response);
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('Named companion of');
+    expect(html).toContain('Ada Lovelace');
+    expect(html).toContain('Diet');
+    expect(html).toContain('Vegetarian');
+    expect(html).toContain('/admin/pages/9/edit');
   });
 
   it('renders guest Activity from RSVP, check-in and sent EDM history', async () => {
@@ -3321,7 +3363,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: { _pointers: { event: '7' } } } });
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { organization: 'Analytical Engines', job_title: 'Programmer', qrcode_remark: 'Bring photo ID', plus_guests: '2', paired_qrcode: 'BADGE-OLD', latest_response: { latest: { 'rsvp-plus-one-1:name': 'Charles Babbage', 'rsvp-plus-one-1:organization': 'Difference Engine Ltd' } }, _pointers: { mail_list: '8' } } } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { organization: 'Analytical Engines', job_title: 'Programmer', qrcode_remark: 'Bring photo ID', plus_guests: '1', companion_model: 'linked-v1', companion_links: [{ guest_id: 56, source_key: 'rsvp-plus-one-1', name: 'Charles Babbage', organization: 'Difference Engine Ltd' }], paired_qrcode: 'BADGE-OLD', latest_response: { latest: { 'rsvp-plus-one-1:name': 'Charles Babbage', 'rsvp-plus-one-1:organization': 'Difference Engine Ltd' } }, _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
@@ -3339,6 +3381,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         pairAction: string;
         pairedQrCode: string;
         plusGuestQrs: Array<{ label: string; organization: string; payload: string; qrSvg: string; pngSrc: string; filename: string }>;
+        linkedCompanionQrs: Array<{ guestId: number; name: string; organization: string; qrHref: string }>;
       };
     };
     expect(view.data.qrPngSrc).toBe('/admin/plugins/events/rsvp/8/guests/55/qrcode.png');
@@ -3347,10 +3390,16 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(view.data.pairAction).toBe('/admin/plugins/events/rsvp/8/guests/55/pair-qrcode');
     expect(view.data.pairedQrCode).toBe('BADGE-OLD');
     expect(view.data.plusGuestQrs).toMatchObject([
-      { label: 'Charles Babbage', organization: 'Difference Engine Ltd', payload: compactCheckinCode(8, 55, 0), pngSrc: '/admin/plugins/events/rsvp/8/guests/55/qrcode-plus/0.png', filename: 'guest-55-plus-1-qrcode.png' },
-      { label: 'Ada — Plus guest 2', organization: '', payload: compactCheckinCode(8, 55, 1), pngSrc: '/admin/plugins/events/rsvp/8/guests/55/qrcode-plus/1.png', filename: 'guest-55-plus-2-qrcode.png' },
+      { label: 'Ada — Plus guest 1', organization: '', payload: compactCheckinCode(8, 55, 0), pngSrc: '/admin/plugins/events/rsvp/8/guests/55/qrcode-plus/0.png', filename: 'guest-55-plus-1-qrcode.png' },
     ]);
     expect(view.data.plusGuestQrs[0].qrSvg).toContain('<svg');
+    expect(view.data.linkedCompanionQrs).toEqual([{
+      guestId: 56,
+      sourceKey: 'rsvp-plus-one-1',
+      name: 'Charles Babbage',
+      organization: 'Difference Engine Ltd',
+      qrHref: '/admin/plugins/events/rsvp/8/guests/56/qrcode',
+    }]);
   });
 
   it('rasterizes the guest QR ticket to PNG in the Worker', async () => {

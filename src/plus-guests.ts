@@ -8,6 +8,8 @@ export interface PlusGuestDetail {
   index: number;
   /** One-based position for admin labels. */
   number: number;
+  /** Stable RSVP slot identity used to update a materialized guest record. */
+  sourceKey: string;
   name: string;
   organization: string;
   answers: PlusGuestAnswer[];
@@ -16,6 +18,7 @@ export interface PlusGuestDetail {
 
 interface ParsedPlusGuest {
   order: number;
+  sourceKey: string;
   name: string;
   organization: string;
   answers: PlusGuestAnswer[];
@@ -56,14 +59,19 @@ export function plusGuestDetails(lect: Record<string, unknown>): PlusGuestDetail
   }
 
   const rawCount = Number.parseInt(String(lect.plus_guests ?? ''), 10);
-  const count = Math.max(Number.isFinite(rawCount) && rawCount > 0 ? rawCount : 0, merged.length);
+  const allowance = Number.isFinite(rawCount) && rawCount > 0 ? rawCount : 0;
+  const materialized = new Set(materializedCompanionLinks(lect).map((link) => link.sourceKey));
+  const pending = merged.filter((detail) => !materialized.has(detail.sourceKey));
+  const linkedModel = String(lect.companion_model ?? '') === 'linked-v1';
+  const count = linkedModel ? pending.length + allowance : Math.max(allowance, pending.length);
   return Array.from({ length: count }, (_, index) => {
-    const detail = merged[index];
+    const detail = pending[index];
     const name = detail?.name.trim() ?? '';
     const organization = detail?.organization.trim() ?? '';
     return {
       index,
       number: index + 1,
+      sourceKey: detail?.sourceKey ?? `anonymous-${index + 1}`,
       name,
       organization,
       answers: detail?.answers ?? [],
@@ -90,7 +98,7 @@ function parseResponse(response: Record<string, unknown>): ParsedPlusGuest[] {
   const get = (identity: string): ParsedPlusGuest => {
     const existing = grouped.get(identity);
     if (existing) return existing;
-    const created = { order: identityOrder(identity, nextOrder), name: '', organization: '', answers: [] };
+    const created = { order: identityOrder(identity, nextOrder), sourceKey: `rsvp-plus-one-${identity}`, name: '', organization: '', answers: [] };
     nextOrder += 1;
     grouped.set(identity, created);
     return created;
@@ -135,6 +143,7 @@ function parseStructuredDetails(value: unknown): ParsedPlusGuest[] {
     collectAnswers(row, '', answers, new Set(['name', 'organization', 'company']));
     return {
       order: index,
+      sourceKey: `structured-${index + 1}`,
       name: displayValue(row.name),
       organization: displayValue(row.organization ?? row.company),
       answers,
@@ -148,6 +157,7 @@ function parseNameList(value: unknown): ParsedPlusGuest[] {
     const record = isRecord(row) ? row : {};
     return {
       order: index,
+      sourceKey: `name-${index + 1}`,
       name: displayValue(isRecord(row) ? record.name : row),
       organization: displayValue(record.organization ?? record.company),
       answers: [],
@@ -199,4 +209,21 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+export interface MaterializedCompanionLink {
+  guestId: number;
+  sourceKey: string;
+  name: string;
+  organization: string;
+}
+
+export function materializedCompanionLinks(lect: Record<string, unknown>): MaterializedCompanionLink[] {
+  if (!Array.isArray(lect.companion_links)) return [];
+  return lect.companion_links.filter(isRecord).map((link) => ({
+    guestId: Number(link.guest_id),
+    sourceKey: String(link.source_key ?? ''),
+    name: String(link.name ?? ''),
+    organization: String(link.organization ?? ''),
+  })).filter((link) => Number.isInteger(link.guestId) && link.guestId > 0 && link.sourceKey);
 }

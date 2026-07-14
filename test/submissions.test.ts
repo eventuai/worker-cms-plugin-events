@@ -162,6 +162,7 @@ describe('rsvp_response submission hook', () => {
       answers: {
         'rsvp-custom-meal-preference': 'vegan',
         'rsvp-plus-one-0:name': 'Charles Babbage',
+        'rsvp-plus-one-0:diet': 'Vegetarian',
         'session-0': 'yes',
         unexpected: 'ignored',
       },
@@ -180,7 +181,7 @@ describe('rsvp_response submission hook', () => {
   it('applies the response to the guest and stamps the response page', async () => {
     const calls = stubCms([
       responsePage,
-      { id: 9, page_type: 'guest', lect: { status: 'invited', allow_refill: 'yes', response: [{}], latest_response: { '49': { status: 'invited' } } } },
+      { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Lovelace', lect: { status: 'invited', allow_refill: 'yes', response: [{}], latest_response: { '49': { status: 'invited' } }, _pointers: { event: '7', mail_list: '8' } } },
     ]);
 
     const response = await plugin.fetch(hookRequest({ id: 501, page_type: 'rsvp_response' }), env());
@@ -190,7 +191,14 @@ describe('rsvp_response submission hook', () => {
     expect(guestPut?.body).toMatchObject({
       lect: {
         status: 'declined',
-        plus_guests: '2',
+        plus_guests: '1',
+        companion_model: 'linked-v1',
+        companion_links: [{
+          guest_id: 9001,
+          source_key: 'rsvp-plus-one-0',
+          name: 'Charles Babbage',
+          organization: '',
+        }],
         allow_refill: '',
         'rsvp-custom-meal-preference': 'vegan',
         latest_response: {
@@ -214,9 +222,56 @@ describe('rsvp_response submission hook', () => {
       },
     });
 
+    const companionCreate = calls.find((call) => call.method === 'POST' && call.path === '/__cms/pages');
+    expect(companionCreate?.body).toMatchObject({
+      page_type: 'guest',
+      page_id: 8,
+      name: 'Charles Babbage',
+      lect: {
+        primary_guest: '9',
+        primary_guest_name: 'Ada Lovelace',
+        companion_slot: 'rsvp-plus-one-0',
+        companion_managed: 'rsvp',
+        companion_active: 'yes',
+        companion_answers: [{ label: 'Diet', value: 'Vegetarian' }],
+        plus_guests: '0',
+        not_send: 'yes',
+        status: 'declined',
+        _pointers: { event: '7', mail_list: '8', primary_guest: '9' },
+      },
+    });
+
     const stamp = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/501');
     expect((stamp?.body as { lect?: Record<string, unknown> })?.lect).toMatchObject({ applied_guest_id: '9' });
     expect((stamp?.body as { lect?: { applied_at?: string } })?.lect?.applied_at).toBeTruthy();
+  });
+
+  it('updates the same companion slot on RSVP refill instead of creating a duplicate', async () => {
+    const calls = stubCms([
+      responsePage,
+      { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Lovelace', lect: { status: 'invited', response: [], _pointers: { event: '7', mail_list: '8' } } },
+      { id: 10, page_type: 'guest', page_id: 8, name: 'Old companion name', lect: { primary_guest: '9', companion_slot: 'rsvp-plus-one-0', companion_managed: 'rsvp', organization: 'Old org', _pointers: { event: '7', mail_list: '8', primary_guest: '9' } } },
+    ]);
+
+    await plugin.fetch(hookRequest({ id: 501, page_type: 'rsvp_response' }), env());
+
+    expect(calls.find((call) => call.method === 'POST' && call.path === '/__cms/pages')).toBeUndefined();
+    const companionPut = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/10');
+    expect(companionPut?.body).toMatchObject({
+      name: 'Charles Babbage',
+      lect: {
+        primary_guest: '9',
+        companion_slot: 'rsvp-plus-one-0',
+        companion_response_ref: 'sub-uuid-1',
+      },
+    });
+    const primaryPut = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/9');
+    expect(primaryPut?.body).toMatchObject({
+      lect: {
+        plus_guests: '1',
+        companion_links: [{ guest_id: 10, source_key: 'rsvp-plus-one-0', name: 'Charles Babbage' }],
+      },
+    });
   });
 
   it('is idempotent: an already-logged _ref updates nothing on the guest', async () => {

@@ -23,6 +23,7 @@ describe('plus guest details', () => {
     expect(details[0]).toMatchObject({
       index: 0,
       number: 1,
+      sourceKey: 'rsvp-plus-one-1',
       name: 'Charles Babbage',
       organization: 'Difference Engine Ltd',
       named: true,
@@ -46,10 +47,30 @@ describe('plus guest details', () => {
     expect(details).toEqual([{
       index: 0,
       number: 1,
+      sourceKey: 'structured-1',
       name: 'Grace Hopper',
       organization: 'US Navy',
       named: true,
       answers: [{ label: 'Meal — Preference', value: 'Vegan' }],
+    }]);
+  });
+
+  it('returns only anonymous slots after named companions are materialized', () => {
+    const details = plusGuestDetails({
+      plus_guests: '1',
+      companion_model: 'linked-v1',
+      companion_links: [{ guest_id: 44, source_key: 'rsvp-plus-one-1', name: 'Grace Hopper' }],
+      latest_response: { latest: { 'rsvp-plus-one-1:name': 'Grace Hopper' } },
+    });
+
+    expect(details).toEqual([{
+      index: 0,
+      number: 1,
+      sourceKey: 'anonymous-1',
+      name: '',
+      organization: '',
+      named: false,
+      answers: [],
     }]);
   });
 });

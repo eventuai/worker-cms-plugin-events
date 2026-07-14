@@ -27,6 +27,7 @@ import {
   items,
   type CmsPage,
 } from './cms';
+import { materializedCompanionLinks, plusGuestDetails, type MaterializedCompanionLink, type PlusGuestDetail } from './plus-guests';
 import { ensureAdhocGuestList } from './rsvp';
 import { adminView } from './templates/views';
 import { redirect } from '@lionrockjs/worker-cms-plugin';
@@ -87,10 +88,20 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
     const customAnswers = Object.fromEntries(
       Object.entries(answers).filter(([key]) => key.startsWith('rsvp-custom-')),
     );
+    const companions = await syncRsvpCompanions(cms, guest, responseSnapshot, page.uuid, status, submittedAt);
     await cms.update(guest.id, {
       lect: {
         status,
-        plus_guests: attr(page.lect, 'plus_guests') || '0',
+        // Named companions are normal guest pages. This count now represents
+        // only the remaining anonymous companion slots on the primary guest.
+        plus_guests: String(companions.anonymousCount),
+        companion_model: 'linked-v1',
+        companion_links: companions.links.map((link) => ({
+          guest_id: link.guestId,
+          source_key: link.sourceKey,
+          name: link.name,
+          organization: link.organization,
+        })),
         // Refill permission is single-use, matching the legacy RSVP submit.
         allow_refill: '',
         ...customAnswers,
@@ -110,6 +121,158 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
 
   await cms.update(page.id, { lect: { applied_at: now, applied_guest_id: String(guest.id) } });
   return 'applied';
+}
+
+interface CompanionSyncResult {
+  anonymousCount: number;
+  links: MaterializedCompanionLink[];
+}
+
+/**
+ * Materializes every named RSVP companion as a normal guest record. The RSVP
+ * slot is the idempotency key, so refills update the same child instead of
+ * creating duplicates. Unnamed slots remain on the primary guest.
+ */
+async function syncRsvpCompanions(
+  cms: CmsClient,
+  primary: CmsPage,
+  responseSnapshot: Record<string, unknown>,
+  responseRef: string,
+  status: string,
+  submittedAt: string,
+): Promise<CompanionSyncResult> {
+  const details = plusGuestDetails({
+    plus_guests: String(responseSnapshot.plus_guests ?? '0'),
+    latest_response: { current: responseSnapshot },
+  });
+  const anonymousCount = details.filter((detail) => !detail.named).length;
+  const named = details.filter((detail) => detail.named);
+  const listId = Number(primary.page_id) || Number(pointerValue(primary.lect, 'mail_list'));
+  if (!listId || named.length === 0) {
+    return { anonymousCount, links: materializedCompanionLinks(primary.lect) };
+  }
+
+  const eventId = pointerValue(primary.lect, 'event');
+  const guests = await cms.listAll('guest', { parentId: listId });
+  const linked = guests.filter((guest) => primaryGuestId(guest) === String(primary.id));
+  const links: MaterializedCompanionLink[] = [];
+  const used = new Set<number>();
+
+  for (const detail of named) {
+    const normalizedName = detail.name.trim().toLocaleLowerCase();
+    const existing = linked.find((guest) => !used.has(guest.id) && attr(guest.lect, 'companion_slot') === detail.sourceKey)
+      ?? linked.find((guest) => !used.has(guest.id) && guest.name.trim().toLocaleLowerCase() === normalizedName);
+    const child = existing
+      ? await updateCompanionGuest(cms, existing, primary, detail, responseRef, status, submittedAt, listId, eventId)
+      : await createCompanionGuest(cms, primary, detail, responseRef, status, submittedAt, listId, eventId);
+    used.add(child.id);
+    links.push({
+      guestId: child.id,
+      sourceKey: detail.sourceKey,
+      name: detail.name,
+      organization: detail.organization,
+    });
+  }
+
+  // Preserve manually linked companions. RSVP-managed slots absent from the
+  // latest refill are retained as guest records but no longer belong to the
+  // active companion group.
+  for (const child of linked) {
+    if (used.has(child.id) || attr(child.lect, 'companion_managed') === 'rsvp') continue;
+    links.push({
+      guestId: child.id,
+      sourceKey: attr(child.lect, 'companion_slot') || `manual-${child.id}`,
+      name: child.name,
+      organization: attr(child.lect, 'organization'),
+    });
+  }
+  return { anonymousCount, links };
+}
+
+async function createCompanionGuest(
+  cms: CmsClient,
+  primary: CmsPage,
+  detail: PlusGuestDetail,
+  responseRef: string,
+  status: string,
+  submittedAt: string,
+  listId: number,
+  eventId: string,
+): Promise<CmsPage> {
+  return cms.create({
+    page_type: 'guest',
+    page_id: listId,
+    name: detail.name,
+    slug: guestSlug(),
+    lect: companionLect(primary, detail, responseRef, status, submittedAt, listId, eventId, []),
+  });
+}
+
+async function updateCompanionGuest(
+  cms: CmsClient,
+  child: CmsPage,
+  primary: CmsPage,
+  detail: PlusGuestDetail,
+  responseRef: string,
+  status: string,
+  submittedAt: string,
+  listId: number,
+  eventId: string,
+): Promise<CmsPage> {
+  const history = realEntries(items(child.lect, 'response'));
+  return cms.update(child.id, {
+    name: detail.name,
+    lect: companionLect(primary, detail, responseRef, status, submittedAt, listId, eventId, history),
+  });
+}
+
+function companionLect(
+  primary: CmsPage,
+  detail: PlusGuestDetail,
+  responseRef: string,
+  status: string,
+  submittedAt: string,
+  listId: number,
+  eventId: string,
+  history: Array<Record<string, unknown>>,
+): Record<string, unknown> {
+  const response = history.some((entry) => entry._ref === responseRef)
+    ? history
+    : [...history, {
+      status,
+      date: submittedAt,
+      message: `companion RSVP for ${primary.name}`,
+      _ref: responseRef,
+    }];
+  return {
+    _type: 'guest',
+    _pointers: {
+      ...(eventId ? { event: eventId } : {}),
+      mail_list: String(listId),
+      primary_guest: String(primary.id),
+    },
+    primary_guest: String(primary.id),
+    primary_guest_name: primary.name,
+    companion_slot: detail.sourceKey,
+    companion_managed: 'rsvp',
+    companion_active: 'yes',
+    companion_response_ref: responseRef,
+    companion_answers: detail.answers,
+    organization: detail.organization,
+    plus_guests: '0',
+    not_send: 'yes',
+    status,
+    response,
+  };
+}
+
+function primaryGuestId(guest: CmsPage): string {
+  return String(pointerValue(guest.lect, 'primary_guest') || attr(guest.lect, 'primary_guest')).trim();
+}
+
+function pointerValue(lect: Record<string, unknown>, key: string): string {
+  const pointers = record(lect._pointers);
+  return String(pointers[key] ?? '').trim();
 }
 
 /** Drops the blueprint-seeded empty row so applied logs stay clean. */
