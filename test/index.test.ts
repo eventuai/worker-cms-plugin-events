@@ -1376,6 +1376,33 @@ describe('events admin', () => {
     expect(html).not.toContain('/admin/plugins/events/rsvp/35/delete');
   });
 
+  it('renders the guest-list publish action from its current publish status', async () => {
+    const render = async (isPublished: boolean) => {
+      const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+        const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+        if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', isPublished, lect: { _pointers: { event: '7' } } } });
+        if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+        if (url.pathname === '/__cms/pages') return Response.json({ pages: [], total: 0 });
+        return new Response('not found', { status: 404 });
+      });
+      vi.stubGlobal('fetch', cmsFetch);
+      const response = await plugin.fetch(request('/__plugin/admin/rsvp/8', {
+        headers: { 'x-plugin-secret': 'shared-secret' },
+      }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+      return renderedText(response);
+    };
+
+    const draftHtml = await render(false);
+    expect(draftHtml).toContain('action="/admin/pages/8/publish"');
+    expect(draftHtml).toContain('aria-label="Publish guest list"');
+    expect(draftHtml).not.toContain('action="/admin/pages/8/unpublish"');
+
+    const publishedHtml = await render(true);
+    expect(publishedHtml).toContain('action="/admin/pages/8/unpublish"');
+    expect(publishedHtml).toContain('aria-label="Unpublish guest list"');
+    expect(publishedHtml).not.toContain('action="/admin/pages/8/publish"');
+  });
+
   it('deletes a guest list via the server-side children delete, looping until done', async () => {
     // The host tears the guests down itself (DELETE /pages/children) in
     // bounded slices — the plugin repeats while done=false, then removes the
