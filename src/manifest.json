@@ -50,7 +50,9 @@
     { "path": "/assets/event-new.js", "label": "New event auto slug" },
     { "path": "/assets/all-guests-embedded.js", "label": "Progressive all-guests table rendering" },
     { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
-    { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" }
+    { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" },
+    { "path": "/assets/qrcode.min.js", "label": "QR code generator library (qrcode-generator 1.4.4, MIT)" },
+    { "path": "/assets/label-editor.js", "label": "Label template editor" }
   ],
   "editViews": ["edm", "guest"],
   "newViews": ["event"],
@@ -123,7 +125,7 @@
         }
       ],
       "label": [
-        { "frame": ["@width", "@height", "@direction", "@svg"] }
+        "@design"
       ],
       "edm": [
         "@text_color", "@font_size", "@font_family", "@bg_color", "@image_padding",

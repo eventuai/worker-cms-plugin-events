@@ -1,0 +1,243 @@
+<div class="flex items-center justify-between gap-4 mb-4">
+  <div>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← Label templates</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ title | escape }}</h1>
+    <p class="mt-1 text-sm text-gray-500">{{ eventName | escape }}</p>
+  </div>
+  <div class="flex flex-wrap items-center justify-end gap-2">
+    <button type="submit" form="labelSaveForm" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Save label" aria-label="Save label"><span id="saveButtonText">Save</span></button>
+    <button type="button" id="exportLabel" hidden class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Export JSON</button>
+    <button type="button" id="importLabel" hidden class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Import JSON</button>
+    <input type="file" id="labelFileInput" accept=".json,.txt" hidden>
+    <form method="post" action="{{ deleteAction | escape }}" data-confirm="Delete label template “{{ labelName | escape }}”?"><button type="submit" class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-gray-50 cursor-pointer">Delete</button></form>
+  </div>
+</div>
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | escape }}</p>{% endif %}
+<p id="labelEditorFallback" class="mb-4 rounded-lg bg-amber-50 border border-gray-200 px-4 py-3 text-sm text-amber-800">The interactive label editor script is not loaded (it may be awaiting approval). You can still rename or delete the template; the stored design is kept as-is.</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+  <!-- Preview column -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <form method="get" action="{{ selfHref | escape }}" id="labelGuestForm" class="mb-3">
+      <div class="flex gap-2 mb-2">
+        <input type="search" name="q" id="guestSearchInput" value="{{ q | escape }}" placeholder="Search guest by name, email or organization…" aria-label="Search guests" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+        <button type="submit" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Search</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <select name="list" id="guestListSelect" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <option value="">Preview guest list…</option>
+          {% for list in guestLists %}<option value="{{ list.id }}"{% if list.selected %} selected{% endif %}>{{ list.name | escape }}</option>{% endfor %}
+        </select>
+        <select name="guest" id="guestSelect" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"{% if selectedListId == blank and q == blank %} disabled{% endif %}>
+          <option value="">{% if q != blank %}{% if guests.size > 0 %}Matching guests…{% else %}No guests match “{{ q | escape }}”{% endif %}{% else %}Preview guest…{% endif %}</option>
+          {% for guest in guests %}<option value="{{ guest.id }}"{% if guest.selected %} selected{% endif %}>{{ guest.name | escape }}</option>{% endfor %}
+        </select>
+        <button type="submit" id="loadGuestButton" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Load</button>
+      </div>
+    </form>
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <p class="text-sm text-gray-600">Actual size: <span id="actualSize" class="font-semibold text-indigo-600">60mm × 30mm</span></p>
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600"><input type="checkbox" id="rotatePreview" class="h-4 w-4">Rotate -90°</label>
+        <button type="button" id="printLabelButton" hidden class="inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer">Print…</button>
+      </div>
+    </div>
+    <div id="svgPreviewContainer" class="flex justify-center items-center rounded-lg p-4 w-full overflow-x-auto" style="min-height:20rem;background-image:linear-gradient(45deg,#e5e7eb 25%,transparent 25%),linear-gradient(-45deg,#e5e7eb 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e5e7eb 75%),linear-gradient(-45deg,transparent 75%,#e5e7eb 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;">
+      <div id="svgWrapper" class="relative" style="transition:transform .2s">
+        <div class="pointer-events-none absolute top-0 left-0 w-full h-full" aria-hidden="true">
+          <div class="absolute top-0 left-0 w-full h-full flex justify-center"><div style="width:1px;height:100%;background:#1d4ed8;opacity:.1"></div></div>
+          <div class="absolute top-0 left-0 w-full h-full flex items-center"><div style="height:1px;width:100%;background:#1d4ed8;opacity:.1"></div></div>
+        </div>
+        <div style="border:12px solid #fff;border-bottom-width:24px">
+          <svg id="labelSvg" xmlns="http://www.w3.org/2000/svg" style="cursor:crosshair;display:block">
+            <rect id="labelBackground"></rect>
+            <g id="textElementsGroup"></g>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <p class="mt-2 text-xs text-gray-400">Click an element to select it, drag to move. Arrow keys nudge; hold Shift for larger steps.</p>
+    <textarea id="labelTokens" hidden readonly>{{ tokensJson | escape }}</textarea>
+
+    <!-- Adhoc values -->
+    <div id="adhocValuesPanel" class="mt-4 border-t border-gray-200 pt-4" hidden>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-semibold text-gray-800">Placeholder values</h3>
+        <button type="button" id="clearAdhocValues" class="px-3 py-1 text-xs rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer">Clear overrides</button>
+      </div>
+      <p class="text-xs text-gray-500 mb-2">Override <code>[@placeholder]</code> values to preview without picking a guest.</p>
+      <div id="adhocInputsContainer" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Controls column -->
+  <div class="space-y-4">
+    <form method="post" action="{{ action | escape }}" id="labelSaveForm" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <label class="block"><span class="block text-sm text-gray-700 mb-1">Template name</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" required value="{{ labelName | escape }}"></label>
+      <textarea name="design" id="labelDesignField" hidden readonly>{{ designJson | escape }}</textarea>
+      <input type="hidden" name="q" value="{{ q | escape }}">
+      <input type="hidden" name="list" value="{{ selectedListId | escape }}">
+      <input type="hidden" name="guest" value="{{ selectedGuestId | escape }}">
+      <input type="hidden" id="selectedGuestName" value="{{ selectedGuestName | escape }}">
+      <p id="unsavedHint" class="mt-2 text-xs text-amber-800" hidden>Unsaved changes — click Save to store this design.</p>
+    </form>
+
+    <div id="labelControls" hidden>
+      <!-- Elements panel -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Elements</h3>
+        <div class="flex flex-wrap gap-2 mb-3">
+          <button type="button" id="addTextBox" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">+ Text</button>
+          <button type="button" id="addQRCode" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">+ QR code</button>
+          <button type="button" id="addRectangle" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">+ Rectangle</button>
+          <button type="button" id="addCircle" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">+ Ellipse</button>
+          <button type="button" id="addImage" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">+ Image…</button>
+          <input type="file" id="imageInput" accept="image/*" hidden>
+        </div>
+        <div class="flex gap-2 mb-3">
+          <input type="text" id="imageUrlInput" placeholder="…or image URL" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <button type="button" id="addImageUrl" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">Add</button>
+        </div>
+        <div class="flex gap-2">
+          <select id="elementSelector" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="">— No element selected —</option></select>
+          <button type="button" id="removeTextBox" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-red-600 hover:bg-gray-50 cursor-pointer" hidden>Remove</button>
+        </div>
+      </div>
+
+      <!-- Position panel -->
+      <div id="positionPanel" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Position</h3>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Relative to</span>
+            <select id="parentElement" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="label">Label (absolute)</option></select>
+          </label>
+          <div class="flex" style="align-items:flex-end"><button type="button" id="clearParent" class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 cursor-pointer" title="Reset to absolute">Reset</button></div>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">X anchor</span>
+            <select id="anchorX" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+          </label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Y anchor</span>
+            <select id="anchorY" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select>
+          </label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">X offset (px)</span><input type="number" id="textX" step="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Y offset (px)</span><input type="number" id="textY" step="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+        </div>
+        <p class="text-xs text-gray-400">Offsets are from the parent's anchor point. Use a "bottom" anchor to sit below the parent's last text line.</p>
+      </div>
+
+      <!-- Text settings -->
+      <div id="textSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Text</h3>
+        <label class="block mb-3"><span class="block text-xs text-gray-500 mb-1">Content — use [@name], [@organization], … and "||" for alternatives</span><textarea id="labelText" rows="3" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"></textarea></label>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Font size</span><input type="number" id="fontSize" min="4" max="200" value="16" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">2nd size</span><input type="number" id="fontSizeSecondary" min="0" max="200" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">3rd size</span><input type="number" id="fontSizeTertiary" min="0" max="200" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Leading (em)</span><input type="number" id="lineHeight" min="0.5" max="5" value="1.2" step="0.1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Max width (px)</span><input type="number" id="maxWidth" min="0" max="5000" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Max lines</span><input type="number" id="maxLines" min="0" max="20" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+        </div>
+        <p class="text-xs text-gray-400 mb-3">Wraps at max width; if lines exceed max lines it retries with the 2nd, then 3rd size. 0 = off.</p>
+        <div class="flex flex-wrap gap-4 mb-3">
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="autoSplitCJKLatin" class="h-4 w-4">Auto linebreak CJK/Latin</label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="balanceOrphans" class="h-4 w-4">Balance orphan lines</label>
+        </div>
+        <div class="mb-3">
+          <span class="block text-xs text-gray-500 mb-1">Fonts (primary / secondary / tertiary + unicode range)</span>
+          <div class="grid grid-cols-2 gap-2 mb-1">
+            <input type="text" id="fontFamily" list="fontFamilyList" value="Arial" placeholder="Primary font" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <input type="text" id="fontUnicodePrimary" list="unicodeRangeList" placeholder="U+4E00-9FFF" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+            <input type="text" id="fontFamilySecondary" list="fontFamilyList" placeholder="Secondary font" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <input type="text" id="fontUnicodeSecondary" list="unicodeRangeList" placeholder="U+0000-00FF" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+            <input type="text" id="fontFamilyTertiary" list="fontFamilyList" placeholder="Tertiary font" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <input type="text" id="fontUnicodeTertiary" list="unicodeRangeList" placeholder="U+3040-30FF" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+          </div>
+          <datalist id="fontFamilyList">
+            <option value="Arial"></option><option value="Helvetica"></option><option value="Verdana"></option><option value="Georgia"></option><option value="Times New Roman"></option><option value="Courier New"></option><option value="Noto Sans CJK SC"></option><option value="Noto Sans SC"></option><option value="Noto Sans TC"></option><option value="PingFang SC"></option><option value="PingFang TC"></option><option value="Microsoft YaHei"></option><option value="Microsoft JhengHei"></option>
+          </datalist>
+          <datalist id="unicodeRangeList">
+            <option value="U+0000-00FF" label="Latin / English"></option>
+            <option value="U+0030-0039" label="Numbers"></option>
+            <option value="U+2000-206F" label="Punctuation"></option>
+            <option value="U+4E00-9FFF, U+3400-4DFF" label="Chinese"></option>
+            <option value="U+3040-309F, U+30A0-30FF" label="Japanese kana"></option>
+            <option value="U+AC00-D7A3, U+3130-318F" label="Korean hangul"></option>
+          </datalist>
+          <select id="fontFamilyFallback" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="sans-serif">sans-serif</option><option value="serif">serif</option><option value="monospace">monospace</option><option value="cursive">cursive</option><option value="fantasy">fantasy</option><option value="system-ui">system-ui</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Color</span><input type="color" id="textColor" value="#000000" class="block w-full h-9 border border-gray-300 rounded-lg cursor-pointer"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Alignment</span>
+            <select id="textAlign" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+          </label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Grow direction</span>
+            <select id="textGrowDirection" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="down">Down</option><option value="center">Center</option><option value="up">Up</option></select>
+          </label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="textRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+        </div>
+        <div class="flex flex-wrap gap-4">
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="boldText" class="h-4 w-4"><span class="font-bold">Bold</span></label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="italicText" class="h-4 w-4"><span style="font-style:italic">Italic</span></label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="underlineText" class="h-4 w-4"><span class="underline">Underline</span></label>
+        </div>
+      </div>
+
+      <!-- QR code settings -->
+      <div id="qrcodeSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">QR code</h3>
+        <label class="block mb-3"><span class="block text-xs text-gray-500 mb-1">QR data — supports [@placeholder] tokens, e.g. [@checkin_qrcode]</span><textarea id="qrcodeText" rows="2" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"></textarea></label>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Size (px)</span><input type="number" id="qrcodeSize" min="10" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Error correction</span>
+            <select id="qrcodeErrorLevel" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="L">Low (7%)</option><option value="M">Medium (15%)</option><option value="Q">Quartile (25%)</option><option value="H">High (30%)</option></select>
+          </label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="qrcodeRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+        </div>
+      </div>
+
+      <!-- Image settings -->
+      <div id="imageSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Image</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Width (px)</span><input type="number" id="imageWidth" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Height (px)</span><input type="number" id="imageHeight" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="imageRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="imageLockRatio" checked class="h-4 w-4">Lock aspect ratio</label>
+      </div>
+
+      <!-- Shape settings -->
+      <div id="shapeSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Shape</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Width (px)</span><input type="number" id="shapeWidth" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Height (px)</span><input type="number" id="shapeHeight" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Corner radius</span><input type="number" id="shapeCornerRadius" min="0" max="100" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Stroke width</span><input type="number" id="shapeStrokeWidth" min="0" max="20" step="0.5" value="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="shapeRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+        </div>
+        <div class="flex flex-wrap items-center gap-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700">Fill <input type="color" id="shapeFill" value="#ffffff" class="h-9 w-16 border border-gray-300 rounded-lg cursor-pointer"></label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="shapeFillNone" class="h-4 w-4">No fill</label>
+          <label class="flex items-center gap-2 text-sm text-gray-700">Stroke <input type="color" id="shapeStroke" value="#000000" class="h-9 w-16 border border-gray-300 rounded-lg cursor-pointer"></label>
+        </div>
+      </div>
+
+      <!-- Label design -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Label</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Width (mm)</span><input type="number" id="labelWidth" min="10" max="210" value="60" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Height (mm)</span><input type="number" id="labelHeight" min="10" max="210" value="30" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">Background</span><input type="color" id="backgroundColor" value="#ffffff" class="block w-full h-9 border border-gray-300 rounded-lg cursor-pointer"></label>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-2">
+          <button type="button" id="resetLabel" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">Reset design…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/admin/plugins/events/assets/qrcode.min.js" defer></script>
+<script src="/admin/plugins/events/assets/label-editor.js" defer></script>

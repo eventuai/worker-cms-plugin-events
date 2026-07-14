@@ -138,6 +138,8 @@ describe('plugin contract', () => {
         { path: '/assets/all-guests-embedded.js', label: 'Progressive all-guests table rendering' },
         { path: '/assets/long-running-submit.js', label: 'Long-running form loading state' },
         { path: '/assets/import-continue.js', label: 'Resumable import and deletion continuation' },
+        { path: '/assets/qrcode.min.js', label: 'QR code generator library (qrcode-generator 1.4.4, MIT)' },
+        { path: '/assets/label-editor.js', label: 'Label template editor' },
       ],
       contentTypes: {
         blueprint: { event: expect.any(Array), guest: expect.any(Array) },
@@ -2286,33 +2288,6 @@ describe('EDM and labels', () => {
     expect(html).toContain('Join us');
   });
 
-  it('renders label guest tokens as escaped SVG text', async () => {
-    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
-      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/8') {
-        return Response.json({ page: {
-          id: 8, page_type: 'label', page_id: 7, name: 'Badge',
-          lect: { frame: { svg: '<svg><text>{{name}}</text><text>{{organization}}</text></svg>' } },
-        } });
-      }
-      if (url.pathname === '/__cms/pages/9') {
-        return Response.json({ page: { id: 9, page_type: 'guest', name: 'Ada & Co', lect: { organization: '<Launch>' } } });
-      }
-      return new Response('not found', { status: 404 });
-    });
-    vi.stubGlobal('fetch', cmsFetch);
-
-    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/8/preview?guest_id=9', {
-      headers: { 'x-plugin-secret': 'shared-secret' },
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('image/svg+xml');
-    const svg = await renderedText(response);
-    expect(svg).toContain('Ada &amp; Co');
-    expect(svg).toContain('&lt;Launch&gt;');
-  });
 });
 
 describe('EDM edit view (plugin-rendered page editor)', () => {
@@ -4380,5 +4355,343 @@ describe('add/remove guests from contacts', () => {
       headers: { 'x-plugin-secret': 'shared-secret', 'x-cms-user': cmsUser('viewer', ['events:view']) },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
     expect(response.status).toBe(403);
+  });
+});
+
+describe('Label templates', () => {
+  const sampleDesign = {
+    labelConfig: { width: 60, height: 60, backgroundColor: '#ffffff', borderColor: '#000000', borderWidth: 1, borderRadius: 0 },
+    elementIdCounter: 10,
+    textElements: [{
+      elementId: 'text-6', elementName: '', x: '167', y: '150', text: '[@name]',
+      fontSize: '27', fontSizeSecondary: '18', fontSizeTertiary: '16', lineHeight: '1',
+      maxWidth: '325', maxLines: '2', autoSplit: '0', balanceOrphans: '0',
+      fontFamily: 'Arial, "Noto Sans CJK SC", "Noto Sans SC", sans-serif',
+      fontPrimary: '', fontSecondary: '', fontTertiary: '', fontFallback: 'Arial, sans-serif',
+      fontUnicodePrimary: '', fontUnicodeSecondary: '', fontUnicodeTertiary: '',
+      fill: 'rgb(0, 0, 0)', fontWeight: 'bold', fontStyle: 'normal', textDecoration: 'none',
+      textAnchor: 'middle', growDirection: 'down', rotation: '0',
+      parent: 'label', anchorX: 'left', anchorY: 'top', offsetX: '167', offsetY: '150', zIndex: 2,
+    }],
+    imageElements: [],
+    shapeElements: [],
+    qrcodeElements: [{
+      elementId: 'qrcode-10', elementName: '', x: '114.5', y: '10', size: '100',
+      qrText: '[@checkin_qrcode]', errorLevel: 'M', rotation: '0',
+      parent: 'label', anchorX: 'left', anchorY: 'top', offsetX: '114.5', offsetY: '10', zIndex: 3,
+    }],
+    rotatePreview: false,
+    exportedAt: '2026-07-14T01:16:20.461Z',
+    version: '1.0',
+  };
+
+  it('lists label templates with sizes parsed from the stored design', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'label') {
+        return Response.json({ pages: [
+          { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: { design: JSON.stringify(sampleDesign) } },
+          { id: 22, page_type: 'label', page_id: 7, name: 'Blank', lect: {} },
+        ], total: 2 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('href="/admin/plugins/events/events/7/labels/21"');
+    expect(html).toContain('60mm × 60mm');
+    // A label without a stored design falls back to the default size.
+    expect(html).toContain('60mm × 30mm');
+    expect(html).toContain('action="/admin/plugins/events/events/7/labels/21/delete"');
+  });
+
+  it('creates a label page with a default legacy-format design document', async () => {
+    let createRequest: RequestInit | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        createRequest = init;
+        return Response.json({ page: { id: 21 } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/new', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ name: 'Badge', width: '60', height: '60' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/labels/21');
+    const body = JSON.parse(String(createRequest?.body)) as { page_type: string; lect: { _type: string; design: string } };
+    expect(body.page_type).toBe('label');
+    const design = JSON.parse(body.lect.design);
+    expect(design.labelConfig).toMatchObject({ width: 60, height: 60, backgroundColor: '#ffffff' });
+    expect(design.textElements).toEqual([]);
+    expect(design.qrcodeElements).toEqual([]);
+  });
+
+  it('creates a label seeded from an uploaded legacy design file', async () => {
+    let createRequest: RequestInit | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        createRequest = init;
+        return Response.json({ page: { id: 21 } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const designJson = JSON.stringify(sampleDesign, null, 2);
+    const form = new FormData();
+    form.set('name', 'Imported badge');
+    form.set('width', '40');
+    form.set('height', '20');
+    form.set('design_file', new File([designJson], 'label-design-2026-07-14.json', { type: 'application/json' }));
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/new', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+      body: form,
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/labels/21');
+    const body = JSON.parse(String(createRequest?.body)) as { lect: { design: string } };
+    // The uploaded file is stored verbatim; its labelConfig wins over the size fields.
+    expect(body.lect.design).toBe(designJson);
+  });
+
+  it('rejects an uploaded design file that is not a legacy-format document', async () => {
+    let created = false;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        created = true;
+        return Response.json({ page: { id: 21 } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const form = new FormData();
+    form.set('name', 'Imported badge');
+    form.set('design_file', new File(['not json at all'], 'notes.txt', { type: 'text/plain' }));
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/new', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+      body: form,
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location'))
+      .toBe('/admin/plugins/events/events/7/labels/new?flash=Design%20is%20not%20valid%20JSON');
+    expect(created).toBe(false);
+  });
+
+  it('renders the label editor with the stored design, tokens and editor scripts', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', slug: 'launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/21') {
+        return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: { design: JSON.stringify(sampleDesign) } } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: {} }], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [
+          { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Wong', lect: { organization: 'Umbrella', prefer_language: 'zh-hant', zh_hant_name: '王阿達' } },
+        ], total: 1 });
+      }
+      if (url.pathname === '/__cms/pages/9') {
+        return Response.json({ page: { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Wong', lect: { organization: 'Umbrella', prefer_language: 'zh-hant', zh_hant_name: '王阿達' } } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/21?list=8&guest=9', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    // The stored design round-trips into the save form untouched (escaped).
+    expect(html).toContain('id="labelDesignField"');
+    expect(html).toContain('[@checkin_qrcode]');
+    // Guest preview tokens include the legacy conveniences: the compact
+    // check-in QR payload and the preferred-language name/company.
+    expect(html).toContain('&#34;checkin_qrcode&#34;:&#34;EAI8:1:M:');
+    expect(html).toContain('&#34;prefer_name&#34;:&#34;王阿達&#34;');
+    expect(html).toContain('&#34;prefer_company&#34;:&#34;Umbrella&#34;');
+    // The editor is progressive enhancement: approved scripts, fallback notice.
+    expect(html).toContain('<script src="/admin/plugins/events/assets/qrcode.min.js" defer></script>');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/label-editor.js" defer></script>');
+    expect(html).toContain('id="labelEditorFallback"');
+    expect(html).toContain('action="/admin/plugins/events/events/7/labels/21"');
+  });
+
+  it('searches guests across the whole event for the preview picker', async () => {
+    let guestQuery: URLSearchParams | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', slug: 'launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/21') {
+        return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [
+          { id: 8, page_type: 'mail_list', name: 'VIP', lect: {} },
+          { id: 15, page_type: 'mail_list', name: 'Media', lect: {} },
+        ], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        guestQuery = url.searchParams;
+        return Response.json({ pages: [
+          { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Wong', lect: {} },
+          { id: 30, page_type: 'guest', page_id: 15, name: 'Adam Smith', lect: {} },
+        ], total: 2 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/21?q=ada', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    // The search is event-wide (pointer), not per guest list.
+    expect(guestQuery?.get('q')).toBe('ada');
+    expect(guestQuery?.get('pointer_key')).toBe('event');
+    expect(guestQuery?.get('pointer_value')).toBe('7');
+    const html = await renderedText(response);
+    // Matches are labeled with their guest list so same-name guests are tellable apart.
+    expect(html).toContain('Ada Wong — VIP');
+    expect(html).toContain('Adam Smith — Media');
+    expect(html).toContain('id="guestSearchInput"');
+    expect(html).toContain('value="ada"');
+  });
+
+  it('saves a legacy design document unchanged and preserves the preview selection', async () => {
+    let updateRequest: RequestInit | undefined;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/21') {
+        if (init?.method === 'PUT') {
+          updateRequest = init;
+          return Response.json({ page: { id: 21 } });
+        }
+        return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: {} } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const designJson = JSON.stringify(sampleDesign);
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/21', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ name: 'Badge', design: designJson, list: '8', guest: '9' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location'))
+      .toBe('/admin/plugins/events/events/7/labels/21?list=8&guest=9&flash=Label%20saved');
+    const body = JSON.parse(String(updateRequest?.body)) as { lect: { design: string } };
+    // Byte-identical round trip — legacy exports stay loadable in the legacy tool.
+    expect(body.lect.design).toBe(designJson);
+  });
+
+  it('rejects a design that is not a legacy-format document', async () => {
+    let updated = false;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/21') {
+        if (init?.method === 'PUT') updated = true;
+        return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: {} } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/21', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ name: 'Badge', design: '{"nope":true}' }),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toContain('flash=Design%20is%20missing%20labelConfig');
+    expect(updated).toBe(false);
+  });
+
+  it('deletes a label template after confirming it belongs to the event', async () => {
+    let removed = false;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/21') {
+        if (init?.method === 'DELETE') {
+          removed = true;
+          return Response.json({ ok: true });
+        }
+        return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: {} } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7/labels/21/delete', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/admin/plugins/events/events/7/labels');
+    expect(removed).toBe(true);
+  });
+
+  it('serves the label editor assets for CMS approval', async () => {
+    const editorAsset = await plugin.fetch(request('/assets/label-editor.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    expect(editorAsset.status).toBe(200);
+    expect(await editorAsset.text()).toContain("document.getElementById('labelSvg')");
+
+    const qrAsset = await plugin.fetch(request('/assets/qrcode.min.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    expect(qrAsset.status).toBe(200);
+    expect(await qrAsset.text()).toContain('qrcode');
   });
 });
