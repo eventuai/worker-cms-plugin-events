@@ -4453,8 +4453,8 @@ describe('Label templates', () => {
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'label') {
         expect(url.searchParams.get('include_live_status')).toBe('1');
         return Response.json({ pages: [
-          { id: 21, page_type: 'label', page_id: 7, name: 'Badge', isPublished: true, lect: { design: JSON.stringify(sampleDesign) } },
-          { id: 22, page_type: 'label', page_id: 7, name: 'Blank', lect: {} },
+          { id: 21, page_type: 'label', page_id: 7, name: 'Badge', weight: 20, isPublished: true, lect: { design: JSON.stringify(sampleDesign) } },
+          { id: 22, page_type: 'label', page_id: 7, name: 'Blank', weight: 10, lect: {} },
         ], total: 2 });
       }
       return new Response('not found', { status: 404 });
@@ -4476,6 +4476,12 @@ describe('Label templates', () => {
     expect(html).toContain('action="/admin/pages/21/unpublish"');
     expect(html).toContain('action="/admin/pages/22/publish"');
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21/delete"');
+    expect(html.indexOf('Blank')).toBeLessThan(html.indexOf('Badge'));
+    expect(html).toContain('data-reorder="/admin/pages/batch-weight"');
+    expect(html).toContain('data-reorder-key="updates"');
+    expect(html).toContain('data-reorder-handle-only');
+    expect(html).toContain('data-id="21"');
+    expect(html).toContain('data-reorder-handle');
   });
 
   it('creates a label page with a default legacy-format design document', async () => {

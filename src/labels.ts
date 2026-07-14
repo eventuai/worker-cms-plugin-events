@@ -1,4 +1,4 @@
-import { CmsClient, attr, listByEvent, localized, type CmsPage } from './cms';
+import { CMS_BATCH_WEIGHT_ACTION, CmsClient, attr, compareByWeightThenName, listByEvent, localized, type CmsPage } from './cms';
 import { compactCheckinCode } from './crypto';
 import { adminView } from './templates/views';
 import { redirect } from '@lionrockjs/worker-cms-plugin';
@@ -46,9 +46,11 @@ async function labelsIndex(cms: CmsClient, views: Fetcher, event: CmsPage, jsonO
     eventName: event.name,
     eventHref: `${ADMIN_BASE}/events/${event.id}`,
     newHref: `${ADMIN_BASE}/events/${event.id}/labels/new`,
-    labels: pages.map((label) => {
+    reorderAction: CMS_BATCH_WEIGHT_ACTION,
+    labels: [...pages].sort(compareByWeightThenName).map((label) => {
       const config = designConfig(label);
       return {
+        id: label.id,
         name: label.name,
         href: `${ADMIN_BASE}/events/${event.id}/labels/${label.id}`,
         isPublished: label.isPublished === true,
