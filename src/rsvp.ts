@@ -432,11 +432,18 @@ function createAdhocGuestList(cms: CmsClient, eventId: number): Promise<CmsPage>
 }
 
 /** Ensures the event's Adhoc list exists, creating it if needed. */
-export async function ensureAdhocGuestList(cms: CmsClient, eventId: number, knownEvent?: CmsPage): Promise<CmsPage> {
+export async function ensureAdhocGuestList(
+  cms: CmsClient,
+  eventId: number,
+  knownEvent?: CmsPage,
+  knownLists?: CmsPage[],
+): Promise<CmsPage> {
   const event = knownEvent ?? await cms.get(eventId);
   if (event.page_type !== 'event') throw new Error('Event not found');
   if (eventIsArchived(event)) throw new Error('Archived events are read-only. Restore the event before making changes.');
-  const pages = await listByEvent(cms, 'mail_list', eventId);
+  // Dashboard callers have already fetched this collection. Reuse it so the
+  // missing-Adhoc path does not immediately issue an identical GET /pages.
+  const pages = knownLists ?? await listByEvent(cms, 'mail_list', eventId);
   return pages.find(isAdhocList) ?? createAdhocGuestList(cms, eventId);
 }
 

@@ -904,7 +904,9 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     listByEvent(cms, 'mail_list', eventId),
     listByEvent(cms, 'edm', eventId),
   ]);
-  if (mutable && !guestLists.some(isAdhocList)) guestLists.push(await ensureAdhocGuestList(cms, eventId, event));
+  if (mutable && !guestLists.some(isAdhocList)) {
+    guestLists.push(await ensureAdhocGuestList(cms, eventId, event, guestLists));
+  }
   // Fetch every list's guests through one generic multi-pointer query, then
   // tally each list locally. The same rows also power the response feed.
   const groupedGuests = await guestsByMailList(cms, guestLists);

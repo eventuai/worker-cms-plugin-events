@@ -41,7 +41,7 @@ export async function handleLabelsAdmin(
 }
 
 async function labelsIndex(cms: CmsClient, views: Fetcher, event: CmsPage, jsonOnly = false): Promise<Response> {
-  const { pages } = await cms.list('label', { parentId: event.id, limit: 500 });
+  const { pages } = await cms.listWithLiveStatus('label', { parentId: event.id });
   return adminView(views, `Labels — ${event.name}`, 'labels', {
     eventName: event.name,
     eventHref: `${ADMIN_BASE}/events/${event.id}`,
@@ -51,6 +51,9 @@ async function labelsIndex(cms: CmsClient, views: Fetcher, event: CmsPage, jsonO
       return {
         name: label.name,
         href: `${ADMIN_BASE}/events/${event.id}/labels/${label.id}`,
+        isPublished: label.isPublished === true,
+        publishAction: `/admin/pages/${label.id}/publish`,
+        unpublishAction: `/admin/pages/${label.id}/unpublish`,
         deleteAction: `${ADMIN_BASE}/events/${event.id}/labels/${label.id}/delete`,
         size: `${config.width}mm × ${config.height}mm`,
       };
@@ -129,7 +132,7 @@ async function labelEditor(
   url: URL,
   jsonOnly = false,
 ): Promise<Response> {
-  const label = await cms.get(labelId);
+  const label = await cms.getWithLiveStatus(labelId);
   if (label.page_type !== 'label' || label.page_id !== event.id) return new Response('not found', { status: 404 });
 
   const guestLists = await listByEvent(cms, 'mail_list', event.id);
@@ -177,6 +180,11 @@ async function labelEditor(
     eventName: event.name,
     backHref: `${ADMIN_BASE}/events/${event.id}/labels`,
     action: selfHref,
+    // Use the CMS's publish route so its permission check, publish targets,
+    // and plugin publish hook all run exactly as they do from the native editor.
+    publishAction: `/admin/pages/${labelId}/publish`,
+    unpublishAction: `/admin/pages/${labelId}/unpublish`,
+    isPublished: label.isPublished === true,
     deleteAction: `${selfHref}/delete`,
     selfHref,
     labelName: label.name,

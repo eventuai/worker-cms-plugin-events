@@ -603,6 +603,38 @@ describe('events admin', () => {
     expect(cmsFetch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'POST' }));
   });
 
+  it('reuses the dashboard guest-list read when creating the missing adhoc list', async () => {
+    let mailListReads = 0;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        mailListReads += 1;
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        return Response.json({ page: adhocList(8, 7) });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(mailListReads).toBe(1);
+  });
+
   it('renders archived events read-only without check-in or registration actions', async () => {
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -4392,8 +4424,9 @@ describe('Label templates', () => {
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'label') {
+        expect(url.searchParams.get('include_live_status')).toBe('1');
         return Response.json({ pages: [
-          { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: { design: JSON.stringify(sampleDesign) } },
+          { id: 21, page_type: 'label', page_id: 7, name: 'Badge', isPublished: true, lect: { design: JSON.stringify(sampleDesign) } },
           { id: 22, page_type: 'label', page_id: 7, name: 'Blank', lect: {} },
         ], total: 2 });
       }
@@ -4411,6 +4444,10 @@ describe('Label templates', () => {
     expect(html).toContain('60mm × 60mm');
     // A label without a stored design falls back to the default size.
     expect(html).toContain('60mm × 30mm');
+    expect(html).toContain('Published');
+    expect(html).toContain('Draft');
+    expect(html).toContain('action="/admin/pages/21/unpublish"');
+    expect(html).toContain('action="/admin/pages/22/publish"');
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21/delete"');
   });
 
@@ -4516,7 +4553,8 @@ describe('Label templates', () => {
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', slug: 'launch', lect: {} } });
       }
       if (url.pathname === '/__cms/pages/21') {
-        return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', lect: { design: JSON.stringify(sampleDesign) } } });
+        expect(url.searchParams.get('include_live_status')).toBe('1');
+        return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', isPublished: true, lect: { design: JSON.stringify(sampleDesign) } } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: {} }], total: 1 });
@@ -4552,6 +4590,10 @@ describe('Label templates', () => {
     expect(html).toContain('<script src="/admin/plugins/events/assets/label-editor.js" defer></script>');
     expect(html).toContain('id="labelEditorFallback"');
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21"');
+    expect(html).toContain('id="label-name" form="labelSaveForm"');
+    expect(html).toContain('placeholder="Template name"');
+    expect(html).toContain('action="/admin/pages/21/unpublish"');
+    expect(html).toContain('aria-label="Unpublish label"');
   });
 
   it('searches guests across the whole event for the preview picker', async () => {

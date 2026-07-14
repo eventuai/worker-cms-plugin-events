@@ -57,6 +57,8 @@ export interface GuestListSummary {
 export type CmsPage = BaseCmsPage & {
   /** Attached by the events plugin for mail_list pages — not part of the CMS API. */
   guest_summary?: GuestListSummary;
+  /** Returned by GET /__cms/pages?include_live_status=1. */
+  isPublished?: boolean;
 };
 
 /**
@@ -229,6 +231,26 @@ export class CmsClient extends BaseCmsClient {
     return { ids: result.pages.map((page) => page.id), total: result.total, more: result.pages.length < result.total };
   }
 
+  /** One page-list response annotated with its current CMS publish state. */
+  async listWithLiveStatus(
+    pageType: string,
+    opts: { parentId?: number; pointer?: CmsListPointer; q?: string } = {},
+    limit = 500,
+  ): Promise<{ pages: CmsPage[]; total: number }> {
+    return this.listPage(pageType, { ...opts, includeLiveStatus: true }, limit, 0, true);
+  }
+
+  /** One page annotated with its current CMS publish state. */
+  async getWithLiveStatus(id: number): Promise<CmsPage> {
+    const path = `/pages/${id}?include_live_status=1`;
+    const response = await globalThis.fetch(`${this.link.base}/__cms${path}`, { headers: this.linkHeaders() });
+    if (!response.ok) {
+      const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
+      throw new CmsApiError(response.status, code, 'GET', path);
+    }
+    return (await response.json() as { page: CmsPage }).page;
+  }
+
   /**
    * One raw GET /__cms/pages call. Exists because the SDK's `list()` cannot
    * send `count=0` (skip the host's COUNT(*) — itself a scan of the filtered
@@ -236,7 +258,7 @@ export class CmsClient extends BaseCmsClient {
    */
   private async listPage(
     pageType: string,
-    opts: { parentId?: number; pointer?: CmsListPointer; q?: string; fields?: string[] },
+    opts: { parentId?: number; pointer?: CmsListPointer; q?: string; fields?: string[]; includeLiveStatus?: boolean },
     limit: number,
     offset: number,
     wantCount: boolean,
@@ -249,6 +271,7 @@ export class CmsClient extends BaseCmsClient {
       else params.set('pointer_value', String(opts.pointer.value));
     }
     if (opts.q) params.set('q', opts.q);
+    if (opts.includeLiveStatus) params.set('include_live_status', '1');
     // Column projection: returned pages carry ONLY these fields (the host
     // whitelists the names). `fields: ['id']` skips reading/serializing lect
     // entirely — the dominant cost of listing fat guest rows.
