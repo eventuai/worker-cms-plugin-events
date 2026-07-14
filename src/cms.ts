@@ -21,6 +21,7 @@ import {
   CmsNotConfiguredError,
   blocks,
 } from '@lionrockjs/worker-cms-plugin';
+import { plusGuestDetails } from './plus-guests';
 
 /** Manifest id — must equal MANIFEST.id and the CMS-registered plugin id. */
 export const PLUGIN_ID = 'events';
@@ -608,6 +609,58 @@ export function checkins(lect: Record<string, unknown>): Array<Record<string, un
   );
 }
 
+export interface GuestAttendance {
+  mainCheckedIn: boolean;
+  plusCheckedIn: number;
+  totalCheckedIn: number;
+}
+
+/**
+ * Counts the currently active attendee check-ins without treating session
+ * attendance as event admission. Both the current check-in plugin messages and
+ * the legacy guest_id/guest_name entries are supported.
+ */
+export function guestAttendance(lect: Record<string, unknown>): GuestAttendance {
+  let mainCount = 0;
+  let anonymousPlusCount = 0;
+  const plusKeys = new Set<string>();
+
+  for (const entry of checkins(lect)) {
+    const message = String(entry.message ?? '').trim();
+    const status = String(entry.status ?? '').trim();
+    if (/^session\s+\S+/i.test(message)) continue;
+
+    const undo = /undo|undid/i.test(`${status} ${message}`);
+    const plusMessage = message.match(/^plus guest\s+(\d+)(?:\s+\("(.*)"\))?/i);
+    const guestId = String(entry.guest_id ?? '').trim();
+    const guestName = String(entry.guest_name ?? plusMessage?.[2] ?? '').trim();
+    const isPlus = Boolean(guestId || guestName || plusMessage || /plus guest/i.test(message));
+
+    if (!isPlus) {
+      mainCount = Math.max(0, mainCount + (undo ? -1 : 1));
+      continue;
+    }
+
+    const key = guestId
+      ? `id:${guestId}`
+      : plusMessage?.[1]
+        ? `index:${plusMessage[1]}`
+        : guestName
+          ? `name:${guestName.toLocaleLowerCase()}`
+          : '';
+    if (key) {
+      if (undo) plusKeys.delete(key);
+      else plusKeys.add(key);
+    } else {
+      anonymousPlusCount = Math.max(0, anonymousPlusCount + (undo ? -1 : 1));
+    }
+  }
+
+  const plusCheckedIn = plusKeys.size + anonymousPlusCount;
+  const mainCheckedIn = mainCount > 0;
+  return { mainCheckedIn, plusCheckedIn, totalCheckedIn: (mainCheckedIn ? 1 : 0) + plusCheckedIn };
+}
+
 export function emptyGuestListSummary(): GuestListSummary {
   return {
     guest_count: 0,
@@ -631,10 +684,9 @@ export function emptyGuestListSummary(): GuestListSummary {
 export function computeGuestListSummary(guests: CmsPage[]): GuestListSummary {
   const summary = emptyGuestListSummary();
   for (const guest of guests) {
-    const plus = Number.parseInt(attr(guest.lect, 'plus_guests'), 10);
-    const headcount = (Number.isFinite(plus) && plus > 0 ? plus : 0) + 1;
+    const headcount = plusGuestDetails(guest.lect).length + 1;
     const status = (attr(guest.lect, 'status') || 'to be invited').trim().toLowerCase();
-    const checkedIn = checkins(guest.lect).length > 0;
+    const attendance = guestAttendance(guest.lect);
 
     summary.guest_count += 1;
     summary.guest_total += headcount;
@@ -645,9 +697,9 @@ export function computeGuestListSummary(guests: CmsPage[]): GuestListSummary {
     else if (status === 'unconfirmed') summary.unconfirmed_count += 1;
     else summary.to_be_invited_count += 1;
 
-    if (checkedIn) {
+    if (attendance.totalCheckedIn > 0) {
       summary.checked_in_count += 1;
-      summary.checked_in_total += headcount;
+      summary.checked_in_total += attendance.totalCheckedIn;
     }
   }
   return summary;

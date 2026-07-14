@@ -1109,7 +1109,7 @@ describe('events admin', () => {
     expect(updates).toEqual([]);
   });
 
-  it('lets event-helper check in guests without edit/import/export controls', async () => {
+  it('lets event-helper check in the main guest without losing an existing companion check-in', async () => {
     const updates: Array<Record<string, unknown>> = [];
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -1118,7 +1118,7 @@ describe('events admin', () => {
       }
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
       if (url.pathname === '/__cms/pages/55' && (!init || init.method === 'GET')) {
-        return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: { _pointers: { mail_list: '8' }, status: 'confirmed' } } });
+        return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: { _pointers: { mail_list: '8' }, status: 'confirmed', plus_guests: '1', checkin: [{ status: 'checked-in', date: '2026-09-01T10:00:00Z', message: 'plus guest 1 checked-in at front desk' }] } } });
       }
       if (url.pathname === '/__cms/pages/55' && init?.method === 'PUT') {
         updates.push(JSON.parse(String(init.body)) as Record<string, unknown>);
@@ -1162,7 +1162,10 @@ describe('events admin', () => {
     expect(updates).toHaveLength(1);
     expect(updates[0]).toMatchObject({
       lect: {
-        checkin: [{ status: 'checked-in', message: 'checked in by event admin' }],
+        checkin: [
+          { status: 'checked-in', message: 'plus guest 1 checked-in at front desk' },
+          { status: 'checked-in', message: 'checked in by event admin' },
+        ],
       },
     });
   });
@@ -2760,6 +2763,14 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
             zh_hans_name: 'Ada ZH-Hans',
             wechat: 'ada-wechat',
             total_guests: '3',
+            plus_guests: '2',
+            latest_response: {
+              latest: {
+                'rsvp-plus-one-1:name': 'Charles Babbage',
+                'rsvp-plus-one-1:organization': 'Difference Engine Ltd',
+                'rsvp-plus-one-1:diet': 'Vegetarian',
+              },
+            },
             color_tag: 'blue',
             remarks: 'VIP guest',
             qrcode: 'ticket-qr-123',
@@ -2803,6 +2814,11 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('value="Ada ZH-Hant"');
     expect(html).toContain('name="@total_guests"');
     expect(html).toContain('value="3"');
+    expect(html).toContain('Plus guests');
+    expect(html).toContain('Charles Babbage');
+    expect(html).toContain('Difference Engine Ltd');
+    expect(html).toContain('Vegetarian');
+    expect(html).toContain('Unnamed plus guest');
     expect(html).toContain('name="@color_tag"');
     expect(html).toContain('<option value="blue" selected>blue</option>');
     expect(html).toContain('name="@qrcode"');
@@ -3305,7 +3321,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', page_id: 7, name: 'VIP', lect: { _pointers: { event: '7' } } } });
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { organization: 'Analytical Engines', job_title: 'Programmer', qrcode_remark: 'Bring photo ID', plus_guests: '2', paired_qrcode: 'BADGE-OLD', _pointers: { mail_list: '8' } } } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', page_id: 8, name: 'Ada', lect: { organization: 'Analytical Engines', job_title: 'Programmer', qrcode_remark: 'Bring photo ID', plus_guests: '2', paired_qrcode: 'BADGE-OLD', latest_response: { latest: { 'rsvp-plus-one-1:name': 'Charles Babbage', 'rsvp-plus-one-1:organization': 'Difference Engine Ltd' } }, _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
@@ -3322,7 +3338,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         qrPngSrc: string;
         pairAction: string;
         pairedQrCode: string;
-        plusGuestQrs: Array<{ label: string; payload: string; qrSvg: string }>;
+        plusGuestQrs: Array<{ label: string; organization: string; payload: string; qrSvg: string; pngSrc: string; filename: string }>;
       };
     };
     expect(view.data.qrPngSrc).toBe('/admin/plugins/events/rsvp/8/guests/55/qrcode.png');
@@ -3331,8 +3347,8 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(view.data.pairAction).toBe('/admin/plugins/events/rsvp/8/guests/55/pair-qrcode');
     expect(view.data.pairedQrCode).toBe('BADGE-OLD');
     expect(view.data.plusGuestQrs).toMatchObject([
-      { label: 'Plus guest 1', payload: compactCheckinCode(8, 55, 0) },
-      { label: 'Plus guest 2', payload: compactCheckinCode(8, 55, 1) },
+      { label: 'Charles Babbage', organization: 'Difference Engine Ltd', payload: compactCheckinCode(8, 55, 0), pngSrc: '/admin/plugins/events/rsvp/8/guests/55/qrcode-plus/0.png', filename: 'guest-55-plus-1-qrcode.png' },
+      { label: 'Ada — Plus guest 2', organization: '', payload: compactCheckinCode(8, 55, 1), pngSrc: '/admin/plugins/events/rsvp/8/guests/55/qrcode-plus/1.png', filename: 'guest-55-plus-2-qrcode.png' },
     ]);
     expect(view.data.plusGuestQrs[0].qrSvg).toContain('<svg');
   });
@@ -3353,6 +3369,27 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/png');
     expect(response.headers.get('content-disposition')).toContain('guest-55-qrcode.png');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect([...bytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  });
+
+  it('rasterizes an individual named plus-guest QR ticket to PNG', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: { plus_guests: '1', latest_response: { latest: { 'rsvp-plus-one-1:name': 'Charles Babbage', 'rsvp-plus-one-1:organization': 'Difference Engine Ltd' } }, _pointers: { mail_list: '8' } } } });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode-plus/0.png', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('content-disposition')).toContain('guest-55-plus-1-qrcode.png');
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
   });

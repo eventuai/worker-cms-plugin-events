@@ -6,6 +6,7 @@ import {
   blocks,
   chargeCreditAction,
   checkins,
+  guestAttendance,
   compareByWeightThenName,
   guestSlug,
   items,
@@ -17,6 +18,7 @@ import {
 } from './cms';
 import { compactCheckinCode } from './crypto';
 import { qrSvg, qrTicketSvg } from './qr';
+import { plusGuestDetails, type PlusGuestDetail } from './plus-guests';
 import { Resvg } from '@cf-wasm/resvg';
 import notoSansTcLatin from '@fontsource/noto-sans-tc/files/noto-sans-tc-latin-400-normal.woff2';
 import notoSansTcTraditional from '@fontsource/noto-sans-tc/files/noto-sans-tc-chinese-traditional-400-normal.woff2';
@@ -334,6 +336,10 @@ export async function handleRsvpAdmin(
       if (!canCheckIn) return forbidden();
       return guestQr(cms, views, listId, guestId, qr, jsonOnly, access);
     }
+    if (segments[3] === 'qrcode-plus' && /^\d+\.png$/.test(segments[4] ?? '')) {
+      if (!canCheckIn) return forbidden();
+      return plusGuestQrPng(cms, listId, guestId, Number.parseInt(segments[4], 10));
+    }
     if (segments[3] === 'qrcode.png') {
       if (!canCheckIn) return forbidden();
       return guestQrPng(cms, listId, guestId);
@@ -640,6 +646,7 @@ async function guestFormView(
 
   const adminCustomFields = adminCustomFieldsForGuest(context.event, context.list, guest);
   const activity = guest ? await guestActivity(cms, guest) : [];
+  const plusGuests = guest ? plusGuestDetails(guest.lect) : [];
 
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
     title: options.title ?? (guest ? 'Edit guest' : 'New guest'),
@@ -660,6 +667,8 @@ async function guestFormView(
     detailFields: guestDetailFields(values, options.language ?? 'mis'),
     contactFields: guestContactFields(values),
     rsvpFields: guestRsvpFields(values),
+    plusGuests,
+    hasPlusGuests: plusGuests.length > 0,
     noteFields: guestNoteFields(values),
     ticketFields: guestTicketFields(values),
     adminCustomFields,
@@ -925,17 +934,17 @@ async function checkInGuest(request: Request, cms: CmsClient, listId: number, gu
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
   const form = await request.formData();
   const returnTo = safeAdminReturn(formText(form, 'return_to')) || `${ADMIN_BASE}/rsvp/${listId}`;
-  if (checkins(guest.lect).length) return redirect(returnTo);
+  if (guestAttendance(guest.lect).mainCheckedIn) return redirect(returnTo);
   await chargeCreditAction(cms, 'check_in_guest', 1, { entityType: 'guest', entityId: guestId });
   await ensureGuestCheckedIn(cms, guest, 'checked in by event admin');
   return redirect(returnTo);
 }
 
 async function ensureGuestCheckedIn(cms: CmsClient, guest: CmsPage, message: string): Promise<void> {
-  if (checkins(guest.lect).length) return;
+  if (guestAttendance(guest.lect).mainCheckedIn) return;
   await cms.update(guest.id, {
     lect: {
-      checkin: [{ status: 'checked-in', date: new Date().toISOString(), message }],
+      checkin: [...checkins(guest.lect), { status: 'checked-in', date: new Date().toISOString(), message }],
     },
   });
 }
@@ -954,8 +963,8 @@ async function pairGuestQrCode(request: Request, cms: CmsClient, listId: number,
     note: pairedQrCode,
   });
   const lect: Record<string, unknown> = { paired_qrcode: pairedQrCode };
-  if (!checkins(guest.lect).length) {
-    lect.checkin = [{ status: 'checked-in', date: new Date().toISOString(), message: 'checked in by badge QR pairing' }];
+  if (!guestAttendance(guest.lect).mainCheckedIn) {
+    lect.checkin = [...checkins(guest.lect), { status: 'checked-in', date: new Date().toISOString(), message: 'checked in by badge QR pairing' }];
   }
   await cms.update(guestId, { lect });
   return redirect(returnTo);
@@ -1271,7 +1280,8 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
   if (!ticket) return new Response('not found', { status: 404 });
   const { context, guest, payload, values } = ticket;
   const readOnly = eventIsArchived(context.event);
-  const plusGuestQrs = plusGuestQrCodes(listId, guestId, values.plus_guests);
+  const plusGuestQrs = plusGuestQrCodes(listId, guestId, guest, values.name);
+  const attendance = guestAttendance(guest.lect);
 
   return adminView(views, `QR — ${values.name}`, 'guest-qr', {
     guestName: values.name,
@@ -1279,7 +1289,8 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
     listName: context.list.name,
     listHref: `${ADMIN_BASE}/rsvp/${listId}`,
     editHref: access?.canEdit === false || readOnly ? '' : guestEditHref(guestId, listId),
-    checkedIn: checkins(guest.lect).length > 0,
+    checkedIn: attendance.mainCheckedIn,
+    attendanceLabel: `${attendance.totalCheckedIn} of ${plusGuestQrs.length + 1} checked in`,
     pairedQrCode: values.paired_qrcode,
     pairAction: access?.canCheckIn === false || readOnly ? '' : `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/pair-qrcode`,
     payload,
@@ -1295,7 +1306,21 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
 async function guestQrPng(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
   const ticket = await guestQrTicket(cms, listId, guestId);
   if (!ticket) return new Response('not found', { status: 404 });
-  const renderer = await Resvg.async(ticket.svg, {
+  return qrTicketPng(ticket.svg, `guest-${guestId}-qrcode.png`);
+}
+
+async function plusGuestQrPng(cms: CmsClient, listId: number, guestId: number, index: number): Promise<Response> {
+  const ticket = await guestQrTicket(cms, listId, guestId);
+  if (!ticket) return new Response('not found', { status: 404 });
+  const detail = plusGuestDetails(ticket.guest.lect)[index];
+  if (!detail) return new Response('not found', { status: 404 });
+  const payload = compactCheckinCode(listId, guestId, index);
+  const svg = plusGuestTicketSvg(ticket, detail, payload);
+  return qrTicketPng(svg, `guest-${guestId}-plus-${index + 1}-qrcode.png`);
+}
+
+async function qrTicketPng(svg: string, filename: string): Promise<Response> {
+  const renderer = await Resvg.async(svg, {
     background: '#fff',
     font: {
       loadSystemFonts: false,
@@ -1314,8 +1339,22 @@ async function guestQrPng(cms: CmsClient, listId: number, guestId: number): Prom
     headers: {
       'content-type': 'image/png',
       'cache-control': 'private, max-age=86400',
-      'content-disposition': `inline; filename="guest-${guestId}-qrcode.png"`,
+      'content-disposition': `inline; filename="${filename}"`,
     },
+  });
+}
+
+function plusGuestTicketSvg(
+  ticket: NonNullable<Awaited<ReturnType<typeof guestQrTicket>>>,
+  detail: PlusGuestDetail,
+  payload: string,
+): string {
+  return qrTicketSvg(payload, {
+    keyword: ticket.context.event?.name ?? ticket.context.list.name,
+    name: detail.name || `${ticket.values.name} — Plus guest ${detail.number}`,
+    organization: detail.organization,
+    jobTitle: '',
+    remark: `Guest of ${ticket.values.name}`,
   });
 }
 
@@ -1349,16 +1388,20 @@ async function guestQrTicket(cms: CmsClient, listId: number, guestId: number): P
 function plusGuestQrCodes(
   listId: number,
   guestId: number,
-  rawCount: string,
-): Array<{ label: string; payload: string; qrSvg: string }> {
-  const count = Math.max(0, Number.parseInt(rawCount, 10) || 0);
-  const rows: Array<{ label: string; payload: string; qrSvg: string }> = [];
-  for (let index = 0; index < count; index += 1) {
-    const payload = compactCheckinCode(listId, guestId, index);
+  guest: CmsPage,
+  mainGuestName: string,
+): Array<{ label: string; organization: string; payload: string; qrSvg: string; pngSrc: string; filename: string }> {
+  const rows: Array<{ label: string; organization: string; payload: string; qrSvg: string; pngSrc: string; filename: string }> = [];
+  for (const detail of plusGuestDetails(guest.lect)) {
+    const payload = compactCheckinCode(listId, guestId, detail.index);
+    const filename = `guest-${guestId}-plus-${detail.number}-qrcode.png`;
     rows.push({
-      label: `Plus guest ${index + 1}`,
+      label: detail.name || `${mainGuestName} — Plus guest ${detail.number}`,
+      organization: detail.organization,
       payload,
       qrSvg: qrSvg(payload, { size: 180 }),
+      pngSrc: `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/qrcode-plus/${detail.index}.png${guest.updated_at ? `?r=${encodeURIComponent(guest.updated_at)}` : ''}`,
+      filename,
     });
   }
   return rows;
@@ -2527,6 +2570,8 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
   const canCheckIn = (access?.canCheckIn ?? true) && !readOnly;
   const canManageEmail = (access?.canManageEmail ?? true) && !readOnly;
   const values = guestValues(guest);
+  const attendance = guestAttendance(guest.lect);
+  const plusGuests = plusGuestDetails(guest.lect);
   const quality = emailQuality(values.email);
   const searchTextParts = [String(guest.id), values.name, values.last_name, values.email, values.phone];
   if (values.paired_qrcode) searchTextParts.push(values.paired_qrcode);
@@ -2548,7 +2593,10 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     searchText: searchTextVariants(searchTextParts),
     customFieldValue: customField ? guestCustomFieldValue(guest, customField) : '',
     checkinAction: canCheckIn ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/checkin` : '',
-    checkedIn: checkins(guest.lect).length > 0,
+    checkedIn: attendance.mainCheckedIn,
+    attendanceLabel: attendance.totalCheckedIn > 0
+      ? `${attendance.totalCheckedIn} of ${plusGuests.length + 1} checked in`
+      : '',
     // EDM send/preview controls (only meaningful when the list has an EDM).
     emailQuality: quality,
     canEmail: quality !== 'invalid',
