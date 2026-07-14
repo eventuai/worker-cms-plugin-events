@@ -3,7 +3,7 @@
   "name": "Events Suite",
   "version": "0.1.0",
   "hooks": ["create", "publish", "unpublish", "delete"],
-  "autoPublishTypes": ["event", "guest", "mail_list", "edm"],
+  "autoPublishTypes": ["event", "guest", "mail_list", "edm", "label"],
   "nav": [
     { "label": "Events", "href": "events", "roles": ["admin", "editor", "moderator", "event-helper"] }
   ],
@@ -67,7 +67,6 @@
           "prefer_language", "allow_refill", "not_send", "response"
         ]
       },
-      "event": { "drop": ["checkin_lite_passcode"] },
       "edm": { "drop": ["sender", "reply_to", "bcc"] }
     },
     "blueprint": {
