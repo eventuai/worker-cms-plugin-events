@@ -138,7 +138,7 @@ async function connectAndPrint() {
     
     if (printerMode === 'none') {
         alert('No printer configured. Please enable either USB Printer or Printer Server in Settings.');
-        return;
+        return false;
     }
     
     // Get the hex command from the textarea (try bitmapOutput first, fallback to hexCommand)
@@ -148,7 +148,7 @@ async function connectAndPrint() {
     
     if (!hexCommand) {
         alert('No print data available');
-        return;
+        return false;
     }
     
     try {
@@ -156,11 +156,13 @@ async function connectAndPrint() {
             await sendToPrinterServer(hexCommand);
             console.log('Print sent to server successfully!');
         } else if (printerMode === 'usb') {
-            await connectAndPrintUSB(hexCommand);
+            if (await connectAndPrintUSB(hexCommand) === false) return false;
         }
+        return true;
     } catch (error) {
         console.error('Error during printing:', error);
         alert('Error during printing: ' + error.message);
+        return false;
     }
 }
 
@@ -173,7 +175,7 @@ async function connectAndPrintUSB(hexCommand) {
     try {
         if (!navigator.usb) {
             alert('WebUSB is not supported in this browser. Please use Chrome or Edge.');
-            return;
+            return false;
         }
 
         const devices = await navigator.usb.getDevices();
@@ -184,7 +186,7 @@ async function connectAndPrintUSB(hexCommand) {
         
         if (brotherDevices.length === 0) {
             alert('No Brother devices found. Please use "Request Device" first to pair your printer.');
-            return;
+            return false;
         }
 
         device = brotherDevices[0];
@@ -235,6 +237,7 @@ async function connectAndPrintUSB(hexCommand) {
         }
         
         console.log('Print command sent successfully!');
+        return true;
         
     } catch (error) {
         console.error('Error during USB printing:', error);
@@ -266,7 +269,7 @@ async function connectAndPrintWithBitmap(bitmapElement) {
     
     if (printerMode === 'none') {
         alert('No printer configured. Please enable either USB Printer or Printer Server in Settings.');
-        return;
+        return false;
     }
     
     // Get the hex command from the specific bitmap element
@@ -274,7 +277,7 @@ async function connectAndPrintWithBitmap(bitmapElement) {
     
     if (!hexCommand) {
         alert('No bitmap data found');
-        return;
+        return false;
     }
     
     try {
@@ -282,11 +285,13 @@ async function connectAndPrintWithBitmap(bitmapElement) {
             await sendToPrinterServer(hexCommand);
             console.log('Print sent to server successfully!');
         } else if (printerMode === 'usb') {
-            await connectAndPrintUSB(hexCommand);
+            if (await connectAndPrintUSB(hexCommand) === false) return false;
         }
+        return true;
     } catch (error) {
         console.error('Error during printing:', error);
         alert('Error during printing: ' + error.message);
+        return false;
     }
 }
 

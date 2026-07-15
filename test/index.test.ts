@@ -4712,6 +4712,14 @@ describe('Label templates', () => {
     expect(html).toContain('<script src="/admin/plugins/events/assets/label-printer.js" defer></script>');
     expect(html).toContain('<script src="/admin/plugins/events/assets/label-editor.js" defer></script>');
     expect(html).toContain('href="/admin/plugins/checkin/kiosk/7/settings"');
+    // Selecting a list exposes the legacy-style persistent batch queue. Its
+    // guest token payload uses the same server-side token enrichment as the
+    // single-label preview.
+    expect(html).toContain('id="batchPrintPanel"');
+    expect(html).toContain('data-storage-key="events-label-batch-21-8"');
+    expect(html).toContain('class="batch-guest-checkbox h-4 w-4 mt-0.5" data-guest-id="9"');
+    expect(html).toContain('data-batch-tokens="9"');
+    expect(html).toContain('id="batchPrintButton"');
     expect(html).toContain('id="labelEditorFallback"');
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21"');
     expect(html).toContain('id="label-name" form="labelSaveForm"');
@@ -4866,6 +4874,13 @@ describe('Label templates', () => {
     const editorScript = await editorAsset.text();
     expect(editorScript).toContain("document.getElementById('labelSvg')");
     expect(editorScript).toContain('connectAndPrintWithBitmap');
+    expect(editorScript).toContain('var width = Math.round(svgWidth * 2)');
+    expect(editorScript).toContain('var height = Math.round(svgHeight * 2)');
+    expect(editorScript).toContain("          'threshold'\n");
+    expect(editorScript).toContain('async function encodeCurrentLabel()');
+    expect(editorScript).toContain("localStorage.setItem(batchStorageKey, JSON.stringify(checkedBatchIds()))");
+    expect(editorScript).toContain("editor.tokens = JSON.parse(guestTokensField.value) || {}");
+    expect(editorScript).toContain("getPrinterMode() === 'server'");
     expect(editorScript).not.toContain('window.print');
 
     const qrAsset = await plugin.fetch(request('/assets/qrcode.min.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
@@ -4874,12 +4889,16 @@ describe('Label templates', () => {
 
     const encoderAsset = await plugin.fetch(request('/assets/label-encoder.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
     expect(encoderAsset.status).toBe(200);
-    expect(await encoderAsset.text()).toContain('class LabelEncoder');
+    const encoderScript = await encoderAsset.text();
+    expect(encoderScript).toContain('class LabelEncoder');
+    expect(encoderScript).toContain("'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData)");
+    expect(encoderScript).toContain("callback(new Error('The label SVG could not be rasterized'))");
 
     const printerAsset = await plugin.fetch(request('/assets/label-printer.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
     expect(printerAsset.status).toBe(200);
     const printerScript = await printerAsset.text();
     expect(printerScript).toContain("checkin_printer_server_enabled");
     expect(printerScript).toContain('navigator.usb');
+    expect(printerScript).toContain('return false');
   });
 });

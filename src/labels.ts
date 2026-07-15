@@ -151,6 +151,7 @@ async function labelEditor(
   // (an `event` pointer exists just on newer rows), so the search fans out
   // over the event's list ids instead of filtering by event.
   let guests: Array<{ id: number; name: string }> = [];
+  let batchGuests: Array<{ id: number; name: string; tokensJson: string }> = [];
   const searchMatches: CmsPage[] = [];
   if (q && guestLists.length) {
     const result = await cms.list('guest', {
@@ -169,6 +170,14 @@ async function labelEditor(
     // `mail_list` pointer, so page_id can point at the old list.
     const result = await cms.list('guest', { pointer: { key: 'mail_list', value: selectedList.id }, limit: 500 });
     guests = result.pages.map((guest) => ({ id: guest.id, name: guest.name }));
+    // The legacy batch panel fetches tokens once per checked guest. We already
+    // have the complete guest rows for this list, so embed the same token maps
+    // and avoid an extra CMS round trip for every printed label.
+    batchGuests = result.pages.map((guest) => ({
+      id: guest.id,
+      name: guest.name,
+      tokensJson: JSON.stringify(guestLabelTokens(guest, selectedList, event)),
+    }));
   }
 
   // Selection is resolved by id (not dropdown membership) so a guest picked
@@ -217,6 +226,8 @@ async function labelEditor(
     q,
     guestLists: guestLists.map((list) => ({ id: list.id, name: list.name, selected: list.id === selectedList?.id })),
     guests: guests.map((guest) => ({ ...guest, selected: guest.id === selectedGuest?.id })),
+    batchGuests,
+    batchStorageKey: selectedList ? `events-label-batch-${labelId}-${selectedList.id}` : '',
     selectedListId: selectedList ? String(selectedList.id) : '',
     selectedGuestId: selectedGuest ? String(selectedGuest.id) : '',
     selectedGuestName: selectedGuest?.name ?? '',

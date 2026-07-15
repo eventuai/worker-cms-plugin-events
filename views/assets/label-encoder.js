@@ -38,8 +38,11 @@ class LabelEncoder {
             svgPreview: svgData.substring(0, 200) + '...'
         });
         
-        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(svgBlob);
+        // The CMS admin CSP permits data: images but intentionally blocks
+        // blob: images. A blob URL therefore trips img.onerror and used to
+        // print drawBasicCanvas()'s tiny fallback word "Label" instead of the
+        // actual design.
+        const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
         
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -59,23 +62,16 @@ class LabelEncoder {
                 }
                 
                 console.log('SVG successfully rendered to canvas at 300 DPI (2x scaling)' + (ditheringEnabled ? ` with ${ditheringMode} dithering` : ''));
-                URL.revokeObjectURL(url);
-                
-                if (callback) callback();
+                if (callback) callback(null);
             } catch (error) {
                 console.error('Error drawing SVG to canvas:', error);
-                URL.revokeObjectURL(url);
+                if (callback) callback(error);
             }
         };
         
         img.onerror = (error) => {
             console.error('Error loading SVG image:', error);
-            URL.revokeObjectURL(url);
-            
-            // Draw a simple rectangle as last resort
-            this.drawBasicCanvas(ctx, width, height, ditheringEnabled, thresholdLevel, ditheringMode);
-            
-            if (callback) callback();
+            if (callback) callback(new Error('The label SVG could not be rasterized'));
         };
         
         img.src = url;
