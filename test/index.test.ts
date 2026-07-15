@@ -23,6 +23,7 @@ interface PluginEnv {
   AWS_SECRET_ACCESS_KEY?: string;
   VIEWS: Fetcher;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
+  BROWSER?: BrowserRun;
 }
 
 interface SignedQr {
@@ -64,6 +65,14 @@ async function renderedText(response: Response): Promise<string> {
 
 function env(overrides: Partial<PluginEnv> = {}): PluginEnv {
   return { VIEWS: views(), ...overrides };
+}
+
+function browserRun() {
+  const quickAction = vi.fn(async () => new Response(
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]).buffer,
+    { headers: { 'content-type': 'image/png', 'x-browser-ms-used': '12' } },
+  ));
+  return { binding: { quickAction } as unknown as BrowserRun, quickAction };
 }
 
 function throwingViews(): Fetcher {
@@ -3174,7 +3183,8 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(response.status).toBe(200);
     expect(guestQueries).toBe(1);
     const html = await renderedText(response);
-    expect(html).toContain('All guests');
+    expect(html).toContain('Search result for 5555');
+    expect(html).not.toContain('>All guests<');
     expect(html).toContain('苏生');
     expect(html).not.toContain('Lin');
     expect(html).not.toContain('Grace');
@@ -3227,6 +3237,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     const html = await renderedText(response);
 
     expect(guestQueries).toBe(1);
+    expect(html).toContain('>All guests<');
     expect(html).toContain('data-all-guests-async');
     expect(html).toContain('Rendering 100 of 105 matching guests…');
     expect(html).toContain('<script src="/admin/plugins/events/assets/all-guests-embedded.js" defer></script>');
@@ -3386,6 +3397,10 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
         linkedCompanionQrs: Array<{ guestId: number; name: string; organization: string; qrHref: string }>;
       };
     };
+    const html = await renderView(views(), '/templates/guest-qr.json', view.data as unknown as Record<string, unknown>);
+    expect(html).toContain('<svg');
+    expect(html).toContain('Download PNG');
+    expect(html).not.toContain('<img src="/admin/plugins/events/rsvp/8/guests/55/qrcode.png');
     expect(view.data.qrPngSrc).toBe('/admin/plugins/events/rsvp/8/guests/55/qrcode.png');
     expect(view.data.qrSvg).toContain('<svg');
     expect(view.data.payload).toBe(compactCheckinCode(8, 55));
@@ -3404,27 +3419,37 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     }]);
   });
 
-  it('rasterizes the guest QR ticket to PNG in the Worker', async () => {
+  it('rasterizes the guest QR ticket to PNG with Browser Run', async () => {
+    const browser = browserRun();
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
       if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
-      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', name: 'Ada', lect: { organization: 'Analytical Engines', _pointers: { mail_list: '8' } } } });
+      if (url.pathname === '/__cms/pages/55') return Response.json({ page: { id: 55, page_type: 'guest', name: '爗苏蘇', lect: { organization: 'Analytical Engines', _pointers: { mail_list: '8' } } } });
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', cmsFetch);
     const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode.png', {
       headers: { 'x-plugin-secret': 'shared-secret' },
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', BROWSER: browser.binding }));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/png');
     expect(response.headers.get('content-disposition')).toContain('guest-55-qrcode.png');
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(response.headers.get('x-browser-ms-used')).toBe('12');
+    expect(browser.quickAction).toHaveBeenCalledOnce();
+    expect(browser.quickAction).toHaveBeenCalledWith('screenshot', expect.objectContaining({
+      html: expect.stringContaining('爗苏蘇'),
+      selector: '#ticket',
+      cacheTTL: 86400,
+      screenshotOptions: expect.objectContaining({ type: 'png', captureBeyondViewport: true }),
+    }));
   });
 
-  it('rasterizes an individual named plus-guest QR ticket to PNG', async () => {
+  it('rasterizes an individual named plus-guest QR ticket with Browser Run', async () => {
+    const browser = browserRun();
     const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
@@ -3436,13 +3461,18 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
 
     const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/qrcode-plus/0.png', {
       headers: { 'x-plugin-secret': 'shared-secret' },
-    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', BROWSER: browser.binding }));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/png');
     expect(response.headers.get('content-disposition')).toContain('guest-55-plus-1-qrcode.png');
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(browser.quickAction).toHaveBeenCalledOnce();
+    expect(browser.quickAction).toHaveBeenCalledWith('screenshot', expect.objectContaining({
+      html: expect.stringContaining('Charles Babbage'),
+      selector: '#ticket',
+    }));
   });
 
   it('pairs a badge QR code to a guest and checks them in when needed', async () => {

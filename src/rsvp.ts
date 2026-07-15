@@ -19,9 +19,6 @@ import {
 import { compactCheckinCode } from './crypto';
 import { qrSvg, qrTicketSvg } from './qr';
 import { materializedCompanionLinks, plusGuestDetails, type PlusGuestDetail } from './plus-guests';
-import { Resvg } from '@cf-wasm/resvg';
-import notoSansTcLatin from '@fontsource/noto-sans-tc/files/noto-sans-tc-latin-400-normal.woff2';
-import notoSansTcTraditional from '@fontsource/noto-sans-tc/files/noto-sans-tc-chinese-traditional-400-normal.woff2';
 import {
   emailQuality,
   guestWasSentEdm,
@@ -190,6 +187,11 @@ export interface QrOptions {
   tenantRef?: string;
 }
 
+export interface RsvpEnv extends EdmEnv {
+  /** Browser Run binding used only for downloadable QR ticket PNGs. */
+  BROWSER?: BrowserRun;
+}
+
 /** `?t=<ref>` suffix for minted public URLs (empty when single-tenant legacy). */
 function tenantSuffix(qr: QrOptions): string {
   return qr.tenantRef ? `?t=${qr.tenantRef}` : '';
@@ -199,7 +201,7 @@ export async function handleRsvpAdmin(
   request: Request,
   cms: CmsClient,
   views: Fetcher,
-  env: EdmEnv,
+  env: RsvpEnv,
   segments: string[],
   url: URL,
   qr: QrOptions = {},
@@ -338,11 +340,11 @@ export async function handleRsvpAdmin(
     }
     if (segments[3] === 'qrcode-plus' && /^\d+\.png$/.test(segments[4] ?? '')) {
       if (!canCheckIn) return forbidden();
-      return plusGuestQrPng(cms, listId, guestId, Number.parseInt(segments[4], 10));
+      return plusGuestQrPng(cms, env, listId, guestId, Number.parseInt(segments[4], 10));
     }
     if (segments[3] === 'qrcode.png') {
       if (!canCheckIn) return forbidden();
-      return guestQrPng(cms, listId, guestId);
+      return guestQrPng(cms, env, listId, guestId);
     }
     return new Response('not found', { status: 404 });
   }
@@ -1330,45 +1332,39 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
   }, jsonOnly);
 }
 
-async function guestQrPng(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
+async function guestQrPng(cms: CmsClient, env: RsvpEnv, listId: number, guestId: number): Promise<Response> {
   const ticket = await guestQrTicket(cms, listId, guestId);
   if (!ticket) return new Response('not found', { status: 404 });
-  return qrTicketPng(ticket.svg, `guest-${guestId}-qrcode.png`);
+  return qrTicketPng(env.BROWSER, ticket.svg, `guest-${guestId}-qrcode.png`);
 }
 
-async function plusGuestQrPng(cms: CmsClient, listId: number, guestId: number, index: number): Promise<Response> {
+async function plusGuestQrPng(cms: CmsClient, env: RsvpEnv, listId: number, guestId: number, index: number): Promise<Response> {
   const ticket = await guestQrTicket(cms, listId, guestId);
   if (!ticket) return new Response('not found', { status: 404 });
   const detail = plusGuestDetails(ticket.guest.lect)[index];
   if (!detail) return new Response('not found', { status: 404 });
   const payload = compactCheckinCode(listId, guestId, index);
   const svg = plusGuestTicketSvg(ticket, detail, payload);
-  return qrTicketPng(svg, `guest-${guestId}-plus-${index + 1}-qrcode.png`);
+  return qrTicketPng(env.BROWSER, svg, `guest-${guestId}-plus-${index + 1}-qrcode.png`);
 }
 
-async function qrTicketPng(svg: string, filename: string): Promise<Response> {
-  const renderer = await Resvg.async(svg, {
-    background: '#fff',
-    font: {
-      loadSystemFonts: false,
-      fontBuffers: [new Uint8Array(notoSansTcLatin), new Uint8Array(notoSansTcTraditional)],
-      defaultFontFamily: 'Noto Sans TC',
-      sansSerifFamily: 'Noto Sans TC',
-    },
-    shapeRendering: 1,
-    textRendering: 1,
+async function qrTicketPng(browser: BrowserRun | undefined, svg: string, filename: string): Promise<Response> {
+  if (!browser) return new Response('QR PNG rendering is unavailable', { status: 503 });
+  const rendered = await browser.quickAction('screenshot', {
+    html: `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#fff}#ticket{display:inline-block;line-height:0}svg{display:block}</style></head><body><div id="ticket">${svg}</div></body></html>`,
+    selector: '#ticket',
+    viewport: { width: 320, height: 800, deviceScaleFactor: 1 },
+    screenshotOptions: { type: 'png', omitBackground: false, captureBeyondViewport: true },
+    setJavaScriptEnabled: false,
+    cacheTTL: 86400,
   });
-  const rendered = renderer.render();
-  const png = rendered.asPng();
-  rendered.free();
-  renderer.free();
-  return new Response(png, {
-    headers: {
-      'content-type': 'image/png',
-      'cache-control': 'private, max-age=86400',
-      'content-disposition': `inline; filename="${filename}"`,
-    },
-  });
+  if (!rendered.ok) return rendered;
+
+  const headers = new Headers(rendered.headers);
+  headers.set('content-type', 'image/png');
+  headers.set('cache-control', 'private, max-age=86400');
+  headers.set('content-disposition', `inline; filename="${filename}"`);
+  return new Response(rendered.body, { status: rendered.status, headers });
 }
 
 function plusGuestTicketSvg(
@@ -1544,6 +1540,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
 
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
   const q = url.searchParams.get('q')?.trim() ?? '';
+  const heading = q ? `Search result for ${q}` : 'All guests';
   const selectedColor = normalizeColor(url.searchParams.get('color'));
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const ordered = sortByWeight(lists);
@@ -1569,8 +1566,9 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const initialGuests = jsonOnly ? rows : rows.slice(0, ALL_GUESTS_INITIAL_RENDER);
   const deferredGuests = jsonOnly ? [] : rows.slice(ALL_GUESTS_INITIAL_RENDER);
 
-  return adminView(views, `All guests — ${event.name}`, 'all-guests', {
+  return adminView(views, `${heading} — ${event.name}`, 'all-guests', {
     eventName: event.name,
+    heading,
     archived,
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     canImportExport,

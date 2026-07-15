@@ -79,4 +79,12 @@ describe('qr encoder', () => {
     expect((svg.match(/<text /g) ?? []).length).toBeGreaterThan(3);
     expect(svg).not.toContain('deliberately very long attendee name that wraps</text>');
   });
+
+  it('requests browser CJK fallback fonts for simplified, traditional, and uncommon Chinese text', () => {
+    const mixedSvg = qrTicketSvg('EAI123:ABC', { name: '爗苏蘇' });
+
+    expect(mixedSvg).toContain('font-family="Noto Sans TC,Noto Sans SC');
+    expect(mixedSvg).toContain('font-weight="400"');
+    expect(mixedSvg).toContain('爗苏蘇');
+  });
 });

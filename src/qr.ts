@@ -59,7 +59,7 @@ export interface QrTicketText {
 export function qrTicketSvg(payload: string, fields: QrTicketText, { width = 320, qrSize = 280 }: { width?: number; qrSize?: number } = {}): string {
   const rows: Array<{ value: string; size: number; color: string; weight?: number }> = [];
   add(fields.keyword, 11, '#333');
-  add(fields.name, (fields.name?.length ?? 0) > 35 ? 14 : 18, '#000', 500);
+  add(fields.name, (fields.name?.length ?? 0) > 35 ? 14 : 18, '#000', 400);
   add(fields.organization, 14, '#666');
   add(fields.jobTitle, 11, '#666');
   add(fields.remark, 11, '#999');
@@ -77,7 +77,7 @@ export function qrTicketSvg(payload: string, fields: QrTicketText, { width = 320
     const lineHeight = Math.ceil(row.size * 1.15);
     for (const line of lines) {
       y += lineHeight;
-      textElements.push(`<text x="${width / 2}" y="${y}" text-anchor="middle" font-family="Noto Sans TC,Noto Sans CJK TC,Noto Sans CJK SC,Arial,sans-serif" font-size="${row.size}"${row.weight ? ` font-weight="${row.weight}"` : ''} fill="${row.color}">${escapeSvgText(line)}</text>`);
+      textElements.push(`<text x="${width / 2}" y="${y}" text-anchor="middle" font-family="Noto Sans TC,Noto Sans SC,Noto Sans CJK TC,Noto Sans CJK SC,Arial,sans-serif" font-size="${row.size}"${row.weight ? ` font-weight="${row.weight}"` : ''} fill="${row.color}">${escapeSvgText(line)}</text>`);
     }
     y += 7;
   }
