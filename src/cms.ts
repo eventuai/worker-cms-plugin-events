@@ -358,6 +358,43 @@ export class CmsClient extends BaseCmsClient {
     return await response.json() as { scanned: number; created: number; more: boolean };
   }
 
+  /** Publishes draft pages through the CMS's scoped Plugin API. The host
+   * resolves every id from its own draft DB, enforces this plugin's write
+   * scope, applies publish projection, and refuses submission mirrors. */
+  async publishMany(ids: number[]): Promise<void> {
+    const unique = Array.from(new Set(ids));
+    for (let index = 0; index < unique.length; index += 100) {
+      const chunk = unique.slice(index, index + 100);
+      if (!chunk.length) continue;
+      const path = '/pages/publish';
+      const response = await globalThis.fetch(`${this.link.base}/__cms${path}`, {
+        method: 'POST',
+        headers: this.linkHeaders({ 'content-type': 'application/json' }),
+        body: JSON.stringify({ ids: chunk }),
+      });
+      if (!response.ok) {
+        const code = await response.text()
+          .then((text) => {
+            try { return (JSON.parse(text) as { error?: string }).error || 'error'; } catch { return text.trim().slice(0, 160) || 'error'; }
+          })
+          .catch(() => 'error');
+        throw new CmsApiError(response.status, code, 'POST', path);
+      }
+      const result = await response.json() as {
+        published: number[];
+        errors: Array<{ index: number; id?: number; error: string; failed_targets?: string[] }>;
+      };
+      if (result.errors.length) {
+        const first = result.errors[0];
+        const failedTargets = first.failed_targets?.length ? `:${first.failed_targets.join(',')}` : '';
+        throw new CmsApiError(409, `${first.error}${failedTargets}`, 'POST', `${path}[${first.index}]`);
+      }
+      if (result.published.length !== chunk.length) {
+        throw new CmsApiError(409, 'incomplete_publish', 'POST', path);
+      }
+    }
+  }
+
   /** Bulk partial-lect update through CMS `PATCH /__cms/pages/batch`. The host
    * merges every patch, versions every page, and commits the chunk atomically. */
   async batchUpdate(inputs: CmsBatchUpdateInput[]): Promise<CmsPage[]> {

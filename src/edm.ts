@@ -705,7 +705,7 @@ async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: nu
     // No recipient in the editor preview — neutralize the per-guest tokens.
     tokenValues: { unsubscribe_url: '#' },
   });
-  const eventId = pageId(pointer(edm.lect, 'event'));
+  const eventId = pageId(pointer(edm.lect, 'event')) ?? pageId(edm.page_id);
   let eventSlug = '';
   if (eventId) {
     try {
@@ -793,7 +793,14 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   if (edm.page_type !== 'edm' || list.page_type !== 'mail_list' || pointer(list.lect, 'edm') !== String(edmId)) return -1;
   const guests = await cms.listAll('guest', { parentId: listId });
 
-  const eventId = pageId(pointer(edm.lect, 'event'));
+  const eventId = pageId(pointer(edm.lect, 'event')) ?? pageId(edm.page_id);
+  const recipients = guests.filter((guest) => {
+    const recipient = attr(guest.lect, 'email');
+    return recipient && isEmail(recipient) && !truthyAttr(guest.lect, 'not_send');
+  });
+  // Publish before rendering or queueing. If any page or target fails, no
+  // delivery is enqueued with a public URL that worker-rsvp cannot resolve.
+  await publishRsvpContext(cms, eventId, list, edm, recipients);
   const rsvpEnabled = Boolean(eventId && env.PUBLIC_BASE_URL && env.PLUGIN_SECRET);
   // Render (and MJML-compile) ONCE per blast, leaving a placeholder where each
   // guest's signed RSVP URL goes — then string-swap it per recipient. This keeps
@@ -808,9 +815,8 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   const headers = deliveryHeaders(values);
 
   const deliveries: EmailDelivery[] = [];
-  for (const guest of guests) {
+  for (const guest of recipients) {
     const recipient = attr(guest.lect, 'email');
-    if (!recipient || !isEmail(recipient) || truthyAttr(guest.lect, 'not_send')) continue;
     const rsvpUrl = rsvpEnabled ? await guestRsvpUrl(env, eventId!, listId, guest, edmId) : '';
     const tokenValues = await guestEmailTokens(env, eventId, listId, guest, rsvpUrl);
     const html = applyGuestEmailTokens(
@@ -861,6 +867,38 @@ async function emailFor(
 }
 
 // ── Per-guest send / preview (RSVP guest-list buttons) ─────────────────────────
+
+/**
+ * Validates and publishes the complete context worker-rsvp needs before an
+ * email link is rendered or delivered. Relationship checks happen in the
+ * plugin as well as page-type scoping in the CMS endpoint, so a stale or
+ * tampered list pointer cannot be used to publish an unrelated owned page.
+ */
+export async function publishRsvpContext(
+  cms: CmsClient,
+  eventId: number | null,
+  list: CmsPage,
+  edm: CmsPage,
+  guests: CmsPage[],
+): Promise<void> {
+  if (!eventId || list.page_type !== 'mail_list' || pointer(list.lect, 'event') !== String(eventId)) {
+    throw new Error('Guest list is not linked to a valid event');
+  }
+  const edmEventId = pageId(pointer(edm.lect, 'event')) ?? pageId(edm.page_id);
+  if (edm.page_type !== 'edm' || edmEventId !== eventId) {
+    throw new Error('EDM and guest list must belong to the same event');
+  }
+  for (const guest of guests) {
+    if (
+      guest.page_type !== 'guest'
+      || guest.page_id !== list.id
+      || pointer(guest.lect, 'mail_list') !== String(list.id)
+    ) {
+      throw new Error(`Guest ${guest.id} does not belong to guest list ${list.id}`);
+    }
+  }
+  await cms.publishMany([eventId, list.id, edm.id, ...guests.map((guest) => guest.id)]);
+}
 
 /** Role mailboxes treated as lower-confidence by the deliverability heuristic. */
 const ROLE_MAILBOXES = new Set([

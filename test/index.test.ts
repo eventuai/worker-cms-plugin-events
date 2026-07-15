@@ -17,6 +17,7 @@ interface PluginEnv {
   MJML_API_URL?: string;
   MAIL_TRACKING?: KVNamespace;
   EMAIL?: { send(message: Record<string, unknown>): Promise<unknown> };
+  MAIL_QUEUE?: { sendBatch(messages: Array<{ body: Record<string, unknown> }>): Promise<void> };
   EMAIL_FROM?: string;
   AWS_SES_REGION?: string;
   AWS_ACCESS_KEY_ID?: string;
@@ -3513,10 +3514,15 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
 
 describe('RSVP EDM sending (guest-list controls)', () => {
   // A list (8) under event 7, linked to EDM 50, with one good-quality guest (55).
-  function rsvpEdmFetch(captured?: { put?: RequestInit }, includeQr = false, guestLect: Record<string, unknown> = {}) {
+  function rsvpEdmFetch(captured?: { put?: RequestInit; published?: number[][] }, includeQr = false, guestLect: Record<string, unknown> = {}) {
     return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       const p = url.pathname;
+      if (p === '/__cms/pages/publish' && init?.method === 'POST') {
+        const ids = (JSON.parse(String(init.body)) as { ids: number[] }).ids;
+        if (captured) (captured.published ??= []).push(ids);
+        return Response.json({ published: ids, errors: [], count: ids.length });
+      }
       if (p === '/__cms/pages/8' && init?.method === 'PUT') {
         if (captured) captured.put = init;
         return Response.json({ page: { id: 8 } });
@@ -3559,6 +3565,8 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(html).toContain('/admin/plugins/events/rsvp/8/send-edm?quality=good');
     expect(html).toContain('data-autosubmit');                                   // EDM dropdown
     expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/55/send"'); // per-guest send
+    expect(html).toContain('action="/admin/plugins/events/rsvp/8/guests/55/preview" target="_blank"');
+    expect(html).not.toContain('href="/admin/plugins/events/rsvp/8/guests/55/preview"');
     expect(html).not.toContain('Are you sure you want to re-send the email to this guest?');
     expect(html).toContain('href="/admin/pages/55/edit?return_to=%2Fadmin%2Fplugins%2Fevents%2Frsvp%2F8"');
     expect(html).not.toContain('href="/admin/plugins/events/rsvp/8/guests/55"');
@@ -3596,7 +3604,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
   });
 
   it('sends the EDM to one guest and records it as sent', async () => {
-    const captured: { put?: RequestInit } = {};
+    const captured: { put?: RequestInit; published?: number[][] } = {};
     vi.stubGlobal('fetch', rsvpEdmFetch(captured));
     const sent: Record<string, unknown>[] = [];
     const EMAIL = { send: vi.fn(async (m: Record<string, unknown>) => { sent.push(m); }) };
@@ -3607,6 +3615,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
 
     expect(response.status).toBe(302);
+    expect(captured.published).toEqual([[7, 8, 50, 55]]);
     expect(EMAIL.send).toHaveBeenCalledTimes(1);
     expect(sent[0]).toMatchObject({ to: 'ada@example.com' });
     // A structured record survives CMS lect normalization, drives Activity,
@@ -3666,22 +3675,26 @@ describe('RSVP EDM sending (guest-list controls)', () => {
   });
 
   it('auto-sends to good-quality guests and skips others', async () => {
+    const captured: { published?: number[][] } = {};
     const EMAIL = { send: vi.fn(async () => {}) };
-    vi.stubGlobal('fetch', rsvpEdmFetch());
+    vi.stubGlobal('fetch', rsvpEdmFetch(captured));
     const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/send-edm?quality=good', {
       method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
 
     expect(response.status).toBe(302);
+    expect(captured.published).toEqual([[7, 8, 50, 55]]);
     expect(response.headers.get('location')).toContain('/admin/plugins/events/rsvp/8?flash=');
     expect(EMAIL.send).toHaveBeenCalledTimes(1); // the one good guest
   });
 
   it('previews a guest EDM by compiling MJML before replacing legacy placeholders', async () => {
-    vi.stubGlobal('fetch', rsvpEdmFetch());
+    const captured: { published?: number[][] } = {};
+    vi.stubGlobal('fetch', rsvpEdmFetch(captured));
 
     const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview', {
+      method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({
       CMS_URL: 'https://cms.test',
@@ -3690,6 +3703,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     }));
 
     expect(response.status).toBe(200);
+    expect(captured.published).toEqual([[7, 8, 50, 55]]);
     expect(response.headers.get('content-type')).toContain('text/html');
     const html = await renderedText(response);
     expect(html).toContain('<!doctype html>');
@@ -3698,10 +3712,102 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(html).not.toContain('{{company||organization}}');
   });
 
+  it('does not allow a state-changing guest preview over GET', async () => {
+    const captured: { published?: number[][] } = {};
+    vi.stubGlobal('fetch', rsvpEdmFetch(captured));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(404);
+    expect(captured.published).toBeUndefined();
+  });
+
+  it('does not send when publishing the RSVP context fails', async () => {
+    const baseFetch = rsvpEdmFetch();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/publish') {
+        return Response.json({
+          published: [7, 50, 55],
+          errors: [{ index: 1, id: 8, error: 'publish_failed', failed_targets: ['d1'] }],
+          count: 3,
+        });
+      }
+      return baseFetch(input, init);
+    }));
+    const EMAIL = { send: vi.fn(async () => undefined) };
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/send', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toContain('Unable%20to%20publish%20RSVP');
+    expect(EMAIL.send).not.toHaveBeenCalled();
+  });
+
+  it('does not publish or send when the guest relationship is inconsistent', async () => {
+    const baseFetch = rsvpEdmFetch();
+    let publishCalls = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/55' && init?.method !== 'PUT') {
+        return Response.json({
+          page: {
+            id: 55,
+            page_type: 'guest',
+            page_id: 999,
+            name: 'Ada',
+            lect: { email: 'ada@example.com', _pointers: { mail_list: '8' } },
+          },
+        });
+      }
+      if (url.pathname === '/__cms/pages/publish') publishCalls++;
+      return baseFetch(input, init);
+    }));
+    const EMAIL = { send: vi.fn(async () => undefined) };
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/send', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret', EMAIL, EMAIL_FROM: 'noreply@example.com' }));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toContain('does%20not%20belong%20to%20guest%20list');
+    expect(publishCalls).toBe(0);
+    expect(EMAIL.send).not.toHaveBeenCalled();
+  });
+
+  it('publishes every recipient context before queueing a guest-list blast', async () => {
+    const captured: { published?: number[][] } = {};
+    vi.stubGlobal('fetch', rsvpEdmFetch(captured));
+    const sendBatch = vi.fn(async (_messages: Array<{ body: Record<string, unknown> }>) => undefined);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/50/send-list', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+      body: new URLSearchParams({ list_id: '8' }),
+    }), env({
+      CMS_URL: 'https://cms.test',
+      PLUGIN_SECRET: 'shared-secret',
+      PUBLIC_BASE_URL: 'https://rsvp.eventuai.com',
+      MAIL_QUEUE: { sendBatch },
+    }));
+
+    expect(response.status).toBe(302);
+    expect(captured.published).toEqual([[7, 8, 50, 55]]);
+    expect(sendBatch).toHaveBeenCalledTimes(1);
+    expect(sendBatch.mock.calls[0][0]).toHaveLength(1);
+  });
+
   it('renders a guest-specific signed check-in QR in an EDM', async () => {
     vi.stubGlobal('fetch', rsvpEdmFetch(undefined, true));
 
     const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview', {
+      method: 'POST',
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({
       CMS_URL: 'https://cms.test',

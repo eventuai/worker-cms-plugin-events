@@ -23,6 +23,7 @@ import {
   emailQuality,
   guestWasSentEdm,
   previewEdmForGuest,
+  publishRsvpContext,
   sendEdmToGuest,
   type EdmEnv,
 } from './edm';
@@ -330,7 +331,7 @@ export async function handleRsvpAdmin(
       if (!canManageEmail) return forbidden();
       return sendGuestEdm(request, cms, views, env, listId, guestId);
     }
-    if (segments[3] === 'preview') {
+    if (segments[3] === 'preview' && request.method === 'POST') {
       if (!canManageEmail) return forbidden();
       return previewGuestEdm(cms, views, env, listId, guestId);
     }
@@ -826,6 +827,11 @@ async function sendGuestEdm(request: Request, cms: CmsClient, views: Fetcher, en
   if (!edm) return listFlash(listId, 'Select an EDM for this list first', returnTo);
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  try {
+    await publishRsvpContext(cms, context.eventId, context.list, edm, [guest]);
+  } catch (error) {
+    return listFlash(listId, error instanceof Error ? `Unable to publish RSVP: ${error.message}` : 'Unable to publish RSVP', returnTo);
+  }
   await chargeCreditAction(cms, 'send_edm', 1, {
     entityType: 'guest',
     entityId: guestId,
@@ -855,6 +861,8 @@ async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env
     const matches = emailQuality(attr(guest.lect, 'email')) === quality;
     return !paused && matches && !guestWasSentEdm(guest, edm.id);
   });
+
+  await publishRsvpContext(cms, context.eventId, context.list, edm, candidates);
 
   await chargeCreditAction(cms, 'send_edm', candidates.length, {
     entityType: 'mail_list',
@@ -895,6 +903,7 @@ async function previewGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, list
   if (!edm) return new Response('No EDM is linked to this guest list.', { status: 404 });
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
+  await publishRsvpContext(cms, context.eventId, context.list, edm, [guest]);
   const html = await previewEdmForGuest(views, env, edm, context.eventId, listId, guest);
   return new Response(html, {
     headers: { 'content-type': 'text/html; charset=utf-8', 'x-cms-frame': '1' },
@@ -2630,7 +2639,7 @@ function guestRow(guest: CmsPage, listId: number, edmId: number | null, customFi
     notSend: truthyAttr(guest.lect, 'not_send'),
     sent: edmId ? guestWasSentEdm(guest, edmId) : false,
     sendAction: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/send` : '',
-    previewHref: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/preview` : '',
+    previewAction: canManageEmail ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/preview` : '',
   };
 }
 
