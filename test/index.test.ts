@@ -1393,9 +1393,13 @@ describe('events admin', () => {
 
   it('renders the guest-list publish action from its current publish status', async () => {
     const render = async (isPublished: boolean) => {
+      let requestedLiveStatus = false;
       const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
         const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
-        if (url.pathname === '/__cms/pages/8') return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', isPublished, lect: { _pointers: { event: '7' } } } });
+        if (url.pathname === '/__cms/pages/8') {
+          requestedLiveStatus ||= url.searchParams.get('include_live_status') === '1';
+          return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', ...(requestedLiveStatus ? { isPublished } : {}), lect: { _pointers: { event: '7' } } } });
+        }
         if (url.pathname === '/__cms/pages/7') return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
         if (url.pathname === '/__cms/pages') return Response.json({ pages: [], total: 0 });
         return new Response('not found', { status: 404 });
@@ -1404,6 +1408,7 @@ describe('events admin', () => {
       const response = await plugin.fetch(request('/__plugin/admin/rsvp/8', {
         headers: { 'x-plugin-secret': 'shared-secret' },
       }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+      expect(requestedLiveStatus).toBe(true);
       return renderedText(response);
     };
 
@@ -2083,6 +2088,7 @@ describe('EDM and labels', () => {
             subject: { en: 'You are invited' },
             heading: { en: 'Join us in October' },
             body: { en: '<p>We would love to see you.</p>' },
+            rsvp_button: { en: 'RSVP now' },
             bg_color: '#0f172a', text_color: '#e2e8f0', button_color: '#4f46e5',
             _pointers: { event: '7' },
             _blocks: [
@@ -2114,6 +2120,7 @@ describe('EDM and labels', () => {
     expect(html).toContain('Preview of EDM: Invite');
     expect(html).toContain('href="https://rsvp.eventuai.com/rsvp/launch-night/invite"');
     expect(html).toContain('Open registration form ↗');
+    expect(html).toContain('RSVP now');
     // Tokens and blocks rendered.
     expect(html).toContain('Join us in October');
     expect(html).toContain('<p>We would love to see you.</p>');
@@ -2136,6 +2143,7 @@ describe('EDM and labels', () => {
             subject: { en: 'You are invited', 'zh-hant': '誠邀閣下' },
             heading: { en: 'Join us', 'zh-hant': '誠摯邀請' },
             body: { en: '<p>English body</p>', 'zh-hant': '<p>中文內容</p>' },
+            rsvp_button: { en: 'RSVP', 'zh-hant': '回覆出席' },
           },
         } });
       }
@@ -2151,6 +2159,8 @@ describe('EDM and labels', () => {
     const html = await renderedText(response);
     expect(html).toContain('誠摯邀請');     // zh-hant heading
     expect(html).toContain('中文內容');     // zh-hant body
+    expect(html).toContain('href="#"');
+    expect(html).toContain('回覆出席');
     expect(html).not.toContain('Join us');  // not the English heading
   });
 

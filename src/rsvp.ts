@@ -528,7 +528,7 @@ async function guestList(cms: CmsClient, views: Fetcher, listId: number, url: UR
   const canDelete = access?.canDelete ?? true;
   const canImportExport = access?.canImportExport ?? true;
   const canManageEmail = access?.canManageEmail ?? true;
-  const context = await guestListContext(cms, listId);
+  const context = await guestListContext(cms, listId, true);
   if (!context) return new Response('not found', { status: 404 });
   const archived = eventIsArchived(context.event);
   const mutable = !archived;
@@ -2566,8 +2566,8 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
   });
 }
 
-async function guestListContext(cms: CmsClient, listId: number): Promise<GuestListContext | null> {
-  const list = await cms.get(listId);
+async function guestListContext(cms: CmsClient, listId: number, includeLiveStatus = false): Promise<GuestListContext | null> {
+  const list = includeLiveStatus ? await cms.getWithLiveStatus(listId) : await cms.get(listId);
   if (list.page_type !== 'mail_list') return null;
   // A list groups under its event by the `event` pointer, not its parent page.
   const eventId = pageId(pointer(list.lect, 'event'));

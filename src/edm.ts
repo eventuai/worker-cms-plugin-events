@@ -699,12 +699,6 @@ async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number, jsonO
 async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, language?: string): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
-  const emailHtml = await renderEmail(views, edm, env, {
-    server: env.PUBLIC_BASE_URL,
-    language,
-    // No recipient in the editor preview — neutralize the per-guest tokens.
-    tokenValues: { unsubscribe_url: '#' },
-  });
   const eventId = pageId(pointer(edm.lect, 'event')) ?? pageId(edm.page_id);
   let eventSlug = '';
   if (eventId) {
@@ -720,6 +714,15 @@ async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: nu
   const registrationHref = publicBase && eventId
     ? `${publicBase}${languagePrefix}/rsvp/${encodeURIComponent(eventSlug || String(eventId))}/${encodeURIComponent(edm.slug || String(edm.id))}`
     : '';
+  const emailHtml = await renderEmail(views, edm, env, {
+    server: env.PUBLIC_BASE_URL,
+    language,
+    // Keep the call-to-action visible in local/editor previews even when the
+    // public RSVP Worker has not been configured yet.
+    rsvpUrl: registrationHref || '#',
+    // No recipient in the editor preview — neutralize the per-guest tokens.
+    tokenValues: { unsubscribe_url: '#' },
+  });
   const registrationLink = registrationHref
     ? ` <a href="${escapeHtml(registrationHref)}" target="_blank" rel="noopener" style="color:inherit;font-weight:700;margin-left:6px;text-decoration:underline;text-underline-offset:2px">Open registration form ↗</a>`
     : '';
