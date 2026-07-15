@@ -139,6 +139,8 @@ describe('plugin contract', () => {
         { path: '/assets/long-running-submit.js', label: 'Long-running form loading state' },
         { path: '/assets/import-continue.js', label: 'Resumable import and deletion continuation' },
         { path: '/assets/qrcode.min.js', label: 'QR code generator library (qrcode-generator 1.4.4, MIT)' },
+        { path: '/assets/label-encoder.js', label: 'Brother label bitmap encoder' },
+        { path: '/assets/label-printer.js', label: 'WebUSB and printer-server label transport' },
         { path: '/assets/label-editor.js', label: 'Label template editor' },
       ],
       contentTypes: {
@@ -4559,8 +4561,8 @@ describe('Label templates', () => {
     expect(html).toContain('60mm × 30mm');
     expect(html).toContain('Published');
     expect(html).toContain('Draft');
-    expect(html).toContain('action="/admin/pages/21/unpublish"');
-    expect(html).toContain('action="/admin/pages/22/publish"');
+    expect(html).toContain('action="/admin/pages/21/unpublish?return_to=%2Fadmin%2Fplugins%2Fevents%2Fevents%2F7%2Flabels"');
+    expect(html).toContain('action="/admin/pages/22/publish?return_to=%2Fadmin%2Fplugins%2Fevents%2Fevents%2F7%2Flabels"');
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21/delete"');
     expect(html.indexOf('Blank')).toBeLessThan(html.indexOf('Badge'));
     expect(html).toContain('data-reorder="/admin/pages/batch-weight"');
@@ -4676,7 +4678,10 @@ describe('Label templates', () => {
         return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', isPublished: true, lect: { design: JSON.stringify(sampleDesign) } } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: {} }], total: 1 });
+        return Response.json({ pages: [
+          { id: 8, page_type: 'mail_list', name: 'VIP', weight: 20, lect: {} },
+          { id: 15, page_type: 'mail_list', name: 'General', weight: 1, lect: {} },
+        ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         return Response.json({ pages: [
@@ -4706,12 +4711,24 @@ describe('Label templates', () => {
     expect(html).toContain('&#34;prefer_company&#34;:&#34;Umbrella&#34;');
     // The editor is progressive enhancement: approved scripts, fallback notice.
     expect(html).toContain('<script src="/admin/plugins/events/assets/qrcode.min.js" defer></script>');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/label-encoder.js" defer></script>');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/label-printer.js" defer></script>');
     expect(html).toContain('<script src="/admin/plugins/events/assets/label-editor.js" defer></script>');
+    expect(html).toContain('href="/admin/plugins/checkin/kiosk/7/settings"');
+    // Selecting a list exposes the legacy-style persistent batch queue. Its
+    // guest token payload uses the same server-side token enrichment as the
+    // single-label preview.
+    expect(html).toContain('id="batchPrintPanel"');
+    expect(html).toContain('data-storage-key="events-label-batch-21-8"');
+    expect(html).toContain('class="batch-guest-checkbox h-4 w-4 mt-0.5" data-guest-id="9"');
+    expect(html).toContain('data-batch-tokens="9"');
+    expect(html).toContain('id="batchPrintButton"');
     expect(html).toContain('id="labelEditorFallback"');
+    expect(html.indexOf('>General</option>')).toBeLessThan(html.indexOf('>VIP</option>'));
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21"');
     expect(html).toContain('id="label-name" form="labelSaveForm"');
     expect(html).toContain('placeholder="Template name"');
-    expect(html).toContain('action="/admin/pages/21/unpublish"');
+    expect(html).toContain('action="/admin/pages/21/unpublish?return_to=%2Fadmin%2Fplugins%2Fevents%2Fevents%2F7%2Flabels%2F21"');
     expect(html).toContain('aria-label="Unpublish label"');
   });
 
@@ -4734,7 +4751,9 @@ describe('Label templates', () => {
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         guestQuery = url.searchParams;
         return Response.json({ pages: [
-          { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Wong', lect: {} },
+          // Moved guest: the mail_list pointer (8) wins over a stale page_id.
+          { id: 9, page_type: 'guest', page_id: 15, name: 'Ada Wong', lect: { _pointers: { mail_list: '8' } } },
+          // Legacy guest without pointers falls back to page_id.
           { id: 30, page_type: 'guest', page_id: 15, name: 'Adam Smith', lect: {} },
         ], total: 2 });
       }
@@ -4747,16 +4766,23 @@ describe('Label templates', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    // The search is event-wide (pointer), not per guest list.
+    // The search fans out over the event's guest-list ids (guests only
+    // reliably carry a mail_list pointer, not an event pointer), and the q
+    // goes to the host so its Chinese variant widening applies.
     expect(guestQuery?.get('q')).toBe('ada');
-    expect(guestQuery?.get('pointer_key')).toBe('event');
-    expect(guestQuery?.get('pointer_value')).toBe('7');
+    expect(guestQuery?.get('pointer_key')).toBe('mail_list');
+    expect(guestQuery?.get('pointer_values')).toBe('15,8');
     const html = await renderedText(response);
     // Matches are labeled with their guest list so same-name guests are tellable apart.
     expect(html).toContain('Ada Wong — VIP');
     expect(html).toContain('Adam Smith — Media');
     expect(html).toContain('id="guestSearchInput"');
     expect(html).toContain('value="ada"');
+    expect(html).toContain('2 matching guests…');
+    // The first match previews immediately — a search with hits must visibly
+    // change the page, not just reword the dropdown placeholder.
+    expect(html).toContain('<option value="9" selected>');
+    expect(html).toContain('&#34;lead_id&#34;:&#34;9&#34;');
   });
 
   it('saves a legacy design document unchanged and preserves the preview selection', async () => {
@@ -4849,10 +4875,34 @@ describe('Label templates', () => {
   it('serves the label editor assets for CMS approval', async () => {
     const editorAsset = await plugin.fetch(request('/assets/label-editor.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
     expect(editorAsset.status).toBe(200);
-    expect(await editorAsset.text()).toContain("document.getElementById('labelSvg')");
+    const editorScript = await editorAsset.text();
+    expect(editorScript).toContain("document.getElementById('labelSvg')");
+    expect(editorScript).toContain('connectAndPrintWithBitmap');
+    expect(editorScript).toContain('var width = Math.round(svgWidth * 2)');
+    expect(editorScript).toContain('var height = Math.round(svgHeight * 2)');
+    expect(editorScript).toContain("          'threshold'\n");
+    expect(editorScript).toContain('async function encodeCurrentLabel()');
+    expect(editorScript).toContain("localStorage.setItem(batchStorageKey, JSON.stringify(checkedBatchIds()))");
+    expect(editorScript).toContain("editor.tokens = JSON.parse(guestTokensField.value) || {}");
+    expect(editorScript).toContain("getPrinterMode() === 'server'");
+    expect(editorScript).not.toContain('window.print');
 
     const qrAsset = await plugin.fetch(request('/assets/qrcode.min.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
     expect(qrAsset.status).toBe(200);
     expect(await qrAsset.text()).toContain('qrcode');
+
+    const encoderAsset = await plugin.fetch(request('/assets/label-encoder.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    expect(encoderAsset.status).toBe(200);
+    const encoderScript = await encoderAsset.text();
+    expect(encoderScript).toContain('class LabelEncoder');
+    expect(encoderScript).toContain("'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData)");
+    expect(encoderScript).toContain("callback(new Error('The label SVG could not be rasterized'))");
+
+    const printerAsset = await plugin.fetch(request('/assets/label-printer.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    expect(printerAsset.status).toBe(200);
+    const printerScript = await printerAsset.text();
+    expect(printerScript).toContain("checkin_printer_server_enabled");
+    expect(printerScript).toContain('navigator.usb');
+    expect(printerScript).toContain('return false');
   });
 });

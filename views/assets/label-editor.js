@@ -341,6 +341,10 @@
     guestSearchInput: el('guestSearchInput'),
     loadGuestButton: el('loadGuestButton'),
     printButton: el('printLabelButton'),
+    batchPanel: el('batchPrintPanel'),
+    batchCheckAllButton: el('batchCheckAllButton'),
+    batchPrintButton: el('batchPrintButton'),
+    batchStatus: el('batchPrintStatus'),
     selectedGuestName: el('selectedGuestName'),
     rotatePreview: el('rotatePreview'),
     svgWrapper: el('svgWrapper'),
@@ -1959,33 +1963,181 @@
   });
   if (controls.loadGuestButton) controls.loadGuestButton.hidden = true;
 
-  // Print the current preview at physical size in a dedicated window. The
-  // cloned SVG keeps the in-SVG @font-face rules and data-URL QR images.
-  on(controls.printButton, 'click', function () {
+  // Match the Check-in kiosk label path: rasterize the current SVG at 300 DPI,
+  // encode Brother bitmap commands, then use the shared checkin_* settings to
+  // send the job through WebUSB or the configured printer-server hub.
+  async function encodeCurrentLabel() {
     var clone = svg.cloneNode(true);
     var indicator = clone.querySelector('#selectionIndicator');
     if (indicator) indicator.parentNode.removeChild(indicator);
-    clone.removeAttribute('style');
-    var widthMm = (parseFloat(svg.getAttribute('width')) || 0) / PIXELS_PER_MM;
-    var heightMm = (parseFloat(svg.getAttribute('height')) || 0) / PIXELS_PER_MM;
-    var guestName = controls.selectedGuestName ? controls.selectedGuestName.value : '';
-    var title = 'Label' + (guestName ? ' — ' + guestName : '');
-    var printWindow = window.open('', '_blank', 'width=720,height=560');
-    if (!printWindow) {
-      window.alert('The print window was blocked — allow pop-ups for this site.');
+    var viewBox = (clone.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+    var svgWidth = parseFloat(clone.getAttribute('width')) || viewBox[2] || 0;
+    var svgHeight = parseFloat(clone.getAttribute('height')) || viewBox[3] || 0;
+    // Legacy printer/editor.js renders the already margin-adjusted 150-DPI
+    // SVG at 2x. Do not derive the canvas from the physical label dimensions:
+    // that restores the removed printer margins and stretches the bitmap.
+    var width = Math.round(svgWidth * 2);
+    var height = Math.round(svgHeight * 2);
+    var canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    var context = canvas.getContext('2d');
+    var encoder = new LabelEncoder({ width: editor.labelConfig.width, height: editor.labelConfig.height });
+    await new Promise(function (resolve, reject) {
+      try {
+        encoder.svgElementToCanvas(
+          clone,
+          context,
+          width,
+          height,
+          svgWidth,
+          svgHeight,
+          true,
+          128,
+          function (error) {
+            if (error) reject(error);
+            else resolve();
+          },
+          'threshold'
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
+    return encoder.encodeBitmap(canvas);
+  }
+
+  on(controls.printButton, 'click', async function () {
+    if (typeof LabelEncoder !== 'function' || typeof connectAndPrintWithBitmap !== 'function') {
+      window.alert('Label printing is not loaded. Ask an administrator to approve the label printer assets.');
       return;
     }
-    var doc = printWindow.document;
-    doc.open();
-    doc.write('<!doctype html><html><head><meta charset="utf-8"><title></title>' +
-      '<style>@page{size:auto;margin:0}html,body{margin:0;padding:0}svg{display:block;width:' +
-      widthMm.toFixed(2) + 'mm;height:' + heightMm.toFixed(2) + 'mm}</style></head><body></body></html>');
-    doc.close();
-    doc.title = title;
-    doc.body.appendChild(doc.importNode(clone, true));
-    printWindow.focus();
-    setTimeout(function () { printWindow.print(); }, 400);
+    var originalText = controls.printButton.textContent;
+    controls.printButton.disabled = true;
+    controls.printButton.textContent = 'Preparing…';
+    try {
+      var bitmapOutput = document.getElementById('bitmapOutput');
+      if (!bitmapOutput) throw new Error('Print output is unavailable');
+      bitmapOutput.value = await encodeCurrentLabel();
+      controls.printButton.textContent = 'Sending…';
+      await connectAndPrintWithBitmap(bitmapOutput);
+    } catch (error) {
+      console.error('Label print failed:', error);
+      window.alert('Could not print label: ' + error.message);
+    } finally {
+      controls.printButton.disabled = false;
+      controls.printButton.textContent = originalText;
+    }
   });
+
+  // Legacy batch printing remembers the checked guests per RSVP/list and
+  // prints them in display order. Each label is rendered with the same design
+  // and sent as its own ESC job, which works for both WebUSB and print hubs.
+  if (controls.batchPanel && controls.batchPrintButton) {
+    var batchCheckboxes = Array.prototype.slice.call(document.querySelectorAll('.batch-guest-checkbox'));
+    var batchStorageKey = controls.batchPanel.getAttribute('data-storage-key') || '';
+
+    function checkedBatchIds() {
+      return batchCheckboxes.filter(function (checkbox) { return checkbox.checked; }).map(function (checkbox) {
+        return checkbox.getAttribute('data-guest-id');
+      });
+    }
+
+    function saveBatchSelection() {
+      if (!batchStorageKey) return;
+      try { localStorage.setItem(batchStorageKey, JSON.stringify(checkedBatchIds())); } catch (e) { /* storage may be disabled */ }
+    }
+
+    function updateBatchControls() {
+      var selectedCount = checkedBatchIds().length;
+      controls.batchPrintButton.disabled = selectedCount === 0;
+      controls.batchPrintButton.textContent = selectedCount ? 'Batch print (' + selectedCount + ')' : 'Batch print';
+      if (controls.batchStatus) controls.batchStatus.textContent = selectedCount
+        ? selectedCount + ' guest' + (selectedCount === 1 ? '' : 's') + ' selected.'
+        : 'Select guests from this list.';
+      if (controls.batchCheckAllButton) {
+        controls.batchCheckAllButton.textContent = selectedCount === batchCheckboxes.length ? 'Uncheck all' : 'Check all';
+      }
+    }
+
+    if (batchStorageKey) {
+      try {
+        var savedBatchIds = JSON.parse(localStorage.getItem(batchStorageKey) || '[]');
+        batchCheckboxes.forEach(function (checkbox) {
+          checkbox.checked = savedBatchIds.indexOf(checkbox.getAttribute('data-guest-id')) !== -1;
+        });
+      } catch (e) { /* ignore corrupt or unavailable storage */ }
+    }
+    batchCheckboxes.forEach(function (checkbox) {
+      on(checkbox, 'change', function () { saveBatchSelection(); updateBatchControls(); });
+    });
+    on(controls.batchCheckAllButton, 'click', function () {
+      var allChecked = batchCheckboxes.every(function (checkbox) { return checkbox.checked; });
+      batchCheckboxes.forEach(function (checkbox) { checkbox.checked = !allChecked; });
+      saveBatchSelection();
+      updateBatchControls();
+    });
+    updateBatchControls();
+
+    on(controls.batchPrintButton, 'click', async function () {
+      if (typeof LabelEncoder !== 'function' || typeof connectAndPrintWithBitmap !== 'function') {
+        window.alert('Label printing is not loaded. Ask an administrator to approve the label printer assets.');
+        return;
+      }
+      var checked = batchCheckboxes.filter(function (checkbox) { return checkbox.checked; });
+      if (!checked.length) return;
+      var bitmapOutput = document.getElementById('bitmapOutput');
+      if (!bitmapOutput) {
+        window.alert('Print output is unavailable.');
+        return;
+      }
+
+      var originalTokens = editor.tokens;
+      var originalTokensValue = tokensField ? tokensField.value : '';
+      var batchCompleted = false;
+      var batchStopped = false;
+      controls.batchPrintButton.disabled = true;
+      if (controls.printButton) controls.printButton.disabled = true;
+      try {
+        for (var index = 0; index < checked.length; index++) {
+          var checkbox = checked[index];
+          var guestId = checkbox.getAttribute('data-guest-id');
+          var guestTokensField = document.querySelector('textarea[data-batch-tokens="' + guestId + '"]');
+          if (!guestTokensField) throw new Error('Guest tokens are unavailable');
+          editor.tokens = JSON.parse(guestTokensField.value) || {};
+          if (tokensField) tokensField.value = guestTokensField.value;
+          rerenderAllTextElements();
+          if (controls.batchStatus) controls.batchStatus.textContent = 'Preparing ' + (index + 1) + ' of ' + checked.length + '…';
+          bitmapOutput.value = await encodeCurrentLabel();
+          if (controls.batchStatus) controls.batchStatus.textContent = 'Printing ' + (index + 1) + ' of ' + checked.length + '…';
+          var printed = await connectAndPrintWithBitmap(bitmapOutput);
+          if (printed === false) {
+            batchStopped = true;
+            break;
+          }
+          checkbox.checked = false;
+          saveBatchSelection();
+          // Match the legacy queue pacing for printer-server hubs. WebUSB can
+          // proceed immediately after the transfer completes.
+          if (typeof getPrinterMode === 'function' && getPrinterMode() === 'server' && index < checked.length - 1) {
+            await new Promise(function (resolve) { setTimeout(resolve, 3000); });
+          }
+        }
+        batchCompleted = !batchStopped;
+      } catch (error) {
+        console.error('Batch label print failed:', error);
+        window.alert('Could not finish batch printing: ' + error.message);
+      } finally {
+        editor.tokens = originalTokens;
+        if (tokensField) tokensField.value = originalTokensValue;
+        rerenderAllTextElements();
+        if (controls.printButton) controls.printButton.disabled = false;
+        updateBatchControls();
+        if (controls.batchStatus && batchCompleted) controls.batchStatus.textContent = 'Batch print completed.';
+        if (controls.batchStatus && batchStopped) controls.batchStatus.textContent = 'Batch print stopped. Unprinted guests remain selected.';
+      }
+    });
+  }
 
   // ---------------------------------------------------------------------
   // Boot

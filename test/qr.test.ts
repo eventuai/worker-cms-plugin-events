@@ -17,6 +17,12 @@ describe('qr encoder', () => {
     expect(compactCheckinCode(100, 125, 0)).toMatch(/^EAI34:p:0:[0-9a-f]{6}$/);
   });
 
+  it('supports guest ids lower than the list id with a signed delta', () => {
+    expect(compactCheckinCode(22035274339672, 1780933209321)).toMatch(
+      /^EAI[0-9a-v]+:-[0-9a-v]+:M:[0-9a-f]{6}$/,
+    );
+  });
+
   it('picks the smallest version that fits and is square', () => {
     const small = qrMatrix('HELLO');
     expect(small.length).toBe(21); // version 1 → 21×21

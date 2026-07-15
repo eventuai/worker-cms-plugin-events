@@ -19,13 +19,13 @@ export async function verifyPayload(secret: string, data: string, hexSignature: 
 /**
  * Compact Eventuai check-in payload.
  *
- * Legacy used radix 32 (not radix 36) and stored the guest id as its delta
- * from the list id. `M` identifies the main attendee; plus guests use their
- * zero-based index. The signature input deliberately mirrors the legacy
- * `qrcode{listId}{guestId}{plusIndex?}` shape.
+ * Legacy used radix 32 (not radix 36) and stored the guest id as a possibly
+ * signed delta from the list id. `M` identifies the main attendee; plus guests
+ * use their zero-based index. The signature input deliberately mirrors the
+ * legacy `qrcode{listId}{guestId}{plusIndex?}` shape.
  */
 export function compactCheckinCode(listId: number, guestId: number, plusGuestIndex?: number): string {
-  if (!Number.isSafeInteger(listId) || listId <= 0 || !Number.isSafeInteger(guestId) || guestId < listId) {
+  if (!Number.isSafeInteger(listId) || listId <= 0 || !Number.isSafeInteger(guestId) || guestId <= 0) {
     throw new Error('invalid list/guest id for compact check-in code');
   }
   if (plusGuestIndex !== undefined && (!Number.isSafeInteger(plusGuestIndex) || plusGuestIndex < 0)) {

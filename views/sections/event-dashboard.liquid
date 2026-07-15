@@ -24,15 +24,15 @@
 
 {% if stats != blank %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="View all guests" aria-label="View all guests" href="{{ allGuestsHref | escape }}">
+    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
+    <span>View all guests</span>
+  </a>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
     {% for stat in stats %}
       <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900"{% if stat.color %} style="color:{{ stat.color | escape }}"{% endif %}>{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label | escape }}</span></div>
     {% endfor %}
   </div>
-  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="View all guests" aria-label="View all guests" href="{{ allGuestsHref | escape }}">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
-      <span>View all guests</span>
-    </a>
 </div>
 {% endif %}
 

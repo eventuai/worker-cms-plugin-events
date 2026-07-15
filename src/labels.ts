@@ -1,4 +1,4 @@
-import { CMS_BATCH_WEIGHT_ACTION, CmsClient, attr, compareByWeightThenName, listByEvent, localized, type CmsPage } from './cms';
+import { CMS_BATCH_WEIGHT_ACTION, CmsClient, attr, compareByWeightThenName, listByEvent, localized, pointer, type CmsPage } from './cms';
 import { compactCheckinCode } from './crypto';
 import { adminView } from './templates/views';
 import { redirect } from '@lionrockjs/worker-cms-plugin';
@@ -42,21 +42,22 @@ export async function handleLabelsAdmin(
 
 async function labelsIndex(cms: CmsClient, views: Fetcher, event: CmsPage, jsonOnly = false): Promise<Response> {
   const { pages } = await cms.listWithLiveStatus('label', { parentId: event.id });
+  const listHref = `${ADMIN_BASE}/events/${event.id}/labels`;
   return adminView(views, `Labels — ${event.name}`, 'labels', {
     eventName: event.name,
     eventHref: `${ADMIN_BASE}/events/${event.id}`,
-    newHref: `${ADMIN_BASE}/events/${event.id}/labels/new`,
+    newHref: `${listHref}/new`,
     reorderAction: CMS_BATCH_WEIGHT_ACTION,
     labels: [...pages].sort(compareByWeightThenName).map((label) => {
       const config = designConfig(label);
       return {
         id: label.id,
         name: label.name,
-        href: `${ADMIN_BASE}/events/${event.id}/labels/${label.id}`,
+        href: `${listHref}/${label.id}`,
         isPublished: label.isPublished === true,
-        publishAction: `/admin/pages/${label.id}/publish`,
-        unpublishAction: `/admin/pages/${label.id}/unpublish`,
-        deleteAction: `${ADMIN_BASE}/events/${event.id}/labels/${label.id}/delete`,
+        publishAction: `/admin/pages/${label.id}/publish?return_to=${encodeURIComponent(listHref)}`,
+        unpublishAction: `/admin/pages/${label.id}/unpublish?return_to=${encodeURIComponent(listHref)}`,
+        deleteAction: `${listHref}/${label.id}/delete`,
         size: `${config.width}mm × ${config.height}mm`,
       };
     }),
@@ -137,27 +138,48 @@ async function labelEditor(
   const label = await cms.getWithLiveStatus(labelId);
   if (label.page_type !== 'label' || label.page_id !== event.id) return new Response('not found', { status: 404 });
 
-  const guestLists = await listByEvent(cms, 'mail_list', event.id);
+  // Keep the preview picker in the same admin-controlled order as the event
+  // dashboard (page weight, then name).
+  const guestLists = (await listByEvent(cms, 'mail_list', event.id)).sort(compareByWeightThenName);
   const listId = pageId(url.searchParams.get('list'));
   const selectedList = listId ? guestLists.find((list) => list.id === listId) : undefined;
   const q = (url.searchParams.get('q') ?? '').trim();
   const listNames = new Map(guestLists.map((list) => [list.id, list.name]));
 
   // The guest dropdown is fed either by a text search across the whole event
-  // (name/email/organization — the host q matches name, slug and lect) or by
-  // browsing one guest list.
+  // (name/email/organization — the host q matches name, slug and lect, and
+  // widens Chinese terms to both simplified and traditional forms) or by
+  // browsing one guest list. Guests only reliably carry a `mail_list` pointer
+  // (an `event` pointer exists just on newer rows), so the search fans out
+  // over the event's list ids instead of filtering by event.
   let guests: Array<{ id: number; name: string }> = [];
-  if (q) {
-    const result = await cms.list('guest', { pointer: { key: 'event', value: event.id }, q, limit: MAX_SEARCH_RESULTS });
-    guests = result.pages
-      .filter((guest) => listNames.has(guest.page_id ?? -1))
-      .map((guest) => ({
-        id: guest.id,
-        name: `${guest.name} — ${listNames.get(guest.page_id ?? -1)}`,
-      }));
+  let batchGuests: Array<{ id: number; name: string; tokensJson: string }> = [];
+  const searchMatches: CmsPage[] = [];
+  if (q && guestLists.length) {
+    const result = await cms.list('guest', {
+      pointer: { key: 'mail_list', values: guestLists.map((list) => list.id) },
+      q,
+      limit: MAX_SEARCH_RESULTS,
+    });
+    for (const guest of result.pages) {
+      const listName = listNames.get(guestMailListId(guest) ?? -1);
+      if (!listName) continue;
+      searchMatches.push(guest);
+      guests.push({ id: guest.id, name: `${guest.name} — ${listName}` });
+    }
   } else if (selectedList) {
-    const result = await cms.list('guest', { parentId: selectedList.id, limit: 500 });
+    // Pointer, not parentId: moving a guest between lists only rewrites its
+    // `mail_list` pointer, so page_id can point at the old list.
+    const result = await cms.list('guest', { pointer: { key: 'mail_list', value: selectedList.id }, limit: 500 });
     guests = result.pages.map((guest) => ({ id: guest.id, name: guest.name }));
+    // The legacy batch panel fetches tokens once per checked guest. We already
+    // have the complete guest rows for this list, so embed the same token maps
+    // and avoid an extra CMS round trip for every printed label.
+    batchGuests = result.pages.map((guest) => ({
+      id: guest.id,
+      name: guest.name,
+      tokensJson: JSON.stringify(guestLabelTokens(guest, selectedList, event)),
+    }));
   }
 
   // Selection is resolved by id (not dropdown membership) so a guest picked
@@ -167,11 +189,19 @@ async function labelEditor(
   let guestList: CmsPage | undefined;
   if (guestId) {
     const guest = await cms.get(guestId);
-    const list = guest.page_type === 'guest' ? guestLists.find((candidate) => candidate.id === guest.page_id) : undefined;
+    const guestListId = guestMailListId(guest);
+    const list = guest.page_type === 'guest' ? guestLists.find((candidate) => candidate.id === guestListId) : undefined;
     if (list) {
       selectedGuest = guest;
       guestList = list;
     }
+  }
+  // A fresh search previews its first match right away — otherwise the only
+  // visible feedback is the dropdown placeholder, which reads as "no result".
+  if (!selectedGuest && searchMatches.length) {
+    const first = searchMatches[0];
+    guestList = guestLists.find((candidate) => candidate.id === guestMailListId(first));
+    if (guestList) selectedGuest = first;
   }
 
   const tokens = selectedGuest && guestList ? guestLabelTokens(selectedGuest, guestList, event) : {};
@@ -184,8 +214,9 @@ async function labelEditor(
     action: selfHref,
     // Use the CMS's publish route so its permission check, publish targets,
     // and plugin publish hook all run exactly as they do from the native editor.
-    publishAction: `/admin/pages/${labelId}/publish`,
-    unpublishAction: `/admin/pages/${labelId}/unpublish`,
+    // return_to sends the redirect back here instead of the CMS's default /admin.
+    publishAction: `/admin/pages/${labelId}/publish?return_to=${encodeURIComponent(selfHref)}`,
+    unpublishAction: `/admin/pages/${labelId}/unpublish?return_to=${encodeURIComponent(selfHref)}`,
     isPublished: label.isPublished === true,
     deleteAction: `${selfHref}/delete`,
     selfHref,
@@ -197,9 +228,12 @@ async function labelEditor(
     q,
     guestLists: guestLists.map((list) => ({ id: list.id, name: list.name, selected: list.id === selectedList?.id })),
     guests: guests.map((guest) => ({ ...guest, selected: guest.id === selectedGuest?.id })),
+    batchGuests,
+    batchStorageKey: selectedList ? `events-label-batch-${labelId}-${selectedList.id}` : '',
     selectedListId: selectedList ? String(selectedList.id) : '',
     selectedGuestId: selectedGuest ? String(selectedGuest.id) : '',
     selectedGuestName: selectedGuest?.name ?? '',
+    printerSettingsHref: `/admin/plugins/checkin/kiosk/${event.id}/settings`,
   }, jsonOnly);
 }
 
@@ -336,6 +370,14 @@ function clampMm(value: string, fallback: number): number {
 function pageId(value: unknown): number | null {
   const id = typeof value === 'number' ? value : Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * The guest's list: the `mail_list` pointer wins (moving a guest between
+ * lists only rewrites the pointer), page_id covers legacy rows without one.
+ */
+function guestMailListId(guest: CmsPage): number | null {
+  return pageId(pointer(guest.lect, 'mail_list')) ?? pageId(guest.page_id);
 }
 
 function text(form: FormData, key: string): string {

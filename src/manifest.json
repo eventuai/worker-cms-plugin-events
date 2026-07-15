@@ -52,6 +52,8 @@
     { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
     { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" },
     { "path": "/assets/qrcode.min.js", "label": "QR code generator library (qrcode-generator 1.4.4, MIT)" },
+    { "path": "/assets/label-encoder.js", "label": "Brother label bitmap encoder" },
+    { "path": "/assets/label-printer.js", "label": "WebUSB and printer-server label transport" },
     { "path": "/assets/label-editor.js", "label": "Label template editor" }
   ],
   "editViews": ["edm", "guest"],
