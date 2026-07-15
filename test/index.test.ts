@@ -4559,8 +4559,8 @@ describe('Label templates', () => {
     expect(html).toContain('60mm × 30mm');
     expect(html).toContain('Published');
     expect(html).toContain('Draft');
-    expect(html).toContain('action="/admin/pages/21/unpublish"');
-    expect(html).toContain('action="/admin/pages/22/publish"');
+    expect(html).toContain('action="/admin/pages/21/unpublish?return_to=%2Fadmin%2Fplugins%2Fevents%2Fevents%2F7%2Flabels"');
+    expect(html).toContain('action="/admin/pages/22/publish?return_to=%2Fadmin%2Fplugins%2Fevents%2Fevents%2F7%2Flabels"');
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21/delete"');
     expect(html.indexOf('Blank')).toBeLessThan(html.indexOf('Badge'));
     expect(html).toContain('data-reorder="/admin/pages/batch-weight"');
@@ -4711,7 +4711,7 @@ describe('Label templates', () => {
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21"');
     expect(html).toContain('id="label-name" form="labelSaveForm"');
     expect(html).toContain('placeholder="Template name"');
-    expect(html).toContain('action="/admin/pages/21/unpublish"');
+    expect(html).toContain('action="/admin/pages/21/unpublish?return_to=%2Fadmin%2Fplugins%2Fevents%2Fevents%2F7%2Flabels%2F21"');
     expect(html).toContain('aria-label="Unpublish label"');
   });
 
@@ -4734,7 +4734,9 @@ describe('Label templates', () => {
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         guestQuery = url.searchParams;
         return Response.json({ pages: [
-          { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Wong', lect: {} },
+          // Moved guest: the mail_list pointer (8) wins over a stale page_id.
+          { id: 9, page_type: 'guest', page_id: 15, name: 'Ada Wong', lect: { _pointers: { mail_list: '8' } } },
+          // Legacy guest without pointers falls back to page_id.
           { id: 30, page_type: 'guest', page_id: 15, name: 'Adam Smith', lect: {} },
         ], total: 2 });
       }
@@ -4747,10 +4749,12 @@ describe('Label templates', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     expect(response.status).toBe(200);
-    // The search is event-wide (pointer), not per guest list.
+    // The search fans out over the event's guest-list ids (guests only
+    // reliably carry a mail_list pointer, not an event pointer), and the q
+    // goes to the host so its Chinese variant widening applies.
     expect(guestQuery?.get('q')).toBe('ada');
-    expect(guestQuery?.get('pointer_key')).toBe('event');
-    expect(guestQuery?.get('pointer_value')).toBe('7');
+    expect(guestQuery?.get('pointer_key')).toBe('mail_list');
+    expect(guestQuery?.get('pointer_values')).toBe('8,15');
     const html = await renderedText(response);
     // Matches are labeled with their guest list so same-name guests are tellable apart.
     expect(html).toContain('Ada Wong — VIP');
