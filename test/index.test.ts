@@ -3174,7 +3174,8 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     expect(response.status).toBe(200);
     expect(guestQueries).toBe(1);
     const html = await renderedText(response);
-    expect(html).toContain('All guests');
+    expect(html).toContain('Search result for 5555');
+    expect(html).not.toContain('>All guests<');
     expect(html).toContain('苏生');
     expect(html).not.toContain('Lin');
     expect(html).not.toContain('Grace');
@@ -3227,6 +3228,7 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
     const html = await renderedText(response);
 
     expect(guestQueries).toBe(1);
+    expect(html).toContain('>All guests<');
     expect(html).toContain('data-all-guests-async');
     expect(html).toContain('Rendering 100 of 105 matching guests…');
     expect(html).toContain('<script src="/admin/plugins/events/assets/all-guests-embedded.js" defer></script>');

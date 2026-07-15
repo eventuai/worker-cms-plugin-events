@@ -17,11 +17,8 @@ import {
   type CmsPageInput,
 } from './cms';
 import { compactCheckinCode } from './crypto';
-import { qrSvg, qrTicketSvg } from './qr';
+import { qrSvg, qrTicketSvg, renderQrTicketPng } from './qr';
 import { materializedCompanionLinks, plusGuestDetails, type PlusGuestDetail } from './plus-guests';
-import { Resvg } from '@cf-wasm/resvg';
-import notoSansTcLatin from '@fontsource/noto-sans-tc/files/noto-sans-tc-latin-400-normal.woff2';
-import notoSansTcTraditional from '@fontsource/noto-sans-tc/files/noto-sans-tc-chinese-traditional-400-normal.woff2';
 import {
   emailQuality,
   guestWasSentEdm,
@@ -1347,21 +1344,7 @@ async function plusGuestQrPng(cms: CmsClient, listId: number, guestId: number, i
 }
 
 async function qrTicketPng(svg: string, filename: string): Promise<Response> {
-  const renderer = await Resvg.async(svg, {
-    background: '#fff',
-    font: {
-      loadSystemFonts: false,
-      fontBuffers: [new Uint8Array(notoSansTcLatin), new Uint8Array(notoSansTcTraditional)],
-      defaultFontFamily: 'Noto Sans TC',
-      sansSerifFamily: 'Noto Sans TC',
-    },
-    shapeRendering: 1,
-    textRendering: 1,
-  });
-  const rendered = renderer.render();
-  const png = rendered.asPng();
-  rendered.free();
-  renderer.free();
+  const png = await renderQrTicketPng(svg);
   return new Response(png, {
     headers: {
       'content-type': 'image/png',
@@ -1544,6 +1527,7 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
 
   const selectedStatus = normalizeStatus(url.searchParams.get('status'));
   const q = url.searchParams.get('q')?.trim() ?? '';
+  const heading = q ? `Search result for ${q}` : 'All guests';
   const selectedColor = normalizeColor(url.searchParams.get('color'));
   const lists = await listByEvent(cms, 'mail_list', eventId);
   const ordered = sortByWeight(lists);
@@ -1569,8 +1553,9 @@ export async function flatAllGuests(cms: CmsClient, views: Fetcher, eventId: num
   const initialGuests = jsonOnly ? rows : rows.slice(0, ALL_GUESTS_INITIAL_RENDER);
   const deferredGuests = jsonOnly ? [] : rows.slice(ALL_GUESTS_INITIAL_RENDER);
 
-  return adminView(views, `All guests — ${event.name}`, 'all-guests', {
+  return adminView(views, `${heading} — ${event.name}`, 'all-guests', {
     eventName: event.name,
+    heading,
     archived,
     backHref: `${ADMIN_BASE}/events/${eventId}`,
     canImportExport,

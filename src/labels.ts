@@ -12,9 +12,6 @@ const ADMIN_BASE = '/admin/plugins/events';
  */
 const MAX_DESIGN_BYTES = 1_500_000;
 
-/** Guest search results shown in the editor's preview picker. */
-const MAX_SEARCH_RESULTS = 30;
-
 export async function handleLabelsAdmin(
   request: Request,
   cms: CmsClient,
@@ -156,12 +153,11 @@ async function labelEditor(
   let batchGuests: Array<{ id: number; name: string; tokensJson: string }> = [];
   const searchMatches: CmsPage[] = [];
   if (q && guestLists.length) {
-    const result = await cms.list('guest', {
+    const matches = (await cms.listAll('guest', {
       pointer: { key: 'mail_list', values: guestLists.map((list) => list.id) },
       q,
-      limit: MAX_SEARCH_RESULTS,
-    });
-    for (const guest of result.pages) {
+    })).sort(compareByWeightThenName);
+    for (const guest of matches) {
       const listName = listNames.get(guestMailListId(guest) ?? -1);
       if (!listName) continue;
       searchMatches.push(guest);
@@ -170,12 +166,12 @@ async function labelEditor(
   } else if (selectedList) {
     // Pointer, not parentId: moving a guest between lists only rewrites its
     // `mail_list` pointer, so page_id can point at the old list.
-    const result = await cms.list('guest', { pointer: { key: 'mail_list', value: selectedList.id }, limit: 500 });
-    guests = result.pages.map((guest) => ({ id: guest.id, name: guest.name }));
+    const pages = (await cms.listAll('guest', { pointer: { key: 'mail_list', value: selectedList.id } })).sort(compareByWeightThenName);
+    guests = pages.map((guest) => ({ id: guest.id, name: guest.name }));
     // The legacy batch panel fetches tokens once per checked guest. We already
     // have the complete guest rows for this list, so embed the same token maps
     // and avoid an extra CMS round trip for every printed label.
-    batchGuests = result.pages.map((guest) => ({
+    batchGuests = pages.map((guest) => ({
       id: guest.id,
       name: guest.name,
       tokensJson: JSON.stringify(guestLabelTokens(guest, selectedList, event)),

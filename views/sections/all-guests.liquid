@@ -1,7 +1,7 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">All guests</h1>
+    <h1 class="text-2xl font-bold text-gray-900">{{ heading | escape }}</h1>
     <p class="mt-1 text-sm text-gray-500" data-all-guests-summary>
       {% if asyncGuests %}<span data-all-guests-summary-text><span data-table-filter-count="guests">{{ initialCount }}</span> of {{ filteredCount }} matching guests rendered</span>
       {% else %}<span data-table-filter-count="guests">{{ filteredCount }}</span> of {{ totalCount }} guest{% if totalCount != 1 %}s{% endif %} across every list{% endif %}
