@@ -139,6 +139,8 @@ describe('plugin contract', () => {
         { path: '/assets/long-running-submit.js', label: 'Long-running form loading state' },
         { path: '/assets/import-continue.js', label: 'Resumable import and deletion continuation' },
         { path: '/assets/qrcode.min.js', label: 'QR code generator library (qrcode-generator 1.4.4, MIT)' },
+        { path: '/assets/label-encoder.js', label: 'Brother label bitmap encoder' },
+        { path: '/assets/label-printer.js', label: 'WebUSB and printer-server label transport' },
         { path: '/assets/label-editor.js', label: 'Label template editor' },
       ],
       contentTypes: {
@@ -4706,7 +4708,10 @@ describe('Label templates', () => {
     expect(html).toContain('&#34;prefer_company&#34;:&#34;Umbrella&#34;');
     // The editor is progressive enhancement: approved scripts, fallback notice.
     expect(html).toContain('<script src="/admin/plugins/events/assets/qrcode.min.js" defer></script>');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/label-encoder.js" defer></script>');
+    expect(html).toContain('<script src="/admin/plugins/events/assets/label-printer.js" defer></script>');
     expect(html).toContain('<script src="/admin/plugins/events/assets/label-editor.js" defer></script>');
+    expect(html).toContain('href="/admin/plugins/checkin/kiosk/7/settings"');
     expect(html).toContain('id="labelEditorFallback"');
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21"');
     expect(html).toContain('id="label-name" form="labelSaveForm"');
@@ -4761,6 +4766,11 @@ describe('Label templates', () => {
     expect(html).toContain('Adam Smith — Media');
     expect(html).toContain('id="guestSearchInput"');
     expect(html).toContain('value="ada"');
+    expect(html).toContain('2 matching guests…');
+    // The first match previews immediately — a search with hits must visibly
+    // change the page, not just reword the dropdown placeholder.
+    expect(html).toContain('<option value="9" selected>');
+    expect(html).toContain('&#34;lead_id&#34;:&#34;9&#34;');
   });
 
   it('saves a legacy design document unchanged and preserves the preview selection', async () => {
@@ -4853,10 +4863,23 @@ describe('Label templates', () => {
   it('serves the label editor assets for CMS approval', async () => {
     const editorAsset = await plugin.fetch(request('/assets/label-editor.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
     expect(editorAsset.status).toBe(200);
-    expect(await editorAsset.text()).toContain("document.getElementById('labelSvg')");
+    const editorScript = await editorAsset.text();
+    expect(editorScript).toContain("document.getElementById('labelSvg')");
+    expect(editorScript).toContain('connectAndPrintWithBitmap');
+    expect(editorScript).not.toContain('window.print');
 
     const qrAsset = await plugin.fetch(request('/assets/qrcode.min.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
     expect(qrAsset.status).toBe(200);
     expect(await qrAsset.text()).toContain('qrcode');
+
+    const encoderAsset = await plugin.fetch(request('/assets/label-encoder.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    expect(encoderAsset.status).toBe(200);
+    expect(await encoderAsset.text()).toContain('class LabelEncoder');
+
+    const printerAsset = await plugin.fetch(request('/assets/label-printer.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+    expect(printerAsset.status).toBe(200);
+    const printerScript = await printerAsset.text();
+    expect(printerScript).toContain("checkin_printer_server_enabled");
+    expect(printerScript).toContain('navigator.usb');
   });
 });

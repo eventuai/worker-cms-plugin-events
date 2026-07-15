@@ -151,17 +151,19 @@ async function labelEditor(
   // (an `event` pointer exists just on newer rows), so the search fans out
   // over the event's list ids instead of filtering by event.
   let guests: Array<{ id: number; name: string }> = [];
+  const searchMatches: CmsPage[] = [];
   if (q && guestLists.length) {
     const result = await cms.list('guest', {
       pointer: { key: 'mail_list', values: guestLists.map((list) => list.id) },
       q,
       limit: MAX_SEARCH_RESULTS,
     });
-    guests = result.pages.flatMap((guest) => {
-      const guestListId = pageId(pointer(guest.lect, 'mail_list')) ?? guest.page_id;
-      const listName = guestListId != null ? listNames.get(guestListId) : undefined;
-      return listName ? [{ id: guest.id, name: `${guest.name} — ${listName}` }] : [];
-    });
+    for (const guest of result.pages) {
+      const listName = listNames.get(guestMailListId(guest) ?? -1);
+      if (!listName) continue;
+      searchMatches.push(guest);
+      guests.push({ id: guest.id, name: `${guest.name} — ${listName}` });
+    }
   } else if (selectedList) {
     // Pointer, not parentId: moving a guest between lists only rewrites its
     // `mail_list` pointer, so page_id can point at the old list.
@@ -176,12 +178,19 @@ async function labelEditor(
   let guestList: CmsPage | undefined;
   if (guestId) {
     const guest = await cms.get(guestId);
-    const guestListId = pageId(pointer(guest.lect, 'mail_list')) ?? guest.page_id;
+    const guestListId = guestMailListId(guest);
     const list = guest.page_type === 'guest' ? guestLists.find((candidate) => candidate.id === guestListId) : undefined;
     if (list) {
       selectedGuest = guest;
       guestList = list;
     }
+  }
+  // A fresh search previews its first match right away — otherwise the only
+  // visible feedback is the dropdown placeholder, which reads as "no result".
+  if (!selectedGuest && searchMatches.length) {
+    const first = searchMatches[0];
+    guestList = guestLists.find((candidate) => candidate.id === guestMailListId(first));
+    if (guestList) selectedGuest = first;
   }
 
   const tokens = selectedGuest && guestList ? guestLabelTokens(selectedGuest, guestList, event) : {};
@@ -211,6 +220,7 @@ async function labelEditor(
     selectedListId: selectedList ? String(selectedList.id) : '',
     selectedGuestId: selectedGuest ? String(selectedGuest.id) : '',
     selectedGuestName: selectedGuest?.name ?? '',
+    printerSettingsHref: `/admin/plugins/checkin/kiosk/${event.id}/settings`,
   }, jsonOnly);
 }
 
@@ -347,6 +357,14 @@ function clampMm(value: string, fallback: number): number {
 function pageId(value: unknown): number | null {
   const id = typeof value === 'number' ? value : Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * The guest's list: the `mail_list` pointer wins (moving a guest between
+ * lists only rewrites the pointer), page_id covers legacy rows without one.
+ */
+function guestMailListId(guest: CmsPage): number | null {
+  return pageId(pointer(guest.lect, 'mail_list')) ?? pageId(guest.page_id);
 }
 
 function text(form: FormData, key: string): string {

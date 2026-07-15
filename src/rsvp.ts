@@ -1294,7 +1294,7 @@ async function updateAllGuestsFromContacts(cms: CmsClient, listId: number): Prom
 
 /**
  * Renders a guest's check-in QR using the legacy compact Eventuai payload:
- * `EAI{list-base32}:{guest-delta-base32}:{M|plus-index}:{sig-prefix}`.
+ * `EAI{list-base32}:{signed-guest-delta-base32}:{M|plus-index}:{sig-prefix}`.
  */
 async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: number, _qr: QrOptions, jsonOnly = false, access?: EventAdminAccess): Promise<Response> {
   const ticket = await guestQrTicket(cms, listId, guestId);

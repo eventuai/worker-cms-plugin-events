@@ -30,7 +30,7 @@
           {% for list in guestLists %}<option value="{{ list.id }}"{% if list.selected %} selected{% endif %}>{{ list.name | escape }}</option>{% endfor %}
         </select>
         <select name="guest" id="guestSelect" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"{% if selectedListId == blank and q == blank %} disabled{% endif %}>
-          <option value="">{% if q != blank %}{% if guests.size > 0 %}Matching guests…{% else %}No guests match “{{ q | escape }}”{% endif %}{% else %}Preview guest…{% endif %}</option>
+          <option value="">{% if q != blank %}{% if guests.size > 0 %}{{ guests.size }} matching guest{% if guests.size != 1 %}s{% endif %}…{% else %}No guests match “{{ q | escape }}”{% endif %}{% else %}Preview guest…{% endif %}</option>
           {% for guest in guests %}<option value="{{ guest.id }}"{% if guest.selected %} selected{% endif %}>{{ guest.name | escape }}</option>{% endfor %}
         </select>
         <button type="submit" id="loadGuestButton" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Load</button>
@@ -40,9 +40,10 @@
       <p class="text-sm text-gray-600">Actual size: <span id="actualSize" class="font-semibold text-indigo-600">60mm × 30mm</span></p>
       <div class="flex items-center gap-3">
         <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600"><input type="checkbox" id="rotatePreview" class="h-4 w-4">Rotate -90°</label>
-        <button type="button" id="printLabelButton" hidden class="inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer">Print…</button>
+        <button type="button" id="printLabelButton" hidden class="inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer">Print label</button>
       </div>
     </div>
+    <p class="mb-3 text-right text-xs text-gray-500">Uses the shared Check-in printer mode. <a href="{{ printerSettingsHref | escape }}" class="font-medium text-indigo-600 hover:text-indigo-800">Printer settings</a></p>
     <div id="svgPreviewContainer" class="flex justify-center items-center rounded-lg p-4 w-full overflow-x-auto" style="min-height:20rem;background-image:linear-gradient(45deg,#e5e7eb 25%,transparent 25%),linear-gradient(-45deg,#e5e7eb 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e5e7eb 75%),linear-gradient(-45deg,transparent 75%,#e5e7eb 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;">
       <div id="svgWrapper" class="relative" style="transition:transform .2s">
         <div class="pointer-events-none absolute top-0 left-0 w-full h-full" aria-hidden="true">
@@ -239,5 +240,8 @@
     </div>
   </div>
 </div>
+<textarea id="bitmapOutput" hidden readonly aria-hidden="true"></textarea>
 <script src="/admin/plugins/events/assets/qrcode.min.js" defer></script>
+<script src="/admin/plugins/events/assets/label-encoder.js" defer></script>
+<script src="/admin/plugins/events/assets/label-printer.js" defer></script>
 <script src="/admin/plugins/events/assets/label-editor.js" defer></script>

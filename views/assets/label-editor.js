@@ -1959,32 +1959,62 @@
   });
   if (controls.loadGuestButton) controls.loadGuestButton.hidden = true;
 
-  // Print the current preview at physical size in a dedicated window. The
-  // cloned SVG keeps the in-SVG @font-face rules and data-URL QR images.
-  on(controls.printButton, 'click', function () {
+  // Match the Check-in kiosk label path: rasterize the current SVG at 300 DPI,
+  // encode Brother bitmap commands, then use the shared checkin_* settings to
+  // send the job through WebUSB or the configured printer-server hub.
+  on(controls.printButton, 'click', async function () {
+    if (typeof LabelEncoder !== 'function' || typeof connectAndPrintWithBitmap !== 'function') {
+      window.alert('Label printing is not loaded. Ask an administrator to approve the label printer assets.');
+      return;
+    }
     var clone = svg.cloneNode(true);
     var indicator = clone.querySelector('#selectionIndicator');
     if (indicator) indicator.parentNode.removeChild(indicator);
-    clone.removeAttribute('style');
-    var widthMm = (parseFloat(svg.getAttribute('width')) || 0) / PIXELS_PER_MM;
-    var heightMm = (parseFloat(svg.getAttribute('height')) || 0) / PIXELS_PER_MM;
-    var guestName = controls.selectedGuestName ? controls.selectedGuestName.value : '';
-    var title = 'Label' + (guestName ? ' — ' + guestName : '');
-    var printWindow = window.open('', '_blank', 'width=720,height=560');
-    if (!printWindow) {
-      window.alert('The print window was blocked — allow pop-ups for this site.');
-      return;
+    var widthMm = editor.labelConfig.width;
+    var heightMm = editor.labelConfig.height;
+    var dpi = 300;
+    var width = Math.round(widthMm * dpi / 25.4);
+    var height = Math.round(heightMm * dpi / 25.4);
+    var viewBox = (clone.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+    var canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    var context = canvas.getContext('2d');
+    var encoder = new LabelEncoder({ width: widthMm, height: heightMm });
+    var originalText = controls.printButton.textContent;
+    controls.printButton.disabled = true;
+    controls.printButton.textContent = 'Preparing…';
+    try {
+      await new Promise(function (resolve, reject) {
+        try {
+          encoder.svgElementToCanvas(
+            clone,
+            context,
+            width,
+            height,
+            viewBox[2] || width,
+            viewBox[3] || height,
+            true,
+            128,
+            resolve,
+            'floyd-steinberg'
+          );
+        } catch (error) {
+          reject(error);
+        }
+      });
+      var bitmapOutput = document.getElementById('bitmapOutput');
+      if (!bitmapOutput) throw new Error('Print output is unavailable');
+      bitmapOutput.value = encoder.encodeBitmap(canvas);
+      controls.printButton.textContent = 'Sending…';
+      await connectAndPrintWithBitmap(bitmapOutput);
+    } catch (error) {
+      console.error('Label print failed:', error);
+      window.alert('Could not print label: ' + error.message);
+    } finally {
+      controls.printButton.disabled = false;
+      controls.printButton.textContent = originalText;
     }
-    var doc = printWindow.document;
-    doc.open();
-    doc.write('<!doctype html><html><head><meta charset="utf-8"><title></title>' +
-      '<style>@page{size:auto;margin:0}html,body{margin:0;padding:0}svg{display:block;width:' +
-      widthMm.toFixed(2) + 'mm;height:' + heightMm.toFixed(2) + 'mm}</style></head><body></body></html>');
-    doc.close();
-    doc.title = title;
-    doc.body.appendChild(doc.importNode(clone, true));
-    printWindow.focus();
-    setTimeout(function () { printWindow.print(); }, 400);
   });
 
   // ---------------------------------------------------------------------
