@@ -91,6 +91,8 @@ interface PluginEnv extends EdmEnv {
   VIEWS: Fetcher;
   /** Deploy identifier exposed in the manifest to invalidate cached views. */
   CF_VERSION_METADATA?: WorkerVersionMetadata;
+  /** Browser Run binding for downloadable QR ticket PNGs. */
+  BROWSER?: BrowserRun;
 }
 
 export default {

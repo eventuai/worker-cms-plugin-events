@@ -17,7 +17,7 @@ import {
   type CmsPageInput,
 } from './cms';
 import { compactCheckinCode } from './crypto';
-import { qrSvg, qrTicketSvg, renderQrTicketPng } from './qr';
+import { qrSvg, qrTicketSvg } from './qr';
 import { materializedCompanionLinks, plusGuestDetails, type PlusGuestDetail } from './plus-guests';
 import {
   emailQuality,
@@ -187,6 +187,11 @@ export interface QrOptions {
   tenantRef?: string;
 }
 
+export interface RsvpEnv extends EdmEnv {
+  /** Browser Run binding used only for downloadable QR ticket PNGs. */
+  BROWSER?: BrowserRun;
+}
+
 /** `?t=<ref>` suffix for minted public URLs (empty when single-tenant legacy). */
 function tenantSuffix(qr: QrOptions): string {
   return qr.tenantRef ? `?t=${qr.tenantRef}` : '';
@@ -196,7 +201,7 @@ export async function handleRsvpAdmin(
   request: Request,
   cms: CmsClient,
   views: Fetcher,
-  env: EdmEnv,
+  env: RsvpEnv,
   segments: string[],
   url: URL,
   qr: QrOptions = {},
@@ -335,11 +340,11 @@ export async function handleRsvpAdmin(
     }
     if (segments[3] === 'qrcode-plus' && /^\d+\.png$/.test(segments[4] ?? '')) {
       if (!canCheckIn) return forbidden();
-      return plusGuestQrPng(cms, listId, guestId, Number.parseInt(segments[4], 10));
+      return plusGuestQrPng(cms, env, listId, guestId, Number.parseInt(segments[4], 10));
     }
     if (segments[3] === 'qrcode.png') {
       if (!canCheckIn) return forbidden();
-      return guestQrPng(cms, listId, guestId);
+      return guestQrPng(cms, env, listId, guestId);
     }
     return new Response('not found', { status: 404 });
   }
@@ -1327,31 +1332,39 @@ async function guestQr(cms: CmsClient, views: Fetcher, listId: number, guestId: 
   }, jsonOnly);
 }
 
-async function guestQrPng(cms: CmsClient, listId: number, guestId: number): Promise<Response> {
+async function guestQrPng(cms: CmsClient, env: RsvpEnv, listId: number, guestId: number): Promise<Response> {
   const ticket = await guestQrTicket(cms, listId, guestId);
   if (!ticket) return new Response('not found', { status: 404 });
-  return qrTicketPng(ticket.svg, `guest-${guestId}-qrcode.png`);
+  return qrTicketPng(env.BROWSER, ticket.svg, `guest-${guestId}-qrcode.png`);
 }
 
-async function plusGuestQrPng(cms: CmsClient, listId: number, guestId: number, index: number): Promise<Response> {
+async function plusGuestQrPng(cms: CmsClient, env: RsvpEnv, listId: number, guestId: number, index: number): Promise<Response> {
   const ticket = await guestQrTicket(cms, listId, guestId);
   if (!ticket) return new Response('not found', { status: 404 });
   const detail = plusGuestDetails(ticket.guest.lect)[index];
   if (!detail) return new Response('not found', { status: 404 });
   const payload = compactCheckinCode(listId, guestId, index);
   const svg = plusGuestTicketSvg(ticket, detail, payload);
-  return qrTicketPng(svg, `guest-${guestId}-plus-${index + 1}-qrcode.png`);
+  return qrTicketPng(env.BROWSER, svg, `guest-${guestId}-plus-${index + 1}-qrcode.png`);
 }
 
-async function qrTicketPng(svg: string, filename: string): Promise<Response> {
-  const png = await renderQrTicketPng(svg);
-  return new Response(png, {
-    headers: {
-      'content-type': 'image/png',
-      'cache-control': 'private, max-age=86400',
-      'content-disposition': `inline; filename="${filename}"`,
-    },
+async function qrTicketPng(browser: BrowserRun | undefined, svg: string, filename: string): Promise<Response> {
+  if (!browser) return new Response('QR PNG rendering is unavailable', { status: 503 });
+  const rendered = await browser.quickAction('screenshot', {
+    html: `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#fff}#ticket{display:inline-block;line-height:0}svg{display:block}</style></head><body><div id="ticket">${svg}</div></body></html>`,
+    selector: '#ticket',
+    viewport: { width: 320, height: 800, deviceScaleFactor: 1 },
+    screenshotOptions: { type: 'png', omitBackground: false, captureBeyondViewport: true },
+    setJavaScriptEnabled: false,
+    cacheTTL: 86400,
   });
+  if (!rendered.ok) return rendered;
+
+  const headers = new Headers(rendered.headers);
+  headers.set('content-type', 'image/png');
+  headers.set('cache-control', 'private, max-age=86400');
+  headers.set('content-disposition', `inline; filename="${filename}"`);
+  return new Response(rendered.body, { status: rendered.status, headers });
 }
 
 function plusGuestTicketSvg(

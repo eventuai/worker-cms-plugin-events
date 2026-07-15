@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { qrMatrix, qrMetadata, qrSvg, qrTicketSvg, renderQrTicketPng } from '../src/qr';
+import { qrMatrix, qrMetadata, qrSvg, qrTicketSvg } from '../src/qr';
 import { compactCheckinCode } from '../src/crypto';
 
 describe('qr encoder', () => {
@@ -82,21 +80,11 @@ describe('qr encoder', () => {
     expect(svg).not.toContain('deliberately very long attendee name that wraps</text>');
   });
 
-  it('renders simplified, traditional, and uncommon Chinese ticket text instead of missing-glyph boxes', async () => {
-    const fontBuffers = [
-      new Uint8Array(readFileSync(fileURLToPath(new URL('../node_modules/@fontsource/noto-sans-sc/files/noto-sans-sc-latin-400-normal.woff2', import.meta.url).href))),
-      new Uint8Array(readFileSync(fileURLToPath(new URL('../node_modules/@fontsource/noto-sans-sc/files/noto-sans-sc-chinese-simplified-400-normal.woff2', import.meta.url).href))),
-      new Uint8Array(readFileSync(fileURLToPath(new URL('../node_modules/@fontsource/noto-sans-tc/files/noto-sans-tc-chinese-traditional-400-normal.woff2', import.meta.url).href))),
-      new Uint8Array(readFileSync(fileURLToPath(new URL('../node_modules/@fontsource/noto-sans-tc/files/noto-sans-tc-55-400-normal.woff2', import.meta.url).href))),
-    ];
+  it('requests browser CJK fallback fonts for simplified, traditional, and uncommon Chinese text', () => {
     const mixedSvg = qrTicketSvg('EAI123:ABC', { name: '爗苏蘇' });
-    const unsupported = await renderQrTicketPng(qrTicketSvg('EAI123:ABC', { name: '\u{30EDE}' }), fontBuffers);
 
     expect(mixedSvg).toContain('font-family="Noto Sans TC,Noto Sans SC');
     expect(mixedSvg).toContain('font-weight="400"');
-    for (const character of ['爗', '苏', '蘇']) {
-      const rendered = await renderQrTicketPng(qrTicketSvg('EAI123:ABC', { name: character }), fontBuffers);
-      expect(rendered).not.toEqual(unsupported);
-    }
+    expect(mixedSvg).toContain('爗苏蘇');
   });
 });
