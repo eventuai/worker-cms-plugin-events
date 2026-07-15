@@ -1,7 +1,7 @@
 name = "worker-cms-plugin-events"
 main = "src/index.ts"
 compatibility_date = "2026-03-24"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # Browser Run rasterizes downloadable QR ticket PNGs with Chromium's bundled
 # Noto CJK fonts. `remote = true` also makes the binding work in `wrangler dev`.
@@ -37,7 +37,7 @@ binding = "CF_VERSION_METADATA"
 # tenant's worker-rsvp + cms-plugin-checkin — never share the pairwise secret.
 [[kv_namespaces]]
 binding = "TENANTS"
-id = "5511819de9f24bd596b25996e2b39eff"
+id = "6ba2f715fc0b4ecd825cf561a2e12587"
 
 [vars]
 # Base URL of the CMS Worker — where this plugin reaches the Plugin API
