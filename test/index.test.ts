@@ -4678,7 +4678,10 @@ describe('Label templates', () => {
         return Response.json({ page: { id: 21, page_type: 'label', page_id: 7, name: 'Badge', isPublished: true, lect: { design: JSON.stringify(sampleDesign) } } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
-        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: {} }], total: 1 });
+        return Response.json({ pages: [
+          { id: 8, page_type: 'mail_list', name: 'VIP', weight: 20, lect: {} },
+          { id: 15, page_type: 'mail_list', name: 'General', weight: 1, lect: {} },
+        ], total: 2 });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
         return Response.json({ pages: [
@@ -4721,6 +4724,7 @@ describe('Label templates', () => {
     expect(html).toContain('data-batch-tokens="9"');
     expect(html).toContain('id="batchPrintButton"');
     expect(html).toContain('id="labelEditorFallback"');
+    expect(html.indexOf('>General</option>')).toBeLessThan(html.indexOf('>VIP</option>'));
     expect(html).toContain('action="/admin/plugins/events/events/7/labels/21"');
     expect(html).toContain('id="label-name" form="labelSaveForm"');
     expect(html).toContain('placeholder="Template name"');
@@ -4767,7 +4771,7 @@ describe('Label templates', () => {
     // goes to the host so its Chinese variant widening applies.
     expect(guestQuery?.get('q')).toBe('ada');
     expect(guestQuery?.get('pointer_key')).toBe('mail_list');
-    expect(guestQuery?.get('pointer_values')).toBe('8,15');
+    expect(guestQuery?.get('pointer_values')).toBe('15,8');
     const html = await renderedText(response);
     // Matches are labeled with their guest list so same-name guests are tellable apart.
     expect(html).toContain('Ada Wong — VIP');

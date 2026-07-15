@@ -138,7 +138,9 @@ async function labelEditor(
   const label = await cms.getWithLiveStatus(labelId);
   if (label.page_type !== 'label' || label.page_id !== event.id) return new Response('not found', { status: 404 });
 
-  const guestLists = await listByEvent(cms, 'mail_list', event.id);
+  // Keep the preview picker in the same admin-controlled order as the event
+  // dashboard (page weight, then name).
+  const guestLists = (await listByEvent(cms, 'mail_list', event.id)).sort(compareByWeightThenName);
   const listId = pageId(url.searchParams.get('list'));
   const selectedList = listId ? guestLists.find((list) => list.id === listId) : undefined;
   const q = (url.searchParams.get('q') ?? '').trim();
