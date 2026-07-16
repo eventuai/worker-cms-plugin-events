@@ -1,6 +1,8 @@
 import { Liquid } from 'liquidjs';
+import englishCatalog from '../../views/locales/en.json';
 
 const templateCache = new Map<string, Promise<string>>();
+const translations = flattenMessages(englishCatalog);
 
 interface JsonTemplate {
   sections?: Record<string, JsonSection>;
@@ -22,7 +24,7 @@ interface JsonSection {
 //     which auto-escapes every output. Admin client views must NOT use
 //     `| escape` (it would double-escape); mark pre-rendered HTML `| raw`.
 function getEngine(views: Fetcher, globals: Record<string, unknown>, opts: { autoEscape?: boolean } = {}): Liquid {
-  return new Liquid({
+  const engine = new Liquid({
     cache: true,
     extname: '.liquid',
     globals,
@@ -63,6 +65,18 @@ function getEngine(views: Fetcher, globals: Record<string, unknown>, opts: { aut
       },
     },
   });
+  engine.registerFilter('t', (key) => translations[String(key ?? '')] ?? String(key ?? ''));
+  return engine;
+}
+
+function flattenMessages(value: unknown, prefix = '', output: Record<string, string> = {}): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return output;
+  for (const [key, child] of Object.entries(value)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (typeof child === 'string') output[path] = child;
+    else flattenMessages(child, path, output);
+  }
+  return output;
 }
 
 async function loadTemplate(views: Fetcher, path: string): Promise<string> {

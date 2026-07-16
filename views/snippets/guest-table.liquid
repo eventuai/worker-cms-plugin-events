@@ -2,11 +2,11 @@
   <table class="w-full min-w-[680px] text-left" data-table-filter="guests" data-privacy-table{% if reorderAction != blank %} data-reorder="{{ reorderAction }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-handle-only{% endif %}>
     <thead class="bg-gray-50 border-b border-gray-200"><tr>
       {% if reorderAction != blank %}<th class="px-4 py-3 w-10"></th>{% endif %}
-      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name / Email</th>
-      {% if showListColumn %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">List</th>{% endif %}
-      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Organisation</th>
-      {% if hasEdm %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email&nbsp;send</th>{% endif %}
-      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_table.name_email" | t }}</th>
+      {% if showListColumn %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_table.list" | t }}</th>{% endif %}
+      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_table.organisation" | t }}</th>
+      {% if hasEdm %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_table.email_send" | t }}</th>{% endif %}
+      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_table.status" | t }}</th>
       {% if hasCustomFields %}
         <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
           <form method="get" action="{{ listHref }}">
@@ -14,7 +14,7 @@
             {% if selectedStatus != blank %}<input type="hidden" name="status" value="{{ selectedStatus }}">{% endif %}
             {% if selectedColor != blank %}<input type="hidden" name="color" value="{{ selectedColor }}">{% endif %}
             <select id="custom-field-selector" class="border-0 bg-transparent p-0 text-xs font-semibold uppercase tracking-wider text-gray-500 cursor-pointer max-w-[12rem]" name="cf" data-autosubmit>
-              <option value="">Custom field</option>
+              <option value="">{{ "events.views.guest_table.custom_field" | t }}</option>
               {% for field in customFieldOptions %}
                 <option value="{{ field.key }}"{% if field.selected %} selected{% endif %}>{{ field.label }}</option>
               {% endfor %}
@@ -22,13 +22,13 @@
           </form>
         </th>
       {% endif %}
-      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th>
+      <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_table.check_in" | t }}</th>
       <th class="px-6 py-3"></th>
     </tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for guest in guests %}
         <tr data-table-filter-row data-guest-row data-filter-search="{{ guest.searchText }}" data-filter-status="{{ guest.status }}" data-filter-color="{{ guest.color_tag }}"{% if reorderAction != blank %} data-id="{{ guest.id }}"{% endif %}>
-          {% if reorderAction != blank %}<td class="px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
+          {% if reorderAction != blank %}<td class="px-4 py-3 text-gray-400" data-reorder-handle title="{{ "events.views.guest_table.drag_to_reorder" | t }}" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
           <td class="px-6 py-3 text-sm text-gray-700 max-w-[200px] lg:max-w-[400px] no-wrap">
             <div class="flex min-w-0 items-center gap-2">
               {% if guest.colorAction != blank %}<div>
@@ -46,9 +46,9 @@
                   <span data-private-field="email" data-guest-email>{{ guest.email }}</span>
                   {% if hasEdm and guest.hasEdm %}
                     <br>
-                    {% if guest.isGood %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">good</span>
-                    {% elsif guest.isRisky %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">risky</span>
-                    {% else %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">no email</span>{% endif %}
+                    {% if guest.isGood %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">{{ "events.views.guest_table.good" | t }}</span>
+                    {% elsif guest.isRisky %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">{{ "events.views.guest_table.risky" | t }}</span>
+                    {% else %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">{{ "events.views.guest_table.no_email" | t }}</span>{% endif %}
                   {% endif %}
                 </div>
               </div>
@@ -64,29 +64,29 @@
               {% if guest.hasEdm %}
                 {% if guest.canEmail %}
                   {% if guest.notSend %}
-                    <span class="text-xs text-gray-400">Paused</span>
+                    <span class="text-xs text-gray-400">{{ "events.views.guest_table.paused" | t }}</span>
                   {% else %}
                     <span class="inline-flex items-center gap-2">
-                      <form method="post" action="{{ guest.sendAction }}" class="inline-block"{% if guest.sent %} data-confirm="Are you sure you want to re-send the email to this guest? This will send another copy of the invitation email."{% endif %}>
+                      <form method="post" action="{{ guest.sendAction }}" class="inline-block"{% if guest.sent %} data-confirm="{{ "events.views.guest_table.are_you_sure_you_want_to_re_send_the_email_to_this_guest_this_will_send_" | t }}"{% endif %}>
                         {% if guest.returnTo %}<input type="hidden" name="return_to" value="{{ guest.returnTo }}">{% endif %}
                         {% if guest.sent %}
-                          <button type="submit" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer">Re-send</button>
+                          <button type="submit" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer">{{ "events.views.guest_table.re_send" | t }}</button>
                         {% elsif guest.isGood %}
-                          <button type="submit" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 cursor-pointer">Send</button>
+                          <button type="submit" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 cursor-pointer">{{ "events.views.guest_table.send" | t }}</button>
                         {% else %}
-                          <button type="submit" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-300 hover:bg-gray-50 cursor-pointer">Send</button>
+                          <button type="submit" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-300 hover:bg-gray-50 cursor-pointer">{{ "events.views.guest_table.send" | t }}</button>
                         {% endif %}
                       </form>
                       <form method="post" action="{{ guest.previewAction }}" target="_blank" rel="noopener" class="inline-block">
-                        <button type="submit" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer">Preview</button>
+                        <button type="submit" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer">{{ "events.views.guest_table.preview" | t }}</button>
                       </form>
                     </span>
                   {% endif %}
                 {% else %}
-                  <span class="text-xs text-gray-400">No email</span>
+                  <span class="text-xs text-gray-400">{{ "events.views.guest_table.no_email_2" | t }}</span>
                 {% endif %}
               {% else %}
-                <span class="text-xs text-gray-400">No EDM</span>
+                <span class="text-xs text-gray-400">{{ "events.views.guest_table.no_edm" | t }}</span>
               {% endif %}
             </td>
           {% endif %}
@@ -111,8 +111,8 @@
               {% endif %}
             </td>
           {% endif %}
-          <td class="px-6 py-3 text-sm text-gray-700" data-guest-checkin>{% if guest.checkedIn %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ guest.attendanceLabel | default: 'Checked in' }}</span>{% elsif guest.checkinAction != blank %}{% if guest.attendanceLabel != blank %}<span class="mr-2 text-xs text-gray-500">{{ guest.attendanceLabel }}</span>{% endif %}<form method="post" action="{{ guest.checkinAction }}" style="display:inline">{% if guest.returnTo != blank %}<input type="hidden" name="return_to" value="{{ guest.returnTo }}">{% endif %}<button class="border-0 bg-transparent p-0 text-xs font-semibold text-indigo-600 cursor-pointer" type="submit">Check in</button></form>{% else %}<span class="text-xs text-gray-400">Not checked in</span>{% endif %}</td>
-          <td class="px-6 py-3 text-right text-sm" data-guest-actions>{% if guest.qrHref != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.qrHref }}" data-guest-qr>QR</a>{% endif %}{% if guest.qrHref != blank and guest.editHref != blank %} · {% endif %}{% if guest.editHref != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.editHref }}" data-guest-edit>Edit →</a>{% endif %}</td>
+          <td class="px-6 py-3 text-sm text-gray-700" data-guest-checkin>{% if guest.checkedIn %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ guest.attendanceLabel | default: 'Checked in' }}</span>{% elsif guest.checkinAction != blank %}{% if guest.attendanceLabel != blank %}<span class="mr-2 text-xs text-gray-500">{{ guest.attendanceLabel }}</span>{% endif %}<form method="post" action="{{ guest.checkinAction }}" style="display:inline">{% if guest.returnTo != blank %}<input type="hidden" name="return_to" value="{{ guest.returnTo }}">{% endif %}<button class="border-0 bg-transparent p-0 text-xs font-semibold text-indigo-600 cursor-pointer" type="submit">{{ "events.views.guest_table.check_in_2" | t }}</button></form>{% else %}<span class="text-xs text-gray-400">{{ "events.views.guest_table.not_checked_in" | t }}</span>{% endif %}</td>
+          <td class="px-6 py-3 text-right text-sm" data-guest-actions>{% if guest.qrHref != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.qrHref }}" data-guest-qr>{{ "events.views.guest_table.qr" | t }}</a>{% endif %}{% if guest.qrHref != blank and guest.editHref != blank %} · {% endif %}{% if guest.editHref != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ guest.editHref }}" data-guest-edit>{{ "events.views.guest_table.edit" | t }}</a>{% endif %}</td>
         </tr>
       {% else %}
         <tr data-table-filter-empty><td colspan="99" class="px-6 py-10 text-center text-sm text-gray-400">{{ emptyMessage | default: "No guests match this list." }}</td></tr>

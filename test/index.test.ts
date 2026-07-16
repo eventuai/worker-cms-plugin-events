@@ -376,7 +376,18 @@ describe('plugin contract', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/plain');
     expect(response.headers.get('cache-control')).toBe('no-store');
-    await expect(response.text()).resolves.toContain('Name / Email');
+    await expect(response.text()).resolves.toContain('events.views.guest_table.name_email');
+  });
+
+  it('serves the plugin UI locale catalog through the view proxy', async () => {
+    const response = await plugin.fetch(request('/__plugin/admin/views/locales/en.json?r=revision', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    const catalog = await response.json() as { events?: { views?: { events?: { new_event?: string } } } };
+    expect(catalog.events?.views?.events?.new_event).toBe('New event');
   });
 
   it('redirects plugin pagefield view requests to Worker CMS views', async () => {

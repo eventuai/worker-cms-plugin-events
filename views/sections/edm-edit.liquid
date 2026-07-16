@@ -12,7 +12,7 @@
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
   <div class="min-w-0">
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← EDMs</a>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">{{ "events.views.edm_edit.edms" | t }}</a>
     <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
     {% if eventName != blank %}<p class="mt-1 text-sm text-gray-500">Email template for {{ eventName }}</p>{% endif %}
   </div>
@@ -29,8 +29,8 @@
              style="width:8px;height:8px;border-radius:50%;background:#9ca3af;flex-shrink:0;transition:background .4s,opacity .4s;display:none"></div>
       </div>
     {% endif %}
-    {% if previewHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Preview" aria-label="Preview" href="{{ previewHref }}" target="_blank" rel="noopener"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#document"></use></svg><span class="hidden lg:inline">Preview</span></a>{% endif %}
-    <button form="main-form" type="submit" name="action" value="update" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Save" aria-label="Save"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span class="hidden lg:inline">Save</span></button>
+    {% if previewHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.edm_edit.preview" | t }}" aria-label="{{ "events.views.edm_edit.preview" | t }}" href="{{ previewHref }}" target="_blank" rel="noopener"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#document"></use></svg><span class="hidden lg:inline">{{ "events.views.edm_edit.preview" | t }}</span></a>{% endif %}
+    <button form="main-form" type="submit" name="action" value="update" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="{{ "events.views.edm_edit.save" | t }}" aria-label="{{ "events.views.edm_edit.save" | t }}"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span class="hidden lg:inline">{{ "events.views.edm_edit.save" | t }}</span></button>
   </div>
 </div>
 
@@ -52,12 +52,12 @@
   {%- comment -%} ── Template name + event picker ── {%- endcomment -%}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
     {% render nameField.templateName, field: nameField %}
-    <span class="block text-xs text-gray-400">Internal only — not shown to guests.</span>
+    <span class="block text-xs text-gray-400">{{ "events.views.edm_edit.internal_only_not_shown_to_guests" | t }}</span>
     {% unless hasEvent %}
       <label class="block">
-        <span class="{{ cls_lbl }}">Event</span>
+        <span class="{{ cls_lbl }}">{{ "events.views.edm_edit.event" | t }}</span>
         <select name="*event" required class="{{ cls_input }}">
-          <option value="">Select an event…</option>
+          <option value="">{{ "events.views.edm_edit.select_an_event" | t }}</option>
           {% for event in events %}<option value="{{ event.id }}">{{ event.name }}</option>{% endfor %}
         </select>
       </label>
@@ -66,7 +66,7 @@
 
   {%- comment -%} ── Sender & styling ── {%- endcomment -%}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-    <h2 class="text-lg font-bold text-gray-900">Sender &amp; styling</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.edm_edit.sender_styling" | t }}</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {% for field in senderFields %}
         <div class="{{ field.span }}">
@@ -86,7 +86,7 @@
   {%- comment -%} ── Email content (with the language selector, like the CMS page editor) ── {%- endcomment -%}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <h2 class="text-lg font-bold text-gray-900">Email content</h2>
+      <h2 class="text-lg font-bold text-gray-900">{{ "events.views.edm_edit.email_content" | t }}</h2>
       <label class="flex items-center gap-2 text-xs text-gray-500">
         Language
         {%- comment -%} data-autosubmit: the CMS layout reloads the page on change (CSP-safe). {%- endcomment -%}
@@ -105,13 +105,13 @@
   {%- comment -%} ── Content blocks ── {%- endcomment -%}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <h2 class="text-lg font-bold text-gray-900">Content blocks</h2>
+      <h2 class="text-lg font-bold text-gray-900">{{ "events.views.edm_edit.content_blocks" | t }}</h2>
       <div class="flex items-center gap-2">
-        <label for="block-select" class="sr-only">Block type</label>
+        <label for="block-select" class="sr-only">{{ "events.views.edm_edit.block_type" | t }}</label>
         <select id="block-select" name="block-select" form="main-form" class="px-2 py-1 border border-gray-300 rounded-lg text-xs">
           {% for option in blockOptions %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}
         </select>
-        <button form="main-form" type="submit" name="action" value="block-add" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-transparent bg-gray-900 text-white hover:bg-gray-700 cursor-pointer">Add block</button>
+        <button form="main-form" type="submit" name="action" value="block-add" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-transparent bg-gray-900 text-white hover:bg-gray-700 cursor-pointer">{{ "events.views.edm_edit.add_block" | t }}</button>
       </div>
     </div>
 
@@ -124,7 +124,7 @@
                 <span class="text-sm font-semibold text-gray-700">{{ block.title }}{% if block.nameValue != blank %} · {{ block.nameValue }}{% endif %}</span>
                 <span class="flex items-center gap-2">
                   <span class="text-xs text-gray-400">#{{ block.index }}</span>
-                  <button form="main-form" type="submit" name="action" value="{{ block.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">Delete</button>
+                  <button form="main-form" type="submit" name="action" value="{{ block.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">{{ "events.views.edm_edit.delete" | t }}</button>
                 </span>
               </summary>
               <div class="px-4 py-4 space-y-4">
@@ -147,7 +147,7 @@
                       <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-xs text-gray-400">{{ row.label }}</span>
-                          <button form="main-form" type="submit" name="action" value="{{ row.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">Remove</button>
+                          <button form="main-form" type="submit" name="action" value="{{ row.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">{{ "events.views.edm_edit.remove" | t }}</button>
                         </div>
                         {% for field in row.fields %}
                           {% render field.templateName, field: field %}
@@ -162,13 +162,13 @@
         {% endfor %}
       </ul>
     {% else %}
-      <p class="text-sm text-gray-400">No content blocks yet. Use “Add block” to build the email body.</p>
+      <p class="text-sm text-gray-400">{{ "events.views.edm_edit.no_content_blocks_yet_use_add_block_to_build_the_email_body" | t }}</p>
     {% endif %}
   </div>
 
   {%- comment -%} ── RSVP, thank-you & decline ── {%- endcomment -%}
   <details class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-    <summary class="text-lg font-bold text-gray-900 cursor-pointer">RSVP &amp; response pages</summary>
+    <summary class="text-lg font-bold text-gray-900 cursor-pointer">{{ "events.views.edm_edit.rsvp_response_pages" | t }}</summary>
     <div class="space-y-4">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {% for field in rsvpTextFields %}
@@ -200,10 +200,10 @@
   </details>
 
   <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-    <button type="submit" name="action" value="update" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">Save</button>
-    <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
+    <button type="submit" name="action" value="update" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">{{ "events.views.edm_edit.save" | t }}</button>
+    <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{{ "events.views.edm_edit.cancel" | t }}</a>
     {% if deleteAction != blank %}
-      <button type="submit" formaction="{{ deleteAction }}" formmethod="post" data-confirm="Move this EDM to trash?" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">Delete</button>
+      <button type="submit" formaction="{{ deleteAction }}" formmethod="post" data-confirm="{{ "events.views.edm_edit.move_this_edm_to_trash" | t }}" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">{{ "events.views.edm_edit.delete" | t }}</button>
     {% endif %}
   </div>
 </form>
@@ -211,29 +211,29 @@
 {% if previewHref != blank %}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6" style="max-width:54rem;margin-top:1.5rem">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-2">
-      <h2 class="text-lg font-bold text-gray-900">Email preview</h2>
+      <h2 class="text-lg font-bold text-gray-900">{{ "events.views.edm_edit.email_preview" | t }}</h2>
       {%- comment -%} Language tabs load the iframe (by name) without leaving the editor. {%- endcomment -%}
       <div class="flex flex-wrap items-center gap-1">
         {% for lang in previewLangs %}
           <a href="{{ lang.href }}" target="edm-preview" class="px-2 py-1 rounded-lg text-xs font-semibold {% if lang.active %}bg-indigo-600 text-white{% else %}border border-gray-300 text-gray-700 hover:bg-gray-50{% endif %}">{{ lang.label }}</a>
         {% endfor %}
-        <a href="{{ previewHref }}" target="_blank" rel="noopener" class="px-2 py-1 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-800">Open ↗</a>
+        <a href="{{ previewHref }}" target="_blank" rel="noopener" class="px-2 py-1 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-800">{{ "events.views.edm_edit.open" | t }}</a>
       </div>
     </div>
-    <iframe name="edm-preview" src="{{ previewHref }}" class="w-full border border-gray-200 rounded-lg" style="height:40rem" title="Email preview"></iframe>
+    <iframe name="edm-preview" src="{{ previewHref }}" class="w-full border border-gray-200 rounded-lg" style="height:40rem" title="{{ "events.views.edm_edit.email_preview" | t }}"></iframe>
   </div>
 {% endif %}
 
 {% if testAction != blank %}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:54rem">
-    <h2 class="text-lg font-bold text-gray-900">Send a test</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.edm_edit.send_a_test" | t }}</h2>
     {% if senderSet %}
       <form method="post" action="{{ testAction }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
-        <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">
-        <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Send test email" aria-label="Send test email"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">Send test email</span></button>
+        <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="{{ "events.views.edm_edit.test_example_com" | t }}">
+        <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="{{ "events.views.edm_edit.send_test_email" | t }}" aria-label="{{ "events.views.edm_edit.send_test_email" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">{{ "events.views.edm_edit.send_test_email" | t }}</span></button>
       </form>
     {% else %}
-      <p class="text-sm text-gray-500" style="margin-top:0.5rem">Set the sender email above and save before sending a test.</p>
+      <p class="text-sm text-gray-500" style="margin-top:0.5rem">{{ "events.views.edm_edit.set_the_sender_email_above_and_save_before_sending_a_test" | t }}</p>
     {% endif %}
   </div>
 {% endif %}

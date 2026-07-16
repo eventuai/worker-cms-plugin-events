@@ -1,7 +1,7 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listHref }}">← {{ listName }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">Add from contacts</h1>
+    <h1 class="text-2xl font-bold text-gray-900">{{ "events.views.guest_list_contacts.add_from_contacts" | t }}</h1>
     <p class="mt-1 text-sm text-gray-500">Search the contact database and add people to {{ listName }}{% if eventName != blank %} ({{ eventName }}){% endif %}. Added guests stay linked to their contact record.</p>
   </div>
 </div>
@@ -13,8 +13,8 @@
 {% endif %}
 
 <form method="get" action="{{ searchAction }}" class="flex flex-wrap items-center gap-1.5 mb-4">
-  <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1" type="search" name="q" value="{{ q }}" placeholder="Search name, email, organization…">
-  <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Search</button>
+  <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1" type="search" name="q" value="{{ q }}" placeholder="{{ "events.views.guest_list_contacts.search_name_email_organization" | t }}">
+  <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">{{ "events.views.guest_list_contacts.search" | t }}</button>
 </form>
 
 <form method="post" action="{{ addAction }}">
@@ -24,10 +24,10 @@
       <thead class="bg-gray-50 border-b border-gray-200">
         <tr>
           <th class="px-4 py-3 w-10"></th>
-          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
-          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Organization</th>
-          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">On this list</th>
+          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_list_contacts.contact" | t }}</th>
+          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_list_contacts.email" | t }}</th>
+          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_list_contacts.organization" | t }}</th>
+          <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_list_contacts.on_this_list" | t }}</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100">
@@ -37,7 +37,7 @@
           <td class="px-6 py-3 text-sm text-gray-700">{{ row.name }}{% if row.title != blank %}<div class="text-xs text-gray-400">{{ row.title }}</div>{% endif %}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ row.email }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ row.organization }}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">{% if row.inList %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">yes</span>{% endif %}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{% if row.inList %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">{{ "events.views.guest_list_contacts.yes" | t }}</span>{% endif %}</td>
         </tr>
         {% else %}
         <tr><td colspan="5" class="px-6 py-10 text-center text-sm text-gray-400">{% if q != blank %}No contacts match this search.{% else %}Search the contact database above.{% endif %}</td></tr>
@@ -47,8 +47,8 @@
   </div>
   {% if hasRows %}
   <div class="flex flex-wrap gap-2" style="margin-top:1rem">
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Add selected to list</button>
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer" type="submit" formaction="{{ removeAction }}" data-confirm="Remove the selected contacts' guests from this list?">Remove selected from list</button>
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">{{ "events.views.guest_list_contacts.add_selected_to_list" | t }}</button>
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer" type="submit" formaction="{{ removeAction }}" data-confirm="{{ "events.views.guest_list_contacts.remove_the_selected_contacts_guests_from_this_list" | t }}">{{ "events.views.guest_list_contacts.remove_selected_from_list" | t }}</button>
   </div>
   {% endif %}
 </form>

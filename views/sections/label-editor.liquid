@@ -1,49 +1,49 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← Label templates</a>
-    <input id="label-name" form="labelSaveForm" class="block w-full border-0 p-0 bg-transparent text-2xl font-bold text-gray-900 focus:outline-none focus:ring-0" name="name" value="{{ labelName }}" required autocomplete="off" placeholder="Template name" aria-label="Template name">
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">{{ "events.views.label_editor.label_templates" | t }}</a>
+    <input id="label-name" form="labelSaveForm" class="block w-full border-0 p-0 bg-transparent text-2xl font-bold text-gray-900 focus:outline-none focus:ring-0" name="name" value="{{ labelName }}" required autocomplete="off" placeholder="{{ "events.views.label_editor.template_name" | t }}" aria-label="{{ "events.views.label_editor.template_name" | t }}">
     <p class="mt-1 text-sm text-gray-500">{{ eventName }}</p>
   </div>
   <div class="flex flex-wrap items-center justify-end gap-2">
-    <button type="submit" form="labelSaveForm" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Save label" aria-label="Save label"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span id="saveButtonText" class="hidden lg:inline">Save</span></button>
-    <button type="button" id="exportLabel" hidden class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="Export JSON" aria-label="Export JSON"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export JSON</span></button>
-    <button type="button" id="importLabel" hidden class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="Import JSON" aria-label="Import JSON"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import JSON</span></button>
+    <button type="submit" form="labelSaveForm" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="{{ "events.views.label_editor.save_label" | t }}" aria-label="{{ "events.views.label_editor.save_label" | t }}"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span id="saveButtonText" class="hidden lg:inline">{{ "events.views.label_editor.save" | t }}</span></button>
+    <button type="button" id="exportLabel" hidden class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="{{ "events.views.label_editor.export_json" | t }}" aria-label="{{ "events.views.label_editor.export_json" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">{{ "events.views.label_editor.export_json" | t }}</span></button>
+    <button type="button" id="importLabel" hidden class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="{{ "events.views.label_editor.import_json" | t }}" aria-label="{{ "events.views.label_editor.import_json" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">{{ "events.views.label_editor.import_json" | t }}</span></button>
     <input type="file" id="labelFileInput" accept=".json,.txt" hidden>
-    {% if isPublished %}<form method="post" action="{{ unpublishAction }}" data-confirm="Unpublish this label template?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 text-sm font-semibold text-yellow-700 hover:bg-yellow-50 hover:text-yellow-800 cursor-pointer" title="Unpublish label" aria-label="Unpublish label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye-off"></use></svg><span class="hidden lg:inline">Unpublish</span></button></form>{% else %}<form method="post" action="{{ publishAction }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-white px-4 text-sm font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 cursor-pointer" title="Publish label" aria-label="Publish label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">Publish</span></button></form>{% endif %}
-    <form method="post" action="{{ deleteAction }}" data-confirm="Delete label template “{{ labelName }}”?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer" title="Delete label" aria-label="Delete label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg><span class="hidden lg:inline">Delete</span></button></form>
+    {% if isPublished %}<form method="post" action="{{ unpublishAction }}" data-confirm="{{ "events.views.label_editor.unpublish_this_label_template" | t }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 text-sm font-semibold text-yellow-700 hover:bg-yellow-50 hover:text-yellow-800 cursor-pointer" title="{{ "events.views.label_editor.unpublish_label" | t }}" aria-label="{{ "events.views.label_editor.unpublish_label" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye-off"></use></svg><span class="hidden lg:inline">{{ "events.views.label_editor.unpublish" | t }}</span></button></form>{% else %}<form method="post" action="{{ publishAction }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-white px-4 text-sm font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 cursor-pointer" title="{{ "events.views.label_editor.publish_label" | t }}" aria-label="{{ "events.views.label_editor.publish_label" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">{{ "events.views.label_editor.publish" | t }}</span></button></form>{% endif %}
+    <form method="post" action="{{ deleteAction }}" data-confirm="Delete label template “{{ labelName }}”?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer" title="{{ "events.views.label_editor.delete_label" | t }}" aria-label="{{ "events.views.label_editor.delete_label" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg><span class="hidden lg:inline">{{ "events.views.label_editor.delete" | t }}</span></button></form>
   </div>
 </div>
 {% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
-<p id="labelEditorFallback" class="mb-4 rounded-lg bg-amber-50 border border-gray-200 px-4 py-3 text-sm text-amber-800">The interactive label editor script is not loaded (it may be awaiting approval). You can still rename or delete the template; the stored design is kept as-is.</p>
+<p id="labelEditorFallback" class="mb-4 rounded-lg bg-amber-50 border border-gray-200 px-4 py-3 text-sm text-amber-800">{{ "events.views.label_editor.the_interactive_label_editor_script_is_not_loaded_it_may_be_awaiting_app" | t }}</p>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
   <!-- Preview column -->
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
     <form method="get" action="{{ selfHref }}" id="labelGuestForm" class="mb-3">
       <div class="flex gap-2 mb-2">
-        <input type="search" name="q" id="guestSearchInput" value="{{ q }}" placeholder="Search guest by name, email or organization…" aria-label="Search guests" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
-        <button type="submit" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Search</button>
+        <input type="search" name="q" id="guestSearchInput" value="{{ q }}" placeholder="{{ "events.views.label_editor.search_guest_by_name_email_or_organization" | t }}" aria-label="{{ "events.views.label_editor.search_guests" | t }}" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+        <button type="submit" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">{{ "events.views.label_editor.search" | t }}</button>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <select name="list" id="guestListSelect" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-          <option value="">Preview guest list…</option>
+          <option value="">{{ "events.views.label_editor.preview_guest_list" | t }}</option>
           {% for list in guestLists %}<option value="{{ list.id }}"{% if list.selected %} selected{% endif %}>{{ list.name }}</option>{% endfor %}
         </select>
         <select name="guest" id="guestSelect" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"{% if selectedListId == blank and q == blank %} disabled{% endif %}>
           <option value="">{% if q != blank %}{% if guests.size > 0 %}{{ guests.size }} matching guest{% if guests.size != 1 %}s{% endif %}…{% else %}No guests match “{{ q }}”{% endif %}{% else %}Preview guest…{% endif %}</option>
           {% for guest in guests %}<option value="{{ guest.id }}"{% if guest.selected %} selected{% endif %}>{{ guest.name }}</option>{% endfor %}
         </select>
-        <button type="submit" id="loadGuestButton" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Load</button>
+        <button type="submit" id="loadGuestButton" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">{{ "events.views.label_editor.load" | t }}</button>
       </div>
     </form>
     <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-      <p class="text-sm text-gray-600">Actual size: <span id="actualSize" class="font-semibold text-indigo-600">60mm × 30mm</span></p>
+      <p class="text-sm text-gray-600">{{ "events.views.label_editor.actual_size" | t }} <span id="actualSize" class="font-semibold text-indigo-600">{{ "events.views.label_editor.60mm_30mm" | t }}</span></p>
       <div class="flex items-center gap-3">
-        <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600"><input type="checkbox" id="rotatePreview" class="h-4 w-4">Rotate -90°</label>
-        <button type="button" id="printLabelButton" hidden class="inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer">Print label</button>
+        <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600"><input type="checkbox" id="rotatePreview" class="h-4 w-4">{{ "events.views.label_editor.rotate_90" | t }}</label>
+        <button type="button" id="printLabelButton" hidden class="inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer">{{ "events.views.label_editor.print_label" | t }}</button>
       </div>
     </div>
-    <p class="mb-3 text-right text-xs text-gray-500">Uses the shared Check-in printer mode. <a href="{{ printerSettingsHref }}" class="font-medium text-indigo-600 hover:text-indigo-800">Printer settings</a></p>
+    <p class="mb-3 text-right text-xs text-gray-500">{{ "events.views.label_editor.uses_the_shared_check_in_printer_mode" | t }} <a href="{{ printerSettingsHref }}" class="font-medium text-indigo-600 hover:text-indigo-800">{{ "events.views.label_editor.printer_settings" | t }}</a></p>
     <div id="svgPreviewContainer" class="flex justify-center items-center rounded-lg p-4 w-full overflow-x-auto" style="min-height:20rem;background-image:linear-gradient(45deg,#e5e7eb 25%,transparent 25%),linear-gradient(-45deg,#e5e7eb 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e5e7eb 75%),linear-gradient(-45deg,transparent 75%,#e5e7eb 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;">
       <div id="svgWrapper" class="relative" style="transition:transform .2s">
         <div class="pointer-events-none absolute top-0 left-0 w-full h-full" aria-hidden="true">
@@ -58,16 +58,16 @@
         </div>
       </div>
     </div>
-    <p class="mt-2 text-xs text-gray-400">Click an element to select it, drag to move. Arrow keys nudge; hold Shift for larger steps.</p>
+    <p class="mt-2 text-xs text-gray-400">{{ "events.views.label_editor.click_an_element_to_select_it_drag_to_move_arrow_keys_nudge_hold_shift_f" | t }}</p>
     <textarea id="labelTokens" hidden readonly>{{ tokensJson }}</textarea>
 
     <!-- Adhoc values -->
     <div id="adhocValuesPanel" class="mt-4 border-t border-gray-200 pt-4" hidden>
       <div class="flex items-center justify-between mb-2">
-        <h3 class="text-sm font-semibold text-gray-800">Placeholder values</h3>
-        <button type="button" id="clearAdhocValues" class="px-3 py-1 text-xs rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer">Clear overrides</button>
+        <h3 class="text-sm font-semibold text-gray-800">{{ "events.views.label_editor.placeholder_values" | t }}</h3>
+        <button type="button" id="clearAdhocValues" class="px-3 py-1 text-xs rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer">{{ "events.views.label_editor.clear_overrides" | t }}</button>
       </div>
-      <p class="text-xs text-gray-500 mb-2">Override <code>[@placeholder]</code> values to preview without picking a guest.</p>
+      <p class="text-xs text-gray-500 mb-2">{{ "events.views.label_editor.override" | t }} <code>[@placeholder]</code> {{ "events.views.label_editor.values_to_preview_without_picking_a_guest" | t }}</p>
       <div id="adhocInputsContainer" class="space-y-2"></div>
     </div>
 
@@ -75,10 +75,10 @@
     <section id="batchPrintPanel" data-storage-key="{{ batchStorageKey }}" class="mt-4 border-t border-gray-200 pt-4">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
-          <h3 class="text-sm font-semibold text-gray-800">Batch print</h3>
-          <p id="batchPrintStatus" class="text-xs text-gray-500">Select guests from this list.</p>
+          <h3 class="text-sm font-semibold text-gray-800">{{ "events.views.label_editor.batch_print" | t }}</h3>
+          <p id="batchPrintStatus" class="text-xs text-gray-500">{{ "events.views.label_editor.select_guests_from_this_list" | t }}</p>
         </div>
-        {% if batchGuests.size > 0 %}<button type="button" id="batchCheckAllButton" class="px-3 py-1 text-xs rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer">Check all</button>{% endif %}
+        {% if batchGuests.size > 0 %}<button type="button" id="batchCheckAllButton" class="px-3 py-1 text-xs rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 cursor-pointer">{{ "events.views.label_editor.check_all" | t }}</button>{% endif %}
       </div>
       {% if batchGuests.size > 0 %}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto rounded-lg border border-gray-200 p-3">
@@ -92,9 +92,9 @@
         </div>
         {% endfor %}
       </div>
-      <button type="button" id="batchPrintButton" class="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-emerald-600 px-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" disabled>Batch print</button>
+      <button type="button" id="batchPrintButton" class="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-emerald-600 px-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" disabled>{{ "events.views.label_editor.batch_print" | t }}</button>
       {% else %}
-      <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">This guest list is empty.</p>
+      <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">{{ "events.views.label_editor.this_guest_list_is_empty" | t }}</p>
       {% endif %}
     </section>
     {% endif %}
@@ -108,77 +108,77 @@
       <input type="hidden" name="list" value="{{ selectedListId }}">
       <input type="hidden" name="guest" value="{{ selectedGuestId }}">
       <input type="hidden" id="selectedGuestName" value="{{ selectedGuestName }}">
-      <p id="unsavedHint" class="mt-2 text-xs text-amber-800" hidden>Unsaved changes — click Save to store this design.</p>
+      <p id="unsavedHint" class="mt-2 text-xs text-amber-800" hidden>{{ "events.views.label_editor.unsaved_changes_click_save_to_store_this_design" | t }}</p>
     </form>
 
     <div id="labelControls" hidden>
       <!-- Elements panel -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
-        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Elements</h3>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">{{ "events.views.label_editor.elements" | t }}</h3>
         <div class="flex flex-wrap gap-2 mb-3">
-          <button type="button" id="addTextBox" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">+ Text</button>
-          <button type="button" id="addQRCode" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">+ QR code</button>
-          <button type="button" id="addRectangle" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">+ Rectangle</button>
-          <button type="button" id="addCircle" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">+ Ellipse</button>
-          <button type="button" id="addImage" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">+ Image…</button>
+          <button type="button" id="addTextBox" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">{{ "events.views.label_editor.text" | t }}</button>
+          <button type="button" id="addQRCode" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">{{ "events.views.label_editor.qr_code" | t }}</button>
+          <button type="button" id="addRectangle" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">{{ "events.views.label_editor.rectangle" | t }}</button>
+          <button type="button" id="addCircle" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">{{ "events.views.label_editor.ellipse" | t }}</button>
+          <button type="button" id="addImage" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">{{ "events.views.label_editor.image" | t }}</button>
           <input type="file" id="imageInput" accept="image/*" hidden>
         </div>
         <div class="flex gap-2 mb-3">
-          <input type="text" id="imageUrlInput" placeholder="…or image URL" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
-          <button type="button" id="addImageUrl" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">Add</button>
+          <input type="text" id="imageUrlInput" placeholder="{{ "events.views.label_editor.or_image_url" | t }}" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <button type="button" id="addImageUrl" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">{{ "events.views.label_editor.add" | t }}</button>
         </div>
         <div class="flex gap-2">
-          <select id="elementSelector" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="">— No element selected —</option></select>
-          <button type="button" id="removeTextBox" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-red-600 hover:bg-gray-50 cursor-pointer" hidden>Remove</button>
+          <select id="elementSelector" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="">{{ "events.views.label_editor.no_element_selected" | t }}</option></select>
+          <button type="button" id="removeTextBox" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-red-600 hover:bg-gray-50 cursor-pointer" hidden>{{ "events.views.label_editor.remove" | t }}</button>
         </div>
       </div>
 
       <!-- Position panel -->
       <div id="positionPanel" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
-        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Position</h3>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">{{ "events.views.label_editor.position" | t }}</h3>
         <div class="grid grid-cols-2 gap-2 mb-2">
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Relative to</span>
-            <select id="parentElement" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="label">Label (absolute)</option></select>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.relative_to" | t }}</span>
+            <select id="parentElement" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="label">{{ "events.views.label_editor.label_absolute" | t }}</option></select>
           </label>
-          <div class="flex" style="align-items:flex-end"><button type="button" id="clearParent" class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 cursor-pointer" title="Reset to absolute">Reset</button></div>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">X anchor</span>
-            <select id="anchorX" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+          <div class="flex" style="align-items:flex-end"><button type="button" id="clearParent" class="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 cursor-pointer" title="{{ "events.views.label_editor.reset_to_absolute" | t }}">{{ "events.views.label_editor.reset" | t }}</button></div>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.x_anchor" | t }}</span>
+            <select id="anchorX" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="left">{{ "events.views.label_editor.left" | t }}</option><option value="center">{{ "events.views.label_editor.center" | t }}</option><option value="right">{{ "events.views.label_editor.right" | t }}</option></select>
           </label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Y anchor</span>
-            <select id="anchorY" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.y_anchor" | t }}</span>
+            <select id="anchorY" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="top">{{ "events.views.label_editor.top" | t }}</option><option value="middle">{{ "events.views.label_editor.middle" | t }}</option><option value="bottom">{{ "events.views.label_editor.bottom" | t }}</option></select>
           </label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">X offset (px)</span><input type="number" id="textX" step="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Y offset (px)</span><input type="number" id="textY" step="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.x_offset_px" | t }}</span><input type="number" id="textX" step="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.y_offset_px" | t }}</span><input type="number" id="textY" step="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
         </div>
-        <p class="text-xs text-gray-400">Offsets are from the parent's anchor point. Use a "bottom" anchor to sit below the parent's last text line.</p>
+        <p class="text-xs text-gray-400">{{ "events.views.label_editor.offsets_are_from_the_parent_s_anchor_point_use_a_bottom_anchor_to_sit_be" | t }}</p>
       </div>
 
       <!-- Text settings -->
       <div id="textSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
-        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Text</h3>
-        <label class="block mb-3"><span class="block text-xs text-gray-500 mb-1">Content — use [@name], [@organization], … and "||" for alternatives</span><textarea id="labelText" rows="3" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"></textarea></label>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">{{ "events.views.label_editor.text_2" | t }}</h3>
+        <label class="block mb-3"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.content_use_name_organization_and_for_alternatives" | t }}</span><textarea id="labelText" rows="3" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"></textarea></label>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Font size</span><input type="number" id="fontSize" min="4" max="200" value="16" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">2nd size</span><input type="number" id="fontSizeSecondary" min="0" max="200" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">3rd size</span><input type="number" id="fontSizeTertiary" min="0" max="200" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Leading (em)</span><input type="number" id="lineHeight" min="0.5" max="5" value="1.2" step="0.1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Max width (px)</span><input type="number" id="maxWidth" min="0" max="5000" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Max lines</span><input type="number" id="maxLines" min="0" max="20" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.font_size" | t }}</span><input type="number" id="fontSize" min="4" max="200" value="16" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.2nd_size" | t }}</span><input type="number" id="fontSizeSecondary" min="0" max="200" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.3rd_size" | t }}</span><input type="number" id="fontSizeTertiary" min="0" max="200" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.leading_em" | t }}</span><input type="number" id="lineHeight" min="0.5" max="5" value="1.2" step="0.1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.max_width_px" | t }}</span><input type="number" id="maxWidth" min="0" max="5000" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.max_lines" | t }}</span><input type="number" id="maxLines" min="0" max="20" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
         </div>
-        <p class="text-xs text-gray-400 mb-3">Wraps at max width; if lines exceed max lines it retries with the 2nd, then 3rd size. 0 = off.</p>
+        <p class="text-xs text-gray-400 mb-3">{{ "events.views.label_editor.wraps_at_max_width_if_lines_exceed_max_lines_it_retries_with_the_2nd_the" | t }}</p>
         <div class="flex flex-wrap gap-4 mb-3">
-          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="autoSplitCJKLatin" class="h-4 w-4">Auto linebreak CJK/Latin</label>
-          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="balanceOrphans" class="h-4 w-4">Balance orphan lines</label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="autoSplitCJKLatin" class="h-4 w-4">{{ "events.views.label_editor.auto_linebreak_cjk_latin" | t }}</label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="balanceOrphans" class="h-4 w-4">{{ "events.views.label_editor.balance_orphan_lines" | t }}</label>
         </div>
         <div class="mb-3">
-          <span class="block text-xs text-gray-500 mb-1">Fonts (primary / secondary / tertiary + unicode range)</span>
+          <span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.fonts_primary_secondary_tertiary_unicode_range" | t }}</span>
           <div class="grid grid-cols-2 gap-2 mb-1">
-            <input type="text" id="fontFamily" list="fontFamilyList" value="Arial" placeholder="Primary font" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <input type="text" id="fontUnicodePrimary" list="unicodeRangeList" placeholder="U+4E00-9FFF" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
-            <input type="text" id="fontFamilySecondary" list="fontFamilyList" placeholder="Secondary font" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <input type="text" id="fontUnicodeSecondary" list="unicodeRangeList" placeholder="U+0000-00FF" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
-            <input type="text" id="fontFamilyTertiary" list="fontFamilyList" placeholder="Tertiary font" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <input type="text" id="fontUnicodeTertiary" list="unicodeRangeList" placeholder="U+3040-30FF" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+            <input type="text" id="fontFamily" list="fontFamilyList" value="Arial" placeholder="{{ "events.views.label_editor.primary_font" | t }}" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <input type="text" id="fontUnicodePrimary" list="unicodeRangeList" placeholder="{{ "events.views.label_editor.u_4e00_9fff" | t }}" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+            <input type="text" id="fontFamilySecondary" list="fontFamilyList" placeholder="{{ "events.views.label_editor.secondary_font" | t }}" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <input type="text" id="fontUnicodeSecondary" list="unicodeRangeList" placeholder="{{ "events.views.label_editor.u_0000_00ff" | t }}" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+            <input type="text" id="fontFamilyTertiary" list="fontFamilyList" placeholder="{{ "events.views.label_editor.tertiary_font" | t }}" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <input type="text" id="fontUnicodeTertiary" list="unicodeRangeList" placeholder="{{ "events.views.label_editor.u_3040_30ff" | t }}" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
           </div>
           <datalist id="fontFamilyList">
             <option value="Arial"></option><option value="Helvetica"></option><option value="Verdana"></option><option value="Georgia"></option><option value="Times New Roman"></option><option value="Courier New"></option><option value="Noto Sans CJK SC"></option><option value="Noto Sans SC"></option><option value="Noto Sans TC"></option><option value="PingFang SC"></option><option value="PingFang TC"></option><option value="Microsoft YaHei"></option><option value="Microsoft JhengHei"></option>
@@ -192,77 +192,77 @@
             <option value="U+AC00-D7A3, U+3130-318F" label="Korean hangul"></option>
           </datalist>
           <select id="fontFamilyFallback" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            <option value="sans-serif">sans-serif</option><option value="serif">serif</option><option value="monospace">monospace</option><option value="cursive">cursive</option><option value="fantasy">fantasy</option><option value="system-ui">system-ui</option>
+            <option value="sans-serif">{{ "events.views.label_editor.sans_serif" | t }}</option><option value="serif">{{ "events.views.label_editor.serif" | t }}</option><option value="monospace">{{ "events.views.label_editor.monospace" | t }}</option><option value="cursive">{{ "events.views.label_editor.cursive" | t }}</option><option value="fantasy">{{ "events.views.label_editor.fantasy" | t }}</option><option value="system-ui">{{ "events.views.label_editor.system_ui" | t }}</option>
           </select>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Color</span><input type="color" id="textColor" value="#000000" class="block w-full h-9 border border-gray-300 rounded-lg cursor-pointer"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Alignment</span>
-            <select id="textAlign" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.color" | t }}</span><input type="color" id="textColor" value="#000000" class="block w-full h-9 border border-gray-300 rounded-lg cursor-pointer"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.alignment" | t }}</span>
+            <select id="textAlign" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="left">{{ "events.views.label_editor.left" | t }}</option><option value="center">{{ "events.views.label_editor.center" | t }}</option><option value="right">{{ "events.views.label_editor.right" | t }}</option></select>
           </label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Grow direction</span>
-            <select id="textGrowDirection" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="down">Down</option><option value="center">Center</option><option value="up">Up</option></select>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.grow_direction" | t }}</span>
+            <select id="textGrowDirection" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="down">{{ "events.views.label_editor.down" | t }}</option><option value="center">{{ "events.views.label_editor.center" | t }}</option><option value="up">{{ "events.views.label_editor.up" | t }}</option></select>
           </label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="textRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.rotation" | t }}</span><input type="number" id="textRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
         </div>
         <div class="flex flex-wrap gap-4">
-          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="boldText" class="h-4 w-4"><span class="font-bold">Bold</span></label>
-          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="italicText" class="h-4 w-4"><span style="font-style:italic">Italic</span></label>
-          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="underlineText" class="h-4 w-4"><span class="underline">Underline</span></label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="boldText" class="h-4 w-4"><span class="font-bold">{{ "events.views.label_editor.bold" | t }}</span></label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="italicText" class="h-4 w-4"><span style="font-style:italic">{{ "events.views.label_editor.italic" | t }}</span></label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="underlineText" class="h-4 w-4"><span class="underline">{{ "events.views.label_editor.underline" | t }}</span></label>
         </div>
       </div>
 
       <!-- QR code settings -->
       <div id="qrcodeSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
-        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">QR code</h3>
-        <label class="block mb-3"><span class="block text-xs text-gray-500 mb-1">QR data — supports [@placeholder] tokens, e.g. [@checkin_qrcode]</span><textarea id="qrcodeText" rows="2" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"></textarea></label>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">{{ "events.views.label_editor.qr_code_2" | t }}</h3>
+        <label class="block mb-3"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.qr_data_supports_placeholder_tokens_e_g_checkin_qrcode" | t }}</span><textarea id="qrcodeText" rows="2" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"></textarea></label>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Size (px)</span><input type="number" id="qrcodeSize" min="10" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Error correction</span>
-            <select id="qrcodeErrorLevel" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="L">Low (7%)</option><option value="M">Medium (15%)</option><option value="Q">Quartile (25%)</option><option value="H">High (30%)</option></select>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.size_px" | t }}</span><input type="number" id="qrcodeSize" min="10" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.error_correction" | t }}</span>
+            <select id="qrcodeErrorLevel" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="L">{{ "events.views.label_editor.low_7" | t }}</option><option value="M">{{ "events.views.label_editor.medium_15" | t }}</option><option value="Q">{{ "events.views.label_editor.quartile_25" | t }}</option><option value="H">{{ "events.views.label_editor.high_30" | t }}</option></select>
           </label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="qrcodeRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.rotation" | t }}</span><input type="number" id="qrcodeRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
         </div>
       </div>
 
       <!-- Image settings -->
       <div id="imageSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
-        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Image</h3>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">{{ "events.views.label_editor.image_2" | t }}</h3>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Width (px)</span><input type="number" id="imageWidth" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Height (px)</span><input type="number" id="imageHeight" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="imageRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.width_px" | t }}</span><input type="number" id="imageWidth" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.height_px" | t }}</span><input type="number" id="imageHeight" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.rotation" | t }}</span><input type="number" id="imageRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
         </div>
-        <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="imageLockRatio" checked class="h-4 w-4">Lock aspect ratio</label>
+        <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="imageLockRatio" checked class="h-4 w-4">{{ "events.views.label_editor.lock_aspect_ratio" | t }}</label>
       </div>
 
       <!-- Shape settings -->
       <div id="shapeSettings" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4" hidden>
-        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Shape</h3>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">{{ "events.views.label_editor.shape" | t }}</h3>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Width (px)</span><input type="number" id="shapeWidth" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Height (px)</span><input type="number" id="shapeHeight" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Corner radius</span><input type="number" id="shapeCornerRadius" min="0" max="100" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Stroke width</span><input type="number" id="shapeStrokeWidth" min="0" max="20" step="0.5" value="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Rotation (°)</span><input type="number" id="shapeRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.width_px" | t }}</span><input type="number" id="shapeWidth" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.height_px" | t }}</span><input type="number" id="shapeHeight" min="1" max="5000" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.corner_radius" | t }}</span><input type="number" id="shapeCornerRadius" min="0" max="100" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.stroke_width" | t }}</span><input type="number" id="shapeStrokeWidth" min="0" max="20" step="0.5" value="1" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.rotation" | t }}</span><input type="number" id="shapeRotation" min="-180" max="180" value="0" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
         </div>
         <div class="flex flex-wrap items-center gap-4">
-          <label class="flex items-center gap-2 text-sm text-gray-700">Fill <input type="color" id="shapeFill" value="#ffffff" class="h-9 w-16 border border-gray-300 rounded-lg cursor-pointer"></label>
-          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="shapeFillNone" class="h-4 w-4">No fill</label>
-          <label class="flex items-center gap-2 text-sm text-gray-700">Stroke <input type="color" id="shapeStroke" value="#000000" class="h-9 w-16 border border-gray-300 rounded-lg cursor-pointer"></label>
+          <label class="flex items-center gap-2 text-sm text-gray-700">{{ "events.views.label_editor.fill" | t }} <input type="color" id="shapeFill" value="#ffffff" class="h-9 w-16 border border-gray-300 rounded-lg cursor-pointer"></label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700"><input type="checkbox" id="shapeFillNone" class="h-4 w-4">{{ "events.views.label_editor.no_fill" | t }}</label>
+          <label class="flex items-center gap-2 text-sm text-gray-700">{{ "events.views.label_editor.stroke" | t }} <input type="color" id="shapeStroke" value="#000000" class="h-9 w-16 border border-gray-300 rounded-lg cursor-pointer"></label>
         </div>
       </div>
 
       <!-- Label design -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
-        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Label</h3>
+        <h3 class="text-sm font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">{{ "events.views.label_editor.label" | t }}</h3>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Width (mm)</span><input type="number" id="labelWidth" min="10" max="210" value="60" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Height (mm)</span><input type="number" id="labelHeight" min="10" max="210" value="30" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
-          <label class="block"><span class="block text-xs text-gray-500 mb-1">Background</span><input type="color" id="backgroundColor" value="#ffffff" class="block w-full h-9 border border-gray-300 rounded-lg cursor-pointer"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.width_mm" | t }}</span><input type="number" id="labelWidth" min="10" max="210" value="60" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.height_mm" | t }}</span><input type="number" id="labelHeight" min="10" max="210" value="30" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></label>
+          <label class="block"><span class="block text-xs text-gray-500 mb-1">{{ "events.views.label_editor.background" | t }}</span><input type="color" id="backgroundColor" value="#ffffff" class="block w-full h-9 border border-gray-300 rounded-lg cursor-pointer"></label>
         </div>
         <div class="flex flex-wrap gap-2 mt-2">
-          <button type="button" id="resetLabel" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">Reset design…</button>
+          <button type="button" id="resetLabel" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer">{{ "events.views.label_editor.reset_design" | t }}</button>
         </div>
       </div>
     </div>

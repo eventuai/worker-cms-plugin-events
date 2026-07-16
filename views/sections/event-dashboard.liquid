@@ -1,32 +1,32 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventsHref }}">← Events</a>
-    <h1 class="flex flex-wrap items-center gap-2 text-2xl font-bold text-gray-900">{{ eventName }}{% if archived %}<span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">Archived</span>{% endif %}{% if deleting %}<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Deleting</span>{% endif %}</h1>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventsHref }}">{{ "events.views.event_dashboard.events" | t }}</a>
+    <h1 class="flex flex-wrap items-center gap-2 text-2xl font-bold text-gray-900">{{ eventName }}{% if archived %}<span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">{{ "events.views.event_dashboard.archived" | t }}</span>{% endif %}{% if deleting %}<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{{ "events.views.event_dashboard.deleting" | t }}</span>{% endif %}</h1>
   </div>
   <div class="flex flex-wrap gap-2 justify-end">
-    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref }}">
+    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="{{ "events.views.event_dashboard.adhoc_check_in" | t }}" aria-label="{{ "events.views.event_dashboard.adhoc_check_in" | t }}" href="{{ adhocCheckinHref }}">
       <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
-      <span class="hidden lg:inline">Adhoc check-in</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.adhoc_check_in" | t }}</span>
     </a>{% endif %}
-    {% if labelsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Labels" aria-label="Labels" href="{{ labelsHref }}">
+    {% if labelsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.labels" | t }}" aria-label="{{ "events.views.event_dashboard.labels" | t }}" href="{{ labelsHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#tag"></use></svg>
-      <span class="hidden lg:inline">Labels</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.labels" | t }}</span>
     </a>{% endif %}
-    {% if editHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit event" aria-label="Edit event" href="{{ editHref }}">
+    {% if editHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.edit_event" | t }}" aria-label="{{ "events.views.event_dashboard.edit_event" | t }}" href="{{ editHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
-      <span class="hidden lg:inline">Edit event</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.edit_event" | t }}</span>
     </a>{% endif %}
   </div>
 </div>
 {% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
-{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">This event is archived and read-only. Restore it from Archive before making changes.</p>{% endif %}
-{% if deleting %}<p class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">This event is being deleted in the background. Large guest lists can take several minutes to finish.</p>{% endif %}
+{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ "events.views.event_dashboard.this_event_is_archived_and_read_only_restore_it_from_archive_before_maki" | t }}</p>{% endif %}
+{% if deleting %}<p class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">{{ "events.views.event_dashboard.this_event_is_being_deleted_in_the_background_large_guest_lists_can_take" | t }}</p>{% endif %}
 
 {% if stats != blank %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="View all guests" aria-label="View all guests" href="{{ allGuestsHref }}">
+  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.view_all_guests" | t }}" aria-label="{{ "events.views.event_dashboard.view_all_guests" | t }}" href="{{ allGuestsHref }}">
     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
-    <span>View all guests</span>
+    <span>{{ "events.views.event_dashboard.view_all_guests" | t }}</span>
   </a>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
     {% for stat in stats %}
@@ -40,32 +40,32 @@
   <div class="p-4 pb-0 sticky top-0 z-10 bg-white">
     <div class="flex gap-3 justify-between">
       <div>
-      <a class="hover:underline flex items-center gap-2 text-lg font-bold text-gray-900" href="{{ guestListsHref }}"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>Guest lists</a>
-      <p class="mt-1 text-sm text-gray-500">Invitation, RSVP and check-in summary by list.</p>
+      <a class="hover:underline flex items-center gap-2 text-lg font-bold text-gray-900" href="{{ guestListsHref }}"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>{{ "events.views.event_dashboard.guest_lists" | t }}</a>
+      <p class="mt-1 text-sm text-gray-500">{{ "events.views.event_dashboard.invitation_rsvp_and_check_in_summary_by_list" | t }}</p>
       </div>
 
       <div>
-        {% if hasGuests and exportAllHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export" aria-label="Export guests" href="{{ exportAllHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export</span></a>{% endif %}
-        {% if importHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import" aria-label="Import guests" href="{{ importHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import</span></a>{% endif %}
-        {% if newGuestListHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="New guest list" aria-label="New guest list" href="{{ newGuestListHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New Guest List</span></a>{% endif %}
+        {% if hasGuests and exportAllHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.export" | t }}" aria-label="{{ "events.views.event_dashboard.export_guests" | t }}" href="{{ exportAllHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">{{ "events.views.event_dashboard.export" | t }}</span></a>{% endif %}
+        {% if importHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.import" | t }}" aria-label="{{ "events.views.event_dashboard.import_guests" | t }}" href="{{ importHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">{{ "events.views.event_dashboard.import" | t }}</span></a>{% endif %}
+        {% if newGuestListHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.new_guest_list" | t }}" aria-label="{{ "events.views.event_dashboard.new_guest_list" | t }}" href="{{ newGuestListHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">{{ "events.views.event_dashboard.new_guest_list_2" | t }}</span></a>{% endif %}
       </div>
     </div>
 
     {% if hasGuests %}
       <div class="flex flex-wrap items-center gap-3 justify-center mt-4">
       <form class="flex flex-wrap items-center gap-3 lg:grid lg:grid-cols-2 w-full" method="get" action="{{ guestSearchHref }}">
-      <input class="w-full block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="q" placeholder="Search name, email, phone or guest ID">
+      <input class="w-full block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="q" placeholder="{{ "events.views.event_dashboard.search_name_email_phone_or_guest_id" | t }}">
       <div class="flex flex-nowrap gap-3 justify-end">
         <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
-          <option value="">statuses</option>
+          <option value="">{{ "events.views.event_dashboard.statuses" | t }}</option>
           {% for status in statuses %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
         </select>
         <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
-          <option value="">All color tags</option>
-          <option value="none">No color tag</option>
+          <option value="">{{ "events.views.event_dashboard.all_color_tags" | t }}</option>
+          <option value="none">{{ "events.views.event_dashboard.no_color_tag" | t }}</option>
           {% for color in guestSearchColorOptions %}<option value="{{ color.value }}">{{ color.label }}</option>{% endfor %}
         </select>
-        <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Search" aria-label="Search guests">
+        <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="{{ "events.views.event_dashboard.search" | t }}" aria-label="{{ "events.views.event_dashboard.search_guests" | t }}">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
         </button>
       </div>
@@ -79,12 +79,12 @@
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
         {% if reorderAction != blank %}<th class="ps-4 sm:px-4 py-3 w-10"></th>{% endif %}
-        <th class="ps-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th>
-        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invitation</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">RSVP</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
+        <th class="ps-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.guest_list" | t }}</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.invitation" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.rsvp" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.check_in" | t }}</th><th class="px-6 py-3"></th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for list in guestLists %}
         <tr data-id="{{ list.id }}">
-          {% if reorderAction != blank %}<td class="ps-4 sm:px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
+          {% if reorderAction != blank %}<td class="ps-4 sm:px-4 py-3 text-gray-400" data-reorder-handle title="{{ "events.views.event_dashboard.drag_to_reorder" | t }}" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
           <td class="ps-4 sm:px-6 py-3 text-sm text-gray-700 min-w-[200px]">
             <a class="block text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">{{ list.name }}</a>
             <div>
@@ -109,12 +109,12 @@
             </div>
           </td>
           <td class="px-6 py-3 text-sm text-gray-700">
-{% if list.summary.checked_in_count != list.summary.checked_in_total %}<strong>{{ list.summary.checked_in_count }}</strong> groups <br>{% endif %}
+{% if list.summary.checked_in_count != list.summary.checked_in_total %}<strong>{{ list.summary.checked_in_count }}</strong> {{ "events.views.event_dashboard.groups" | t }} <br>{% endif %}
 <span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} people</span></td>
           <td class="px-6 py-3 text-right"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">→</a></td>
         </tr>
       {% else %}
-        <tr><td colspan="7" class="px-6 py-10 text-center text-sm text-gray-400">No guest lists yet. Create one to begin inviting guests.</td></tr>
+        <tr><td colspan="7" class="px-6 py-10 text-center text-sm text-gray-400">{{ "events.views.event_dashboard.no_guest_lists_yet_create_one_to_begin_inviting_guests" | t }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -123,15 +123,15 @@
 {% if canManageEmail %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 mt-4">
   <div class="flex justify-between gap-4 sticky top-0 z-10 bg-white" style="padding:1rem 1rem 0;margin-bottom:.75rem">
-    <div><h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>Email templates</h2><p class="mt-1 text-sm text-gray-500">EDM templates for this event's invitations and blasts.</p></div>
-    {% if newEdmHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Add template" aria-label="Add template" href="{{ newEdmHref }}">
+    <div><h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>{{ "events.views.event_dashboard.email_templates" | t }}</h2><p class="mt-1 text-sm text-gray-500">{{ "events.views.event_dashboard.edm_templates_for_this_event_s_invitations_and_blasts" | t }}</p></div>
+    {% if newEdmHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.add_template" | t }}" aria-label="{{ "events.views.event_dashboard.add_template" | t }}" href="{{ newEdmHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>
-      <span class="hidden lg:inline">Add template</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.add_template" | t }}</span>
     </a>{% endif %}
   </div>
   <div class="overflow-x-auto w-full">
   <table class="w-full min-w-[560px] text-left relative">
-    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th><th class="px-6 py-3"></th></tr></thead>
+    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.name" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.subject" | t }}</th><th class="px-6 py-3"></th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for edm in edms %}
         <tr>
@@ -139,25 +139,25 @@
           <td class="px-6 py-3 text-sm text-gray-700">{{ edm.subject }}</td>
           <td class="px-6 py-3 text-right whitespace-nowrap">
             <div class="inline-flex items-center gap-3">
-              <a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Preview email template" aria-label="Preview email template" href="{{ edm.previewHref }}" target="_blank" rel="noopener">
+              <a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="{{ "events.views.event_dashboard.preview_email_template" | t }}" aria-label="{{ "events.views.event_dashboard.preview_email_template" | t }}" href="{{ edm.previewHref }}" target="_blank" rel="noopener">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye"></use></svg>
-                <span class="sr-only">Preview</span>
+                <span class="sr-only">{{ "events.views.event_dashboard.preview" | t }}</span>
               </a>
               {% if edm.duplicateAction != blank %}<form method="post" action="{{ edm.duplicateAction }}" class="inline shrink-0">
-                <button class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 cursor-pointer" type="submit" title="Duplicate email template" aria-label="Duplicate email template">
+                <button class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 cursor-pointer" type="submit" title="{{ "events.views.event_dashboard.duplicate_email_template" | t }}" aria-label="{{ "events.views.event_dashboard.duplicate_email_template" | t }}">
                   <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
-                  <span class="sr-only">Duplicate</span>
+                  <span class="sr-only">{{ "events.views.event_dashboard.duplicate" | t }}</span>
                 </button>
               </form>{% endif %}
-              {% if edm.href != blank %}<a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Edit email template" aria-label="Edit email template" href="{{ edm.href }}">
+              {% if edm.href != blank %}<a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="{{ "events.views.event_dashboard.edit_email_template" | t }}" aria-label="{{ "events.views.event_dashboard.edit_email_template" | t }}" href="{{ edm.href }}">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
-                <span class="sr-only">Edit</span>
+                <span class="sr-only">{{ "events.views.event_dashboard.edit" | t }}</span>
               </a>{% endif %}
             </div>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="3" class="px-6 py-10 text-center text-sm text-gray-400">No email templates yet. Add one to invite or blast this event's guests.</td></tr>
+        <tr><td colspan="3" class="px-6 py-10 text-center text-sm text-gray-400">{{ "events.views.event_dashboard.no_email_templates_yet_add_one_to_invite_or_blast_this_event_s_guests" | t }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -167,15 +167,15 @@
 <div id="guest-responses" class="bg-white rounded-xl shadow-sm border border-gray-200 mt-4">
   <div class="flex items-center justify-between gap-4 sticky top-0 z-10 bg-white" style="padding:1rem 1rem 0;margin-bottom:.75rem">
     <div>
-      <h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>Guest responses</h2>
-      <p class="mt-1 text-sm text-gray-500">Guests who have confirmed or declined, most recent first.</p>
+      <h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>{{ "events.views.event_dashboard.guest_responses" | t }}</h2>
+      <p class="mt-1 text-sm text-gray-500">{{ "events.views.event_dashboard.guests_who_have_confirmed_or_declined_most_recent_first" | t }}</p>
       {% if responsesTotal > 0 %}<span class="text-sm text-gray-500">{{ responsesTotal }} responses</span>{% endif %}
     </div>
     {% if responsesTotal > 0 %}
       <div class="flex shrink-0 justify-end" data-privacy-control>
-        <button type="button" data-privacy-toggle class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" aria-label="Reveal private fields" title="Reveal private fields">
+        <button type="button" data-privacy-toggle class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" aria-label="{{ "events.views.event_dashboard.reveal_private_fields" | t }}" title="{{ "events.views.event_dashboard.reveal_private_fields" | t }}">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye-off"></use></svg>
-          <span class="hidden lg:inline" data-privacy-toggle-label>Reveal</span>
+          <span class="hidden lg:inline" data-privacy-toggle-label>{{ "events.views.event_dashboard.reveal" | t }}</span>
         </button>
       </div>
     {% endif %}
@@ -183,17 +183,17 @@
   <div class="overflow-x-auto w-full">
   {% if responsesTotal > 0 %}<div data-privacy-control hidden></div>{% endif %}
   <table class="w-full min-w-[560px] text-left relative" data-privacy-table>
-    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name / contact</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Response</th>{% if responsesShowCheckin %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Checked-in</th>{% endif %}</tr></thead>
+    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.date" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.name_contact" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.response" | t }}</th>{% if responsesShowCheckin %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.event_dashboard.checked_in" | t }}</th>{% endif %}</tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for row in responses %}
         <tr>
           <td class="px-6 py-3 text-sm text-gray-700 whitespace-nowrap">{{ row.dateLabel }}<br><span class="text-xs text-gray-500">{{ row.timeLabel }}</span></td>
           <td class="px-6 py-3 text-sm text-gray-700">{% if row.href != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.href }}" data-private-field="name">{{ row.name }}</a>{% else %}<span class="font-medium text-gray-800" data-private-field="name">{{ row.name }}</span>{% endif %}<br><span class="text-xs text-gray-500" data-private-field="contact">{{ row.contact }}</span></td>
           <td class="px-6 py-3 text-sm"><span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {% if row.status == 'confirmed' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">{{ row.status | capitalize }}</span></td>
-          {% if responsesShowCheckin %}<td class="px-6 py-3 text-sm text-gray-700">{% if row.checkedIn %}<span class="text-indigo-600 font-medium">Yes</span>{% else %}—{% endif %}</td>{% endif %}
+          {% if responsesShowCheckin %}<td class="px-6 py-3 text-sm text-gray-700">{% if row.checkedIn %}<span class="text-indigo-600 font-medium">{{ "events.views.event_dashboard.yes" | t }}</span>{% else %}—{% endif %}</td>{% endif %}
         </tr>
       {% else %}
-        <tr><td colspan="{% if responsesShowCheckin %}4{% else %}3{% endif %}" class="px-6 py-10 text-center text-sm text-gray-400">No responses yet.</td></tr>
+        <tr><td colspan="{% if responsesShowCheckin %}4{% else %}3{% endif %}" class="px-6 py-10 text-center text-sm text-gray-400">{{ "events.views.event_dashboard.no_responses_yet" | t }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -203,15 +203,15 @@
       <p class="text-sm text-gray-500">Showing {{ responsesRangeStart }}-{{ responsesRangeEnd }} of {{ responsesTotal }}</p>
       <div class="flex items-center gap-2">
         {% if responsesPrevHref %}
-          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesPrevHref }}">Previous</a>
+          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesPrevHref }}">{{ "events.views.event_dashboard.previous" | t }}</a>
         {% else %}
-          <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">Previous</span>
+          <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">{{ "events.views.event_dashboard.previous" | t }}</span>
         {% endif %}
         <span class="text-sm text-gray-500">Page {{ responsesPage }} of {{ responsesTotalPages }}</span>
         {% if responsesNextHref %}
-          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesNextHref }}">Next</a>
+          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesNextHref }}">{{ "events.views.event_dashboard.next" | t }}</a>
         {% else %}
-          <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">Next</span>
+          <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">{{ "events.views.event_dashboard.next" | t }}</span>
         {% endif %}
       </div>
     </div>
@@ -219,28 +219,28 @@
 </div>
 
   <div class="flex flex-wrap gap-2 mt-4">
-    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref }}">
+    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="{{ "events.views.event_dashboard.adhoc_check_in" | t }}" aria-label="{{ "events.views.event_dashboard.adhoc_check_in" | t }}" href="{{ adhocCheckinHref }}">
       <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
-      <span class="hidden lg:inline">Adhoc check-in</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.adhoc_check_in" | t }}</span>
     </a>{% endif %}
-    {% if sessionsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Sessions" aria-label="Sessions" href="{{ sessionsHref }}">
+    {% if sessionsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.sessions" | t }}" aria-label="{{ "events.views.event_dashboard.sessions" | t }}" href="{{ sessionsHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#calendar"></use></svg>
-      <span class="hidden lg:inline">Sessions</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.sessions" | t }}</span>
     </a>{% endif %}
-    {% if duplicateHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Duplicate event" aria-label="Duplicate event" href="{{ duplicateHref }}">
+    {% if duplicateHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.duplicate_event" | t }}" aria-label="{{ "events.views.event_dashboard.duplicate_event" | t }}" href="{{ duplicateHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
-      <span class="hidden lg:inline">Duplicate</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.duplicate" | t }}</span>
     </a>{% endif %}
-    {% if registrationsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Public registrations" aria-label="Public registrations" href="{{ registrationsHref }}">
+    {% if registrationsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.public_registrations" | t }}" aria-label="{{ "events.views.event_dashboard.public_registrations" | t }}" href="{{ registrationsHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
-      <span class="hidden lg:inline">Registrations</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.registrations" | t }}</span>
     </a>{% endif %}
-    {% if archiveHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Archive event" aria-label="Archive event" href="{{ archiveHref }}">
+    {% if archiveHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.event_dashboard.archive_event" | t }}" aria-label="{{ "events.views.event_dashboard.archive_event" | t }}" href="{{ archiveHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>
-      <span class="hidden lg:inline">Archive</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.archive" | t }}</span>
     </a>{% endif %}
-    {% if deleteHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" title="Delete event" aria-label="Delete event" href="{{ deleteHref }}">
+    {% if deleteHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" title="{{ "events.views.event_dashboard.delete_event" | t }}" aria-label="{{ "events.views.event_dashboard.delete_event" | t }}" href="{{ deleteHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>
-      <span class="hidden lg:inline">Delete</span>
+      <span class="hidden lg:inline">{{ "events.views.event_dashboard.delete" | t }}</span>
     </a>{% endif %}
   </div>

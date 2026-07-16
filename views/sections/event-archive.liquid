@@ -1,24 +1,24 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← {{ eventName }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">Archive event</h1>
+    <h1 class="text-2xl font-bold text-gray-900">{{ "events.views.event_archive.archive_event" | t }}</h1>
     <p class="mt-1 text-sm text-gray-500">{{ guestTotal }} guest(s) reconciled against the contact database. Applying merges each guest's event activity into their contact record, moves this event's RSVP submissions to trash, and hides the event.</p>
   </div>
   <form method="post" action="{{ action }}" data-long-running-form>
     {% if archived %}
     <input type="hidden" name="action" value="unarchive">
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit">Restore event</button>
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit">{{ "events.views.event_archive.restore_event" | t }}</button>
     {% else %}
     <div class="flex flex-col gap-2 items-end">
-      <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit" name="action" value="apply" data-loading-label="Archiving" data-confirm="Merge {{ pendingTotal }} guest(s) into the contact database, move this event's RSVP responses and registrations to trash, and mark the event archived?">Merge &amp; archive</button>
-      <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" name="action" value="skip" data-confirm="Archive this event WITHOUT merging guests into contacts or trashing submissions? It will only be hidden from the events list.">Archive only (no merge)</button>
+      <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit" name="action" value="apply" data-loading-label="{{ "events.views.event_archive.archiving" | t }}" data-confirm="Merge {{ pendingTotal }} guest(s) into the contact database, move this event's RSVP responses and registrations to trash, and mark the event archived?">{{ "events.views.event_archive.merge_archive" | t }}</button>
+      <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" name="action" value="skip" data-confirm="{{ "events.views.event_archive.archive_this_event_without_merging_guests_into_contacts_or_trashing_subm" | t }}">{{ "events.views.event_archive.archive_only_no_merge" | t }}</button>
     </div>
     {% endif %}
   </form>
 </div>
 
 {% if contactsCapped %}
-<p class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">The contact database is larger than the reconciliation cap — matching covered the first 2000 contacts only. Guests matching a contact beyond the cap may show as new contacts.</p>
+<p class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">{{ "events.views.event_archive.the_contact_database_is_larger_than_the_reconciliation_cap_matching_cove" | t }}</p>
 {% endif %}
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem">
@@ -44,10 +44,10 @@ expanded section never dominates the page and stays scrollable on narrow screens
     <table class="w-full min-w-[680px] text-left text-sm" data-privacy-table>
       <thead>
         <tr class="text-xs text-gray-500">
-          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Guest</th>
-          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Guest list</th>
-          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Email</th>
-          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">Detail</th>
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">{{ "events.views.event_archive.guest" | t }}</th>
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">{{ "events.views.event_archive.guest_list" | t }}</th>
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">{{ "events.views.event_archive.email" | t }}</th>
+          <th class="px-6 py-2 font-semibold" style="position:sticky;top:0;background:#fff">{{ "events.views.event_archive.detail" | t }}</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100">
@@ -56,7 +56,7 @@ expanded section never dominates the page and stays scrollable on narrow screens
           <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="name">{{ row.name }}</span></td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ row.listName }}</td>
           <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="email">{{ row.email }}</span></td>
-          <td class="px-6 py-3 text-sm text-gray-500"><span data-private-field="contact">{{ row.detail }}{% if row.contactHref != blank %} <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.contactHref }}" target="_blank" rel="noopener">View contact ↗</a>{% endif %}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-500"><span data-private-field="contact">{{ row.detail }}{% if row.contactHref != blank %} <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.contactHref }}" target="_blank" rel="noopener">{{ "events.views.event_archive.view_contact" | t }}</a>{% endif %}</span></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -66,7 +66,7 @@ expanded section never dominates the page and stays scrollable on narrow screens
   <p class="mt-2 text-sm text-gray-400">…and {{ section.moreCount }} more not shown.</p>
   {% endif %}
   {% else %}
-  <p class="text-sm text-gray-400">None.</p>
+  <p class="text-sm text-gray-400">{{ "events.views.event_archive.none" | t }}</p>
   {% endif %}
 </details>
 {% endfor %}

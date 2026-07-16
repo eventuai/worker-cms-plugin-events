@@ -1,32 +1,32 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    {% if backHref != blank %}<a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← Event</a>{% endif %}
+    {% if backHref != blank %}<a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">{{ "events.views.guest_lists.event" | t }}</a>{% endif %}
     <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
     <p class="mt-1 text-sm text-gray-500">{{ subtitle }}</p>
   </div>
   {% if newHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
-     title="New guest list"
-     aria-label="New guest list"
+     title="{{ "events.views.guest_lists.new_guest_list" | t }}"
+     aria-label="{{ "events.views.guest_lists.new_guest_list" | t }}"
      href="{{ newHref }}">
     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>
-    <span class="hidden lg:inline">New guest list</span>
+    <span class="hidden lg:inline">{{ "events.views.guest_lists.new_guest_list" | t }}</span>
   </a>{% endif %}
 </div>
-{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">This event is archived. Its guest lists and guests are read-only.</p>{% endif %}
+{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ "events.views.guest_lists.this_event_is_archived_its_guest_lists_and_guests_are_read_only" | t }}</p>{% endif %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
   <table class="w-full min-w-[560px] text-left relative"{% if reorderAction != blank %} data-reorder="{{ reorderAction }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only{% endif %}>
-    <thead class="bg-gray-50 border-b border-gray-200"><tr>{% if reorderAction != blank %}<th class="px-4 py-3 w-10"></th>{% endif %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest list</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Event</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-in</th><th class="px-6 py-3"></th></tr></thead>
+    <thead class="bg-gray-50 border-b border-gray-200"><tr>{% if reorderAction != blank %}<th class="px-4 py-3 w-10"></th>{% endif %}<th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_lists.guest_list" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_lists.event_2" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_lists.check_in" | t }}</th><th class="px-6 py-3"></th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for list in lists %}
         <tr{% if reorderAction != blank %} data-id="{{ list.id }}"{% endif %}>
-          {% if reorderAction != blank %}<td class="px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
+          {% if reorderAction != blank %}<td class="px-4 py-3 text-gray-400" data-reorder-handle title="{{ "events.views.guest_lists.drag_to_reorder" | t }}" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
           <td class="px-6 py-3 text-sm text-gray-700"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">{{ list.name }}</a></td>
           <td class="px-6 py-3 text-sm text-gray-700">{% if list.eventHref != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.eventHref }}">{{ list.eventName }}</a>{% else %}{{ list.eventName }}{% endif %}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">{% if list.allowCheckin %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Enabled</span>{% else %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Disabled</span>{% endif %}</td>
-          <td class="px-6 py-3 text-right text-sm"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">→</a> {% if list.canDelete %}<form method="post" action="{{ list.deleteAction }}" class="inline" data-confirm="Delete this guest list and its guests?"><button class="border-0 bg-transparent p-0 text-xs font-semibold text-red-600 cursor-pointer" type="submit">Delete</button></form>{% endif %}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{% if list.allowCheckin %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ "events.views.guest_lists.enabled" | t }}</span>{% else %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ "events.views.guest_lists.disabled" | t }}</span>{% endif %}</td>
+          <td class="px-6 py-3 text-right text-sm"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">→</a> {% if list.canDelete %}<form method="post" action="{{ list.deleteAction }}" class="inline" data-confirm="{{ "events.views.guest_lists.delete_this_guest_list_and_its_guests" | t }}"><button class="border-0 bg-transparent p-0 text-xs font-semibold text-red-600 cursor-pointer" type="submit">{{ "events.views.guest_lists.delete" | t }}</button></form>{% endif %}</td>
         </tr>
       {% else %}
-        <tr><td colspan="{% if reorderAction != blank %}5{% else %}4{% endif %}" class="px-6 py-10 text-center text-sm text-gray-400">No guest lists yet. Create one to begin inviting guests.</td></tr>
+        <tr><td colspan="{% if reorderAction != blank %}5{% else %}4{% endif %}" class="px-6 py-10 text-center text-sm text-gray-400">{{ "events.views.guest_lists.no_guest_lists_yet_create_one_to_begin_inviting_guests" | t }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -1,12 +1,12 @@
-<div class="flex items-center justify-between gap-4 mb-4"><div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← EDMs</a><h1 class="text-2xl font-bold text-gray-900">New EDM</h1></div></div>
+<div class="flex items-center justify-between gap-4 mb-4"><div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">{{ "events.views.edm_form.edms" | t }}</a><h1 class="text-2xl font-bold text-gray-900">{{ "events.views.edm_form.new_edm" | t }}</h1></div></div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:40rem">
-  <p class="text-sm text-gray-500 mb-4">Pick the event and a name. You'll then edit the email's settings and content in the page editor.</p>
+  <p class="text-sm text-gray-500 mb-4">{{ "events.views.edm_form.pick_the_event_and_a_name_you_ll_then_edit_the_email_s_settings_and_cont" | t }}</p>
   <form method="post" action="{{ action }}">
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Event</span><select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="event_id" required>{% for event in events %}<option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name }}</option>{% endfor %}</select></label>
-    <label class="block mb-4"><span class="block text-sm text-gray-700 mb-1">EDM name</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" required placeholder="Invitation email"></label>
-    <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="Create and edit" aria-label="Create and edit">
+    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">{{ "events.views.edm_form.event" | t }}</span><select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="event_id" required>{% for event in events %}<option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name }}</option>{% endfor %}</select></label>
+    <label class="block mb-4"><span class="block text-sm text-gray-700 mb-1">{{ "events.views.edm_form.edm_name" | t }}</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" required placeholder="{{ "events.views.edm_form.invitation_email" | t }}"></label>
+    <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="{{ "events.views.edm_form.create_and_edit" | t }}" aria-label="{{ "events.views.edm_form.create_and_edit" | t }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>
-      <span class="hidden lg:inline">Create &amp; edit</span>
+      <span class="hidden lg:inline">{{ "events.views.edm_form.create_edit" | t }}</span>
     </button>
   </form>
 </div>

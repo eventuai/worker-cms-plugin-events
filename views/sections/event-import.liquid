@@ -1,19 +1,19 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← {{ eventName }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">Import guests</h1>
-    <p class="mt-1 text-sm text-gray-500">Upload one CSV for the whole event. A <code>guest_list_name</code> column routes each row to that guest list.</p>
+    <h1 class="text-2xl font-bold text-gray-900">{{ "events.views.event_import.import_guests" | t }}</h1>
+    <p class="mt-1 text-sm text-gray-500">{{ "events.views.event_import.upload_one_csv_for_the_whole_event" | t }} <code>guest_list_name</code> {{ "events.views.event_import.column_routes_each_row" | t }}</p>
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:40rem">
   {% if error %}<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</div>{% endif %}
   <form method="post" action="{{ action }}" enctype="multipart/form-data" data-long-running-form>
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">CSV file</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" type="file" name="file" accept=".csv,text/csv" required></label>
-    <p class="mt-1 text-sm text-gray-500">Recognised columns include <code>guest_list_name</code>, <code>name</code>, <code>first_name</code>, <code>last_name</code>, <code>primary_email</code>, <code>cc_email</code>, <code>phone</code>, <code>company</code>, <code>job_title</code>, <code>plus_guests</code>, <code>status</code>, <code>prefer_language</code>, <code>remarks</code> and check-in columns.</p>
+    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">{{ "events.views.event_import.csv_file" | t }}</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" type="file" name="file" accept=".csv,text/csv" required></label>
+    <p class="mt-1 text-sm text-gray-500">{{ "events.views.event_import.recognised_columns_include" | t }} <code>guest_list_name</code>, <code>name</code>, <code>first_name</code>, <code>last_name</code>, <code>primary_email</code>, <code>cc_email</code>, <code>phone</code>, <code>company</code>, <code>job_title</code>, <code>plus_guests</code>, <code>status</code>, <code>prefer_language</code>, <code>remarks</code> {{ "events.views.event_import.and_check_in_columns" | t }}</p>
     <div class="flex flex-wrap gap-2">
-      <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="Preview import" aria-label="Preview import" data-loading-label="Reading CSV">
+      <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="{{ "events.views.event_import.preview_import" | t }}" aria-label="{{ "events.views.event_import.preview_import" | t }}" data-loading-label="{{ "events.views.event_import.reading_csv" | t }}">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>
-        <span class="hidden lg:inline">Preview import</span>
+        <span class="hidden lg:inline">{{ "events.views.event_import.preview_import" | t }}</span>
       </button>
     </div>
   </form>

@@ -2,7 +2,7 @@
 {%- assign cls_label = "block text-sm font-medium text-gray-700 mb-1" -%}
 
 <div class="mb-3" style="max-width:48rem">
-  <a class="inline-block text-xs text-gray-500 hover:text-indigo-700" href="{{ backHref }}">&larr; Events</a>
+  <a class="inline-block text-xs text-gray-500 hover:text-indigo-700" href="{{ backHref }}">{{ "events.views.event_new.events" | t }}</a>
 </div>
 
 {% if errors and errors != empty %}
@@ -20,17 +20,17 @@
 
   <!-- Event name doubles as the page title: click the "New event" heading to type the name. -->
   <div>
-    <input id="event-name" class="block w-full border-0 p-0 bg-transparent text-2xl font-bold text-gray-900 focus:outline-none focus:ring-0" name="name" value="{{ name }}" required autocomplete="off" placeholder="New event">
-    <div class="text-gray-500 font-mono text-xs mt-1 w-full flex">/<input id="event-slug" class="font-mono text-xs border-0 w-full focus:outline-none focus:ring-0" name="slug" value="{{ slug }}" required autocomplete="off" placeholder="slug"></div>
+    <input id="event-name" class="block w-full border-0 p-0 bg-transparent text-2xl font-bold text-gray-900 focus:outline-none focus:ring-0" name="name" value="{{ name }}" required autocomplete="off" placeholder="{{ "events.views.event_new.new_event" | t }}">
+    <div class="text-gray-500 font-mono text-xs mt-1 w-full flex">/<input id="event-slug" class="font-mono text-xs border-0 w-full focus:outline-none focus:ring-0" name="slug" value="{{ slug }}" required autocomplete="off" placeholder="{{ "events.views.event_new.slug" | t }}"></div>
   </div>
 
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
   <label class="flex items-center gap-2">
-    <span class="{{ cls_label }}">From</span>
+    <span class="{{ cls_label }}">{{ "events.views.event_new.from" | t }}</span>
     <input class="{{ cls_input }}" name="start" type="datetime-local" value="{{ start }}">
   </label>
   <label class="flex items-center gap-2">
-    <span class="{{ cls_label }}">Until</span>
+    <span class="{{ cls_label }}">{{ "events.views.event_new.until" | t }}</span>
     <input class="{{ cls_input }}" name="end" type="datetime-local" value="{{ end }}">
   </label>
   <label class="flex items-center gap-2">
@@ -52,12 +52,12 @@
         </label>
       {% endfor %}
     </div>
-    {% if showCredits %}<p class="text-xs text-gray-400">One-time setup cost. Importing guests and sending emails are billed separately per use.</p>{% endif %}
+    {% if showCredits %}<p class="text-xs text-gray-400">{{ "events.views.event_new.one_time_setup_cost_importing_guests_and_sending_emails_are_billed_separ" | t }}</p>{% endif %}
   </div>
 
   <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-    <button type="submit" name="action" value="update" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">Create event</button>
-    <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
+    <button type="submit" name="action" value="update" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">{{ "events.views.event_new.create_event" | t }}</button>
+    <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{{ "events.views.event_new.cancel" | t }}</a>
   </div>
 </form>
 

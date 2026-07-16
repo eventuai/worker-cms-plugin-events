@@ -1,6 +1,6 @@
 <div class="mb-4">
-  <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listHref }}">← Back to guest list</a>
-  <h1 class="text-2xl font-bold text-gray-900">Remove duplicates</h1>
+  <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listHref }}">{{ "events.views.guest_dedupe.back_to_guest_list" | t }}</a>
+  <h1 class="text-2xl font-bold text-gray-900">{{ "events.views.guest_dedupe.remove_duplicates" | t }}</h1>
   <p class="mt-1 text-sm text-gray-500">{{ listName }} · {{ eventName }}</p>
 </div>
 
@@ -11,18 +11,18 @@
 
 {% if duplicateCount == 0 %}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-    <p class="text-sm text-gray-600">No identical copies found — every guest differs from the others in at least one field.</p>
+    <p class="text-sm text-gray-600">{{ "events.views.guest_dedupe.no_identical_copies_found_every_guest_differs_from_the_others_in_at_leas" | t }}</p>
   </div>
 {% else %}
-  <p class="text-sm text-gray-600 mb-4">Only rows that match another guest on the name and every field group as copies; guests with a check-in, a response, or a registration link are always kept. Removed copies go to the CMS trash, so this can be undone.</p>
+  <p class="text-sm text-gray-600 mb-4">{{ "events.views.guest_dedupe.only_rows_that_match_another_guest_on_the_name_and_every_field_group_as_" | t }}</p>
 
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto mb-4">
     <table class="w-full min-w-[560px] text-left relative" data-privacy-table>
       <thead class="bg-gray-50 border-b border-gray-200"><tr>
-        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Copies</th>
-        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Removing</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_dedupe.name" | t }}</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_dedupe.email" | t }}</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_dedupe.copies" | t }}</th>
+        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.guest_dedupe.removing" | t }}</th>
       </tr></thead>
       <tbody class="divide-y divide-gray-100">
         {% for group in groups %}
@@ -42,11 +42,11 @@
 
   <form method="post" action="{{ action }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
     <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Remove duplicates" aria-label="Remove duplicates">
+      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="{{ "events.views.guest_dedupe.remove_duplicates" | t }}" aria-label="{{ "events.views.guest_dedupe.remove_duplicates" | t }}">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>
         <span class="hidden lg:inline">Remove {{ duplicateCount }} duplicate(s)</span>
       </button>
-      <a href="{{ listHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
+      <a href="{{ listHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{{ "events.views.guest_dedupe.cancel" | t }}</a>
     </div>
   </form>
 {% endif %}

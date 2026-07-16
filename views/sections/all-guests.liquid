@@ -8,31 +8,31 @@
     </p>
   </div>
   <div class="flex flex-wrap gap-2">
-    {% if exportHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export CSV" aria-label="Export CSV" href="{{ exportHref }}">
+    {% if exportHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.all_guests.export_csv" | t }}" aria-label="{{ "events.views.all_guests.export_csv" | t }}" href="{{ exportHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>
-      <span class="hidden lg:inline">Export CSV</span>
+      <span class="hidden lg:inline">{{ "events.views.all_guests.export_csv" | t }}</span>
     </a>{% endif %}
   </div>
 </div>
-{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">These guests belong to an archived event and are read-only.</p>{% endif %}
+{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ "events.views.all_guests.these_guests_belong_to_an_archived_event_and_are_read_only" | t }}</p>{% endif %}
 {% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
   <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref }}" data-table-filter-form data-table-filter-target="[data-table-filter='guests']" data-table-filter-count-target="[data-table-filter-count='guests']">
     {% if selectedCustomFieldKey != blank %}<input type="hidden" name="cf" value="{{ selectedCustomFieldKey }}">{% endif %}
-    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q }}" placeholder="Search name, email, phone or guest ID">
+    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q }}" placeholder="{{ "events.views.all_guests.search_name_email_phone_or_guest_id" | t }}">
     <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
-      <option value="">All statuses</option>
+      <option value="">{{ "events.views.all_guests.all_statuses" | t }}</option>
       {% for status in statuses %}<option value="{{ status }}"{% if status == selectedStatus %} selected{% endif %}>{{ status }}</option>{% endfor %}
     </select>
     <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
-      <option value="">All color tags</option>
-      <option value="none"{% if selectedColor == 'none' %} selected{% endif %}>No color tag</option>
+      <option value="">{{ "events.views.all_guests.all_color_tags" | t }}</option>
+      <option value="none"{% if selectedColor == 'none' %} selected{% endif %}>{{ "events.views.all_guests.no_color_tag" | t }}</option>
       {% for color in colorOptions %}<option value="{{ color.value }}"{% if color.selected %} selected{% endif %}>{{ color.label }}</option>{% endfor %}
     </select>
-    <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" type="submit" title="Search" aria-label="Search guests">
+    <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" type="submit" title="{{ "events.views.all_guests.search" | t }}" aria-label="{{ "events.views.all_guests.search_guests" | t }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
     </button>
-    <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>Clear</a>
+    <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>{{ "events.views.all_guests.clear" | t }}</a>
   </form>
 </div>
 {% if asyncGuests %}

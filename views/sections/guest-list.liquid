@@ -5,16 +5,16 @@
     <p class="mt-1 text-sm text-gray-500"><span data-table-filter-count="guests">{{ total }}</span> <span data-table-filter-count-label="guests" data-singular="guest" data-plural="guests">guest{% if total != 1 %}s{% endif %}</span></p>
   </div>
   <div class="flex flex-wrap gap-2">
-    {% if contactsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Add from contacts" aria-label="Add from contacts" href="{{ contactsHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Add from contacts</span></a>{% endif %}
-    {% if importHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import CSV" aria-label="Import CSV" href="{{ importHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import CSV</span></a>{% endif %}
-    {% if exportHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export CSV" aria-label="Export CSV" href="{{ exportHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export CSV</span></a>{% endif %}
-    {% if dedupeHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Remove duplicates" aria-label="Remove duplicates" href="{{ dedupeHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg><span class="hidden lg:inline">Remove duplicates</span></a>{% endif %}
-    {% if isPublished %}{% if unpublishAction != blank %}<form method="post" action="{{ unpublishAction }}" data-confirm="Unpublish this guest list?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 text-sm font-semibold text-yellow-700 hover:bg-yellow-50 hover:text-yellow-800 cursor-pointer" title="Unpublish guest list" aria-label="Unpublish guest list"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye-off"></use></svg><span class="hidden lg:inline">Unpublish</span></button></form>{% endif %}{% elsif publishAction != blank %}<form method="post" action="{{ publishAction }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-white px-4 text-sm font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 cursor-pointer" title="Publish guest list" aria-label="Publish guest list"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">Publish</span></button></form>{% endif %}
-    {% if editHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit guest list" aria-label="Edit guest list" href="{{ editHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg><span class="hidden lg:inline">Edit guest list</span></a>{% endif %}
+    {% if contactsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.guest_list.add_from_contacts" | t }}" aria-label="{{ "events.views.guest_list.add_from_contacts" | t }}" href="{{ contactsHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.add_from_contacts" | t }}</span></a>{% endif %}
+    {% if importHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.guest_list.import_csv" | t }}" aria-label="{{ "events.views.guest_list.import_csv" | t }}" href="{{ importHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.import_csv" | t }}</span></a>{% endif %}
+    {% if exportHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.guest_list.export_csv" | t }}" aria-label="{{ "events.views.guest_list.export_csv" | t }}" href="{{ exportHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.export_csv" | t }}</span></a>{% endif %}
+    {% if dedupeHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.guest_list.remove_duplicates" | t }}" aria-label="{{ "events.views.guest_list.remove_duplicates" | t }}" href="{{ dedupeHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.remove_duplicates" | t }}</span></a>{% endif %}
+    {% if isPublished %}{% if unpublishAction != blank %}<form method="post" action="{{ unpublishAction }}" data-confirm="{{ "events.views.guest_list.unpublish_this_guest_list" | t }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 text-sm font-semibold text-yellow-700 hover:bg-yellow-50 hover:text-yellow-800 cursor-pointer" title="{{ "events.views.guest_list.unpublish_guest_list" | t }}" aria-label="{{ "events.views.guest_list.unpublish_guest_list" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye-off"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.unpublish" | t }}</span></button></form>{% endif %}{% elsif publishAction != blank %}<form method="post" action="{{ publishAction }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-white px-4 text-sm font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 cursor-pointer" title="{{ "events.views.guest_list.publish_guest_list" | t }}" aria-label="{{ "events.views.guest_list.publish_guest_list" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.publish" | t }}</span></button></form>{% endif %}
+    {% if editHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="{{ "events.views.guest_list.edit_guest_list" | t }}" aria-label="{{ "events.views.guest_list.edit_guest_list" | t }}" href="{{ editHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.edit_guest_list" | t }}</span></a>{% endif %}
   </div>
 </div>
 
-{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">This guest list belongs to an archived event and is read-only.</p>{% endif %}
+{% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ "events.views.guest_list.this_guest_list_belongs_to_an_archived_event_and_is_read_only" | t }}</p>{% endif %}
 {% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
 
 {%- comment -%} ── Email campaign: link an EDM, then send / auto-send to guests ── {%- endcomment -%}
@@ -23,62 +23,62 @@
   <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <form method="post" action="{{ setEdmAction }}" class="flex flex-wrap items-center gap-2">
       <label class="block">
-        <span class="block text-sm font-medium text-gray-700 mb-1">Email template (EDM)</span>
+        <span class="block text-sm font-medium text-gray-700 mb-1">{{ "events.views.guest_list.email_template_edm" | t }}</span>
         {%- comment -%} data-autosubmit: the CMS layout submits this form on change (CSP-safe). {%- endcomment -%}
         <select name="edm_id" data-autosubmit class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="min-width:16rem">
-          <option value="">— No EDM —</option>
+          <option value="">{{ "events.views.guest_list.no_edm" | t }}</option>
           {% for edm in edmOptions %}<option value="{{ edm.id }}"{% if edm.selected %} selected{% endif %}>{{ edm.name }}</option>{% endfor %}
         </select>
       </label>
-      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="Set EDM" aria-label="Set EDM">
+      <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="{{ "events.views.guest_list.set_edm" | t }}" aria-label="{{ "events.views.guest_list.set_edm" | t }}">
         <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
-        <span class="hidden lg:inline">Set</span>
+        <span class="hidden lg:inline">{{ "events.views.guest_list.set" | t }}</span>
       </button>
-      {% unless hasEdmOptions %}<span class="text-xs text-gray-400 py-2">No EDMs for this event yet.</span>{% endunless %}
+      {% unless hasEdmOptions %}<span class="text-xs text-gray-400 py-2">{{ "events.views.guest_list.no_edms_for_this_event_yet" | t }}</span>{% endunless %}
     </form>
 
     {% if hasEdm %}
       <div class="flex flex-wrap items-center gap-2">
         <a class="inline-block px-3 py-2 rounded-lg text-sm font-semibold text-indigo-600 hover:text-indigo-800" href="{{ edmEditHref }}">Edit “{{ edmName }}” ↗</a>
-        <form method="post" action="{{ autoSendGoodAction }}" data-confirm="Send this EDM to all good-quality guests not sent yet?">
-          <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white hover:bg-green-700 cursor-pointer" title="Auto Send Good" aria-label="Auto Send Good">
+        <form method="post" action="{{ autoSendGoodAction }}" data-confirm="{{ "events.views.guest_list.send_this_edm_to_all_good_quality_guests_not_sent_yet" | t }}">
+          <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white hover:bg-green-700 cursor-pointer" title="{{ "events.views.guest_list.auto_send_good" | t }}" aria-label="{{ "events.views.guest_list.auto_send_good" | t }}">
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg>
-            <span class="hidden lg:inline">Auto Send (Good)</span>
+            <span class="hidden lg:inline">{{ "events.views.guest_list.auto_send_good_2" | t }}</span>
           </button>
         </form>
-        <form method="post" action="{{ autoSendRiskyAction }}" data-confirm="Send this EDM to all risky-quality guests not sent yet?">
-          <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-700 hover:bg-gray-50 cursor-pointer" title="Auto Send Risky" aria-label="Auto Send Risky">
+        <form method="post" action="{{ autoSendRiskyAction }}" data-confirm="{{ "events.views.guest_list.send_this_edm_to_all_risky_quality_guests_not_sent_yet" | t }}">
+          <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-700 hover:bg-gray-50 cursor-pointer" title="{{ "events.views.guest_list.auto_send_risky" | t }}" aria-label="{{ "events.views.guest_list.auto_send_risky" | t }}">
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg>
-            <span class="hidden lg:inline">Auto Send (Risky)</span>
+            <span class="hidden lg:inline">{{ "events.views.guest_list.auto_send_risky_2" | t }}</span>
           </button>
         </form>
       </div>
     {% endif %}
   </div>
-  {% if hasEdm %}<p class="mt-4 text-xs text-gray-400">Auto-send skips paused guests and anyone already sent this EDM. “Good” vs “Risky” is a deliverability heuristic on the address; re-send individually below.</p>{% endif %}
+  {% if hasEdm %}<p class="mt-4 text-xs text-gray-400">{{ "events.views.guest_list.auto_send_skips_paused_guests_and_anyone_already_sent_this_edm_good_vs_r" | t }}</p>{% endif %}
 </div>
 {% endif %}
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4 flex items-center justify-between">
   <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref }}" data-table-filter-form data-table-filter-target="[data-table-filter='guests']" data-table-filter-count-target="[data-table-filter-count='guests']" data-table-filter-count-label-target="[data-table-filter-count-label='guests']">
     {% if selectedCustomFieldKey != blank %}<input type="hidden" name="cf" value="{{ selectedCustomFieldKey }}">{% endif %}
-    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q }}" placeholder="Search name, email, phone or guest ID">
+    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q }}" placeholder="{{ "events.views.guest_list.search_name_email_phone_or_guest_id" | t }}">
     <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
-      <option value="">All statuses</option>
+      <option value="">{{ "events.views.guest_list.all_statuses" | t }}</option>
       {% for status in statuses %}<option value="{{ status }}"{% if status == selectedStatus %} selected{% endif %}>{{ status }}</option>{% endfor %}
     </select>
     <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
-      <option value="">All color tags</option>
-      <option value="none"{% if selectedColor == 'none' %} selected{% endif %}>No color tag</option>
+      <option value="">{{ "events.views.guest_list.all_color_tags" | t }}</option>
+      <option value="none"{% if selectedColor == 'none' %} selected{% endif %}>{{ "events.views.guest_list.no_color_tag" | t }}</option>
       {% for color in colorOptions %}<option value="{{ color.value }}"{% if color.selected %} selected{% endif %}>{{ color.label }}</option>{% endfor %}
     </select>
-    <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>Clear</a>
+    <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>{{ "events.views.guest_list.clear" | t }}</a>
   </form>
 
 
   <div class="flex gap-3">
-    {% if updateFromContactsAction != blank %}<form method="post" action="{{ updateFromContactsAction }}" data-confirm="Refresh every linked guest from its contact record?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Update from contacts" aria-label="Update from contacts"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Update from contacts</span></button></form>{% endif %}
-    {% if newGuestHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="New guest" aria-label="New guest" href="{{ newGuestHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New guest</span></a>{% endif %}
+    {% if updateFromContactsAction != blank %}<form method="post" action="{{ updateFromContactsAction }}" data-confirm="{{ "events.views.guest_list.refresh_every_linked_guest_from_its_contact_record" | t }}"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="{{ "events.views.guest_list.update_from_contacts" | t }}" aria-label="{{ "events.views.guest_list.update_from_contacts" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.update_from_contacts" | t }}</span></button></form>{% endif %}
+    {% if newGuestHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="{{ "events.views.guest_list.new_guest" | t }}" aria-label="{{ "events.views.guest_list.new_guest" | t }}" href="{{ newGuestHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.new_guest" | t }}</span></a>{% endif %}
   </div>
 
 </div>
@@ -99,6 +99,6 @@
 %}
 <div class="mt-4">
   {% if deleteAction != blank %}
-    <form method="post" action="{{ deleteAction }}" data-confirm="Delete this guest list and its guests?"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="Delete list" aria-label="Delete list"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">Delete list</span></button></form>
+    <form method="post" action="{{ deleteAction }}" data-confirm="{{ "events.views.guest_list.delete_this_guest_list_and_its_guests" | t }}"><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer" type="submit" title="{{ "events.views.guest_list.delete_list" | t }}" aria-label="{{ "events.views.guest_list.delete_list" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash-can"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_list.delete_list" | t }}</span></button></form>
   {% endif %}
 </div>

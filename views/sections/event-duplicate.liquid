@@ -1,8 +1,8 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← {{ eventName }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">Duplicate event</h1>
-    <p class="mt-1 text-sm text-gray-500">Make a copy of <strong>{{ eventName }}</strong>. Choose how much to bring across.</p>
+    <h1 class="text-2xl font-bold text-gray-900">{{ "events.views.event_duplicate.duplicate_event" | t }}</h1>
+    <p class="mt-1 text-sm text-gray-500">{{ "events.views.event_duplicate.make_a_copy_of" | t }} <strong>{{ eventName }}</strong>{{ "events.views.event_duplicate.choose_how_much_to_bring_across" | t }}</p>
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:40rem">
@@ -19,11 +19,11 @@
       {% endfor %}
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="Duplicate event" aria-label="Duplicate event">
+      <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="{{ "events.views.event_duplicate.duplicate_event" | t }}" aria-label="{{ "events.views.event_duplicate.duplicate_event" | t }}">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
-        <span>Duplicate</span>
+        <span>{{ "events.views.event_duplicate.duplicate" | t }}</span>
       </button>
-      <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ backHref }}">Cancel</a>
+      <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ backHref }}">{{ "events.views.event_duplicate.cancel" | t }}</a>
     </div>
   </form>
 </div>

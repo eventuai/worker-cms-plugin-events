@@ -19,13 +19,13 @@
     {% endif %}
     {% if updateFromContactAction != blank %}
       <form method="post" action="{{ updateFromContactAction }}" onsubmit="return confirm('Overwrite this guest with its linked contact record?')">
-        <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Update from contact" aria-label="Update from contact"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user"></use></svg><span class="hidden lg:inline">Update from contact</span></button>
+        <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="{{ "events.views.guest_form.update_from_contact" | t }}" aria-label="{{ "events.views.guest_form.update_from_contact" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_form.update_from_contact" | t }}</span></button>
       </form>
     {% endif %}
   </div>
 </div>
 
-{% if readOnly %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:48rem">This guest belongs to an archived event and is read-only.</p>{% endif %}
+{% if readOnly %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:48rem">{{ "events.views.guest_form.this_guest_belongs_to_an_archived_event_and_is_read_only" | t }}</p>{% endif %}
 <form id="guest-form" method="post" action="{{ action }}"{% if nativePageAction %} data-editor-form{% endif %}>
     {% if nativePageAction %}
       <input type="hidden" name="page_type" value="guest">
@@ -49,7 +49,7 @@
   </div>
 
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4" style="max-width:48rem">
-    <h2 class="text-lg font-bold text-gray-900">Contact</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.contact" | t }}</h2>
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in contactFields %}
         <div class="{{ field.span }}">
@@ -60,7 +60,7 @@
   </div>
 
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4" style="max-width:48rem">
-    <h2 class="text-lg font-bold text-gray-900">RSVP</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.rsvp" | t }}</h2>
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in rsvpFields %}
         <div class="{{ field.span }}">
@@ -72,7 +72,7 @@
 
   {% if companionOf %}
     <div class="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mb-4" style="max-width:48rem">
-      <p class="text-sm text-indigo-900">Named companion of <a class="font-semibold underline" href="{{ companionOf.editHref }}">{{ companionOf.name }}</a>.</p>
+      <p class="text-sm text-indigo-900">{{ "events.views.guest_form.named_companion_of" | t }} <a class="font-semibold underline" href="{{ companionOf.editHref }}">{{ companionOf.name }}</a>.</p>
       {% if hasCompanionAnswers %}
         <dl class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {% for answer in companionAnswers %}<div><dt class="text-xs font-medium text-indigo-600">{{ answer.label }}</dt><dd class="mt-0.5 text-sm text-indigo-950">{{ answer.value }}</dd></div>{% endfor %}
@@ -83,8 +83,8 @@
 
   {% if hasLinkedCompanions %}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4" style="max-width:48rem">
-      <h2 class="text-lg font-bold text-gray-900">Named companion guests</h2>
-      <p class="mt-1 text-sm text-gray-500">Each named companion has an independent guest record, QR code, RSVP details, and check-in history.</p>
+      <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.named_companion_guests" | t }}</h2>
+      <p class="mt-1 text-sm text-gray-500">{{ "events.views.guest_form.each_named_companion_has_an_independent_guest_record_qr_code_rsvp_detail" | t }}</p>
       <div class="mt-4 divide-y divide-gray-100">
         {% for companion in linkedCompanions %}
           <div class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
@@ -93,8 +93,8 @@
               {% if companion.organization != blank %}<p class="text-xs text-gray-500">{{ companion.organization }}</p>{% endif %}
             </div>
             <div class="flex items-center gap-3 text-xs font-semibold">
-              <a class="text-indigo-600 hover:text-indigo-800" href="{{ companion.editHref }}">Edit</a>
-              <a class="text-indigo-600 hover:text-indigo-800" href="{{ companion.qrHref }}">QR code</a>
+              <a class="text-indigo-600 hover:text-indigo-800" href="{{ companion.editHref }}">{{ "events.views.guest_form.edit" | t }}</a>
+              <a class="text-indigo-600 hover:text-indigo-800" href="{{ companion.qrHref }}">{{ "events.views.guest_form.qr_code" | t }}</a>
             </div>
           </div>
         {% endfor %}
@@ -104,8 +104,8 @@
 
   {% if hasPlusGuests %}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4" style="max-width:48rem">
-      <h2 class="text-lg font-bold text-gray-900">Unnamed plus guests</h2>
-      <p class="mt-1 text-sm text-gray-500">Names are optional. Unnamed rows still reserve a companion place and QR code.</p>
+      <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.unnamed_plus_guests" | t }}</h2>
+      <p class="mt-1 text-sm text-gray-500">{{ "events.views.guest_form.names_are_optional_unnamed_rows_still_reserve_a_companion_place_and_qr_c" | t }}</p>
       <div class="mt-4 divide-y divide-gray-100">
         {% for plus in plusGuests %}
           <div class="py-4 first:pt-0 last:pb-0">
@@ -131,7 +131,7 @@
   {% endif %}
 
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4" style="max-width:48rem">
-    <h2 class="text-lg font-bold text-gray-900">Notes</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.notes" | t }}</h2>
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in noteFields %}
         <div class="{{ field.span }}">
@@ -142,7 +142,7 @@
   </div>
 
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4" style="max-width:48rem">
-    <h2 class="text-lg font-bold text-gray-900">Ticket codes</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.ticket_codes" | t }}</h2>
     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       {% for field in ticketFields %}
         <div class="{{ field.span }}">
@@ -154,7 +154,7 @@
 
   {% if hasAdminCustomFields %}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4" style="max-width:48rem">
-      <h2 class="text-lg font-bold text-gray-900">Additional information</h2>
+      <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.additional_information" | t }}</h2>
       <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
         {% for field in adminCustomFields %}
           <div class="{% if field.type == 'textarea' or field.type == 'radio' %}md:col-span-2{% endif %}">
@@ -172,22 +172,22 @@
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:48rem">
   {% if moveLists.size > 0 %}
     <form method="post" action="{{ moveAction }}" class="flex flex-wrap items-center gap-1.5" style="margin-top:1rem">
-      <label class="block" style="margin:0"><span class="block text-sm text-gray-700 mb-1">Move to list</span>
+      <label class="block" style="margin:0"><span class="block text-sm text-gray-700 mb-1">{{ "events.views.guest_form.move_to_list" | t }}</span>
       <select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="target_mail_list">
-        <option value="">Select a list</option>
-        {% for list in moveLists %}<option value="{{ list.id }}">{{ list.name }}</option>{% endfor %}</select></label><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Move guest" aria-label="Move guest"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">Move guest</span></button></form>{% endif %}
-  {% if deleteAction != blank %}<form id="guest-delete-form" method="post" action="{{ deleteAction }}" data-confirm="Delete this guest?"></form>{% endif %}
+        <option value="">{{ "events.views.guest_form.select_a_list" | t }}</option>
+        {% for list in moveLists %}<option value="{{ list.id }}">{{ list.name }}</option>{% endfor %}</select></label><button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="{{ "events.views.guest_form.move_guest" | t }}" aria-label="{{ "events.views.guest_form.move_guest" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user-group"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_form.move_guest" | t }}</span></button></form>{% endif %}
+  {% if deleteAction != blank %}<form id="guest-delete-form" method="post" action="{{ deleteAction }}" data-confirm="{{ "events.views.guest_form.delete_this_guest" | t }}"></form>{% endif %}
   <div class="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-    {% unless readOnly %}<button form="guest-form" type="submit" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">Save guest</button>{% endunless %}
+    {% unless readOnly %}<button form="guest-form" type="submit" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">{{ "events.views.guest_form.save_guest" | t }}</button>{% endunless %}
     <a href="{{ listHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{% if readOnly %}Back{% else %}Cancel{% endif %}</a>
-    {% if qrHref != blank %}<a href="{{ qrHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">QR code</a>{% endif %}
-    {% if deleteAction != blank %}<button form="guest-delete-form" type="submit" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">Delete</button>{% endif %}
+    {% if qrHref != blank %}<a href="{{ qrHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{{ "events.views.guest_form.qr_code" | t }}</a>{% endif %}
+    {% if deleteAction != blank %}<button form="guest-delete-form" type="submit" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">{{ "events.views.guest_form.delete" | t }}</button>{% endif %}
   </div>
 </div>
 
 {% if existingGuest %}
 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-4" style="max-width:48rem">
-  <h2 class="text-lg font-bold text-gray-900">Activity</h2>
+  <h2 class="text-lg font-bold text-gray-900">{{ "events.views.guest_form.activity" | t }}</h2>
   {% if hasActivity %}
     <div class="mt-4 divide-y divide-gray-100">
       {% for item in activity %}
@@ -206,7 +206,7 @@
       {% endfor %}
     </div>
   {% else %}
-    <p class="mt-3 text-sm text-gray-500">No activity yet.</p>
+    <p class="mt-3 text-sm text-gray-500">{{ "events.views.guest_form.no_activity_yet" | t }}</p>
   {% endif %}
 </div>
 {% endif %}

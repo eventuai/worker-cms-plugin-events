@@ -1,5 +1,5 @@
 <div class="flex items-center justify-between gap-4 mb-4">
-  <div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventHref }}">← {{ eventName }}</a><h1 class="text-2xl font-bold text-gray-900">Adhoc check-in</h1></div>
+  <div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventHref }}">← {{ eventName }}</a><h1 class="text-2xl font-bold text-gray-900">{{ "events.views.adhoc_checkin.adhoc_check_in" | t }}</h1></div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:32rem">
   <form method="post">
@@ -7,9 +7,9 @@
       <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">{{ field.label }}</span>
         <input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="{{ field.name }}" type="{{ field.type }}"></label>
     {% endfor %}
-    <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="Add and check in" aria-label="Add and check in">
+    <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" type="submit" title="{{ "events.views.adhoc_checkin.add_and_check_in" | t }}" aria-label="{{ "events.views.adhoc_checkin.add_and_check_in" | t }}">
       <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
-      <span class="hidden lg:inline">Add &amp; check in</span>
+      <span class="hidden lg:inline">{{ "events.views.adhoc_checkin.add_check_in" | t }}</span>
     </button>
   </form>
 </div>

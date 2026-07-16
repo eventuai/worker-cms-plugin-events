@@ -2,7 +2,7 @@
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
   <p class="text-sm text-gray-500">{{ message }}</p>
   {% if showConfig %}
-  <p class="text-sm text-gray-500" style="margin-top:.75rem">Set <code class="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">CMS_URL</code> and <code class="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">PLUGIN_SECRET</code> on this plugin Worker
-  (the secret must match the value shown in the CMS admin), then reload.</p>
+  <p class="text-sm text-gray-500" style="margin-top:.75rem">{{ "events.views.error.set" | t }} <code class="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">CMS_URL</code> {{ "events.views.error.and" | t }} <code class="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">PLUGIN_SECRET</code> {{ "events.views.error.on_this_plugin_worker" | t }}
+  {{ "events.views.error.secret_note" | t }}</p>
   {% endif %}
 </div>

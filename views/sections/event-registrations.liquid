@@ -1,11 +1,11 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventBase }}">← {{ event.name }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">Public registrations</h1>
-    <p class="mt-1 text-sm text-gray-500">Self-registrations from the public RSVP site. Convert adds the person to this event's Adhoc guest list; discard moves the review copy to trash (the stored submission itself is never deleted).</p>
+    <h1 class="text-2xl font-bold text-gray-900">{{ "events.views.event_registrations.public_registrations" | t }}</h1>
+    <p class="mt-1 text-sm text-gray-500">{{ "events.views.event_registrations.self_registrations_from_the_public_rsvp_site_convert_adds_the_person_to_" | t }}</p>
   </div>
   <form method="post" action="{{ base }}/pull">
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit">Pull new submissions</button>
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit">{{ "events.views.event_registrations.pull_new_submissions" | t }}</button>
   </form>
 </div>
 
@@ -19,18 +19,18 @@
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem">
   <div class="flex items-center justify-between gap-4 mb-4">
-    <h2 class="text-lg font-bold text-gray-900">Waiting for review</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.event_registrations.waiting_for_review" | t }}</h2>
     <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ pending | size }}</span>
   </div>
   {% if pending != empty %}
   <table class="w-full text-left text-sm">
     <thead>
       <tr>
-        <th class="px-6 py-3 text-xs font-semibold text-gray-500">Name</th>
-        <th class="px-6 py-3 text-xs font-semibold text-gray-500">Email</th>
-        <th class="px-6 py-3 text-xs font-semibold text-gray-500">Organization</th>
-        <th class="px-6 py-3 text-xs font-semibold text-gray-500">+Guests</th>
-        <th class="px-6 py-3 text-xs font-semibold text-gray-500">Submitted</th>
+        <th class="px-6 py-3 text-xs font-semibold text-gray-500">{{ "events.views.event_registrations.name" | t }}</th>
+        <th class="px-6 py-3 text-xs font-semibold text-gray-500">{{ "events.views.event_registrations.email" | t }}</th>
+        <th class="px-6 py-3 text-xs font-semibold text-gray-500">{{ "events.views.event_registrations.organization" | t }}</th>
+        <th class="px-6 py-3 text-xs font-semibold text-gray-500">{{ "events.views.event_registrations.guests" | t }}</th>
+        <th class="px-6 py-3 text-xs font-semibold text-gray-500">{{ "events.views.event_registrations.submitted" | t }}</th>
         <th class="px-6 py-3 text-xs font-semibold text-gray-500"></th>
       </tr>
     </thead>
@@ -45,10 +45,10 @@
         <td class="px-6 py-3 text-sm text-gray-700">
           <div class="flex items-center gap-2">
             <form method="post" action="{{ base }}/{{ row.id }}/convert">
-              <button class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Convert to guest</button>
+              <button class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">{{ "events.views.event_registrations.convert_to_guest" | t }}</button>
             </form>
             <form method="post" action="{{ base }}/{{ row.id }}/discard">
-              <button class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" data-confirm="Discard this registration? The review copy moves to trash.">Discard</button>
+              <button class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" data-confirm="{{ "events.views.event_registrations.discard_this_registration_the_review_copy_moves_to_trash" | t }}">{{ "events.views.event_registrations.discard" | t }}</button>
             </form>
           </div>
         </td>
@@ -57,13 +57,13 @@
     </tbody>
   </table>
   {% else %}
-  <p class="text-sm text-gray-400">No registrations waiting.</p>
+  <p class="text-sm text-gray-400">{{ "events.views.event_registrations.no_registrations_waiting" | t }}</p>
   {% endif %}
 </div>
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem">
   <div class="flex items-center justify-between gap-4 mb-4">
-    <h2 class="text-lg font-bold text-gray-900">Converted</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.event_registrations.converted" | t }}</h2>
     <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ converted | size }}</span>
   </div>
   {% if converted != empty %}
@@ -80,6 +80,6 @@
     </tbody>
   </table>
   {% else %}
-  <p class="text-sm text-gray-400">None converted yet.</p>
+  <p class="text-sm text-gray-400">{{ "events.views.event_registrations.none_converted_yet" | t }}</p>
   {% endif %}
 </div>

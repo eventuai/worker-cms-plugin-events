@@ -1,33 +1,33 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← {{ eventName }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">Sessions</h1>
-    <p class="mt-1 text-sm text-gray-500">Drag a session to reorder it. Edit session details on the event page.</p>
+    <h1 class="text-2xl font-bold text-gray-900">{{ "events.views.sessions.sessions" | t }}</h1>
+    <p class="mt-1 text-sm text-gray-500">{{ "events.views.sessions.drag_a_session_to_reorder_it_edit_session_details_on_the_event_page" | t }}</p>
   </div>
   <div class="flex flex-wrap gap-2">
     <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-       title="Edit event"
-       aria-label="Edit event"
+       title="{{ "events.views.sessions.edit_event" | t }}"
+       aria-label="{{ "events.views.sessions.edit_event" | t }}"
        href="{{ editHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
-      <span class="hidden lg:inline">Edit event</span>
+      <span class="hidden lg:inline">{{ "events.views.sessions.edit_event" | t }}</span>
     </a>
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
   <table class="w-full min-w-[560px] text-left relative" data-reorder="{{ reorderAction }}" data-reorder-key="order" data-reorder-mode="order">
-    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="w-8 px-6 py-3"></th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Session</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Starts</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Capacity</th></tr></thead>
+    <thead class="bg-gray-50 border-b border-gray-200"><tr><th class="w-8 px-6 py-3"></th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.sessions.session" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.sessions.starts" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.sessions.location" | t }}</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{{ "events.views.sessions.capacity" | t }}</th></tr></thead>
     <tbody class="divide-y divide-gray-100">
       {% for session in sessions %}
         <tr data-index="{{ session.index }}">
-          <td class="px-6 py-3 text-sm text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab">⠿</td>
+          <td class="px-6 py-3 text-sm text-gray-400" data-reorder-handle title="{{ "events.views.sessions.drag_to_reorder" | t }}" style="cursor:grab">⠿</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ session.name }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ session.start }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ session.location }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{{ session.capacity }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="px-6 py-10 text-center text-sm text-gray-400">This event has no sessions yet.</td></tr>
+        <tr><td colspan="5" class="px-6 py-10 text-center text-sm text-gray-400">{{ "events.views.sessions.this_event_has_no_sessions_yet" | t }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
