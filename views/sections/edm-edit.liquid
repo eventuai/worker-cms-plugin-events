@@ -12,41 +12,41 @@
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
   <div class="min-w-0">
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← EDMs</a>
-    <h1 class="text-2xl font-bold text-gray-900">{{ title | escape }}</h1>
-    {% if eventName != blank %}<p class="mt-1 text-sm text-gray-500">Email template for {{ eventName | escape }}</p>{% endif %}
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← EDMs</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
+    {% if eventName != blank %}<p class="mt-1 text-sm text-gray-500">Email template for {{ eventName }}</p>{% endif %}
   </div>
   <div class="flex flex-wrap items-center gap-2">
     {% if cmsEditPresence.pageId != blank %}
       <div id="presence-bar"
            class="flex items-center gap-1.5 shrink-0"
-           data-page-id="{{ cmsEditPresence.pageId | escape }}"
-           data-user-id="{{ cmsEditPresence.currentUserId | escape }}"
-           data-user-avatar="{{ cmsEditPresence.userAvatar | escape }}">
+           data-page-id="{{ cmsEditPresence.pageId }}"
+           data-user-id="{{ cmsEditPresence.currentUserId }}"
+           data-user-avatar="{{ cmsEditPresence.userAvatar }}">
         <div id="presence-avatars" class="flex items-center gap-1"></div>
         <div id="sync-indicator"
              title=""
              style="width:8px;height:8px;border-radius:50%;background:#9ca3af;flex-shrink:0;transition:background .4s,opacity .4s;display:none"></div>
       </div>
     {% endif %}
-    {% if previewHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Preview" aria-label="Preview" href="{{ previewHref | escape }}" target="_blank" rel="noopener"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#document"></use></svg><span class="hidden lg:inline">Preview</span></a>{% endif %}
+    {% if previewHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Preview" aria-label="Preview" href="{{ previewHref }}" target="_blank" rel="noopener"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#document"></use></svg><span class="hidden lg:inline">Preview</span></a>{% endif %}
     <button form="main-form" type="submit" name="action" value="update" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Save" aria-label="Save"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span class="hidden lg:inline">Save</span></button>
   </div>
 </div>
 
 {% if errors and errors != empty %}
   <ul class="mb-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-red-600">
-    {% for error in errors %}<li>{{ error | escape }}</li>{% endfor %}
+    {% for error in errors %}<li>{{ error }}</li>{% endfor %}
   </ul>
 {% endif %}
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | escape }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
 
-<form id="main-form" method="post" action="{{ action | escape }}" data-editor-form class="space-y-6" style="max-width:54rem">
+<form id="main-form" method="post" action="{{ action }}" data-editor-form class="space-y-6" style="max-width:54rem">
   {%- comment -%} Carry the page basics the editor doesn't surface visually. {%- endcomment -%}
   <input type="hidden" name="page_type" value="edm">
-  <input type="hidden" name="slug" value="{{ slug | escape }}">
+  <input type="hidden" name="slug" value="{{ slug }}">
   <input type="hidden" name="weight" value="{{ weight }}">
-  <input type="hidden" name="return_to" value="{{ backHref | escape }}">
+  <input type="hidden" name="return_to" value="{{ backHref }}">
   {% if hasEvent %}<input type="hidden" name="*event" value="{{ eventId }}">{% endif %}
 
   {%- comment -%} ── Template name + event picker ── {%- endcomment -%}
@@ -58,7 +58,7 @@
         <span class="{{ cls_lbl }}">Event</span>
         <select name="*event" required class="{{ cls_input }}">
           <option value="">Select an event…</option>
-          {% for event in events %}<option value="{{ event.id }}">{{ event.name | escape }}</option>{% endfor %}
+          {% for event in events %}<option value="{{ event.id }}">{{ event.name }}</option>{% endfor %}
         </select>
       </label>
     {% endunless %}
@@ -69,14 +69,14 @@
     <h2 class="text-lg font-bold text-gray-900">Sender &amp; styling</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {% for field in senderFields %}
-        <div class="{{ field.span | escape }}">
+        <div class="{{ field.span }}">
           {% render field.templateName, field: field %}
         </div>
       {% endfor %}
     </div>
     <div class="grid grid-cols-2 gap-4">
       {% for field in styleFields %}
-        <div class="{{ field.span | escape }}">
+        <div class="{{ field.span }}">
           {% render field.templateName, field: field %}
         </div>
       {% endfor %}
@@ -92,7 +92,7 @@
         {%- comment -%} data-autosubmit: the CMS layout reloads the page on change (CSP-safe). {%- endcomment -%}
         <select name="_language" form="main-form" data-autosubmit class="px-2 py-1 border border-gray-300 rounded-lg text-xs">
           {% for option in languageOptions %}
-            <option value="{{ option.value | escape }}"{% if option.selected %} selected{% endif %}>{{ option.label | escape }}</option>
+            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
           {% endfor %}
         </select>
       </label>
@@ -109,7 +109,7 @@
       <div class="flex items-center gap-2">
         <label for="block-select" class="sr-only">Block type</label>
         <select id="block-select" name="block-select" form="main-form" class="px-2 py-1 border border-gray-300 rounded-lg text-xs">
-          {% for option in blockOptions %}<option value="{{ option.value | escape }}">{{ option.label | escape }}</option>{% endfor %}
+          {% for option in blockOptions %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}
         </select>
         <button form="main-form" type="submit" name="action" value="block-add" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border border-transparent bg-gray-900 text-white hover:bg-gray-700 cursor-pointer">Add block</button>
       </div>
@@ -121,14 +121,14 @@
           <li class="rounded-lg border border-gray-200">
             <details open>
               <summary class="flex items-center justify-between gap-2 px-4 py-2 cursor-pointer bg-gray-50 rounded-lg">
-                <span class="text-sm font-semibold text-gray-700">{{ block.title | escape }}{% if block.nameValue != blank %} · {{ block.nameValue | escape }}{% endif %}</span>
+                <span class="text-sm font-semibold text-gray-700">{{ block.title }}{% if block.nameValue != blank %} · {{ block.nameValue }}{% endif %}</span>
                 <span class="flex items-center gap-2">
                   <span class="text-xs text-gray-400">#{{ block.index }}</span>
                   <button form="main-form" type="submit" name="action" value="{{ block.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">Delete</button>
                 </span>
               </summary>
               <div class="px-4 py-4 space-y-4">
-                <input type="hidden" name="#{{ block.index }}@_type" value="{{ block.type | escape }}">
+                <input type="hidden" name="#{{ block.index }}@_type" value="{{ block.type }}">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {% render block.nameField.templateName, field: block.nameField %}
                   {% render block.weightField.templateName, field: block.weightField %}
@@ -140,13 +140,13 @@
                 {% if block.hasRows %}
                   <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 space-y-3">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="text-sm font-semibold text-gray-700">{{ block.rowLabel | escape }}s</span>
+                      <span class="text-sm font-semibold text-gray-700">{{ block.rowLabel }}s</span>
                       <button form="main-form" type="submit" name="action" value="{{ block.addRowAction }}" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer">Add {{ block.rowLabel | downcase }}</button>
                     </div>
                     {% for row in block.rows %}
                       <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
                         <div class="flex items-center justify-between gap-2">
-                          <span class="text-xs text-gray-400">{{ row.label | escape }}</span>
+                          <span class="text-xs text-gray-400">{{ row.label }}</span>
                           <button form="main-form" type="submit" name="action" value="{{ row.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">Remove</button>
                         </div>
                         {% for field in row.fields %}
@@ -172,7 +172,7 @@
     <div class="space-y-4">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {% for field in rsvpTextFields %}
-          <div class="{{ field.span | escape }}">
+          <div class="{{ field.span }}">
             {% render field.templateName, field: field %}
           </div>
         {% endfor %}
@@ -180,7 +180,7 @@
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-200" style="padding-top:1rem">
         {% for field in responseSwitchFields %}
-          <div class="{{ field.span | escape }}">
+          <div class="{{ field.span }}">
             {% render field.templateName, field: field %}
           </div>
         {% endfor %}
@@ -201,9 +201,9 @@
 
   <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
     <button type="submit" name="action" value="update" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">Save</button>
-    <a href="{{ backHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
+    <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
     {% if deleteAction != blank %}
-      <button type="submit" formaction="{{ deleteAction | escape }}" formmethod="post" data-confirm="Move this EDM to trash?" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">Delete</button>
+      <button type="submit" formaction="{{ deleteAction }}" formmethod="post" data-confirm="Move this EDM to trash?" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">Delete</button>
     {% endif %}
   </div>
 </form>
@@ -215,12 +215,12 @@
       {%- comment -%} Language tabs load the iframe (by name) without leaving the editor. {%- endcomment -%}
       <div class="flex flex-wrap items-center gap-1">
         {% for lang in previewLangs %}
-          <a href="{{ lang.href | escape }}" target="edm-preview" class="px-2 py-1 rounded-lg text-xs font-semibold {% if lang.active %}bg-indigo-600 text-white{% else %}border border-gray-300 text-gray-700 hover:bg-gray-50{% endif %}">{{ lang.label | escape }}</a>
+          <a href="{{ lang.href }}" target="edm-preview" class="px-2 py-1 rounded-lg text-xs font-semibold {% if lang.active %}bg-indigo-600 text-white{% else %}border border-gray-300 text-gray-700 hover:bg-gray-50{% endif %}">{{ lang.label }}</a>
         {% endfor %}
-        <a href="{{ previewHref | escape }}" target="_blank" rel="noopener" class="px-2 py-1 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-800">Open ↗</a>
+        <a href="{{ previewHref }}" target="_blank" rel="noopener" class="px-2 py-1 rounded-lg text-xs font-semibold text-indigo-600 hover:text-indigo-800">Open ↗</a>
       </div>
     </div>
-    <iframe name="edm-preview" src="{{ previewHref | escape }}" class="w-full border border-gray-200 rounded-lg" style="height:40rem" title="Email preview"></iframe>
+    <iframe name="edm-preview" src="{{ previewHref }}" class="w-full border border-gray-200 rounded-lg" style="height:40rem" title="Email preview"></iframe>
   </div>
 {% endif %}
 
@@ -228,7 +228,7 @@
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:54rem">
     <h2 class="text-lg font-bold text-gray-900">Send a test</h2>
     {% if senderSet %}
-      <form method="post" action="{{ testAction | escape }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
+      <form method="post" action="{{ testAction }}" class="flex flex-wrap gap-2" style="margin-top:1rem">
         <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:24rem" name="recipient" type="email" required placeholder="test@example.com">
         <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Send test email" aria-label="Send test email"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">Send test email</span></button>
       </form>

@@ -1,11 +1,11 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← Guest lists</a>
-    <h1 class="text-2xl font-bold text-gray-900">{{ title | default: "New guest list" | escape }}</h1>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← Guest lists</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ title | default: "New guest list" }}</h1>
   </div>
 </div>
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:36rem">
-  <form method="post" action="{{ action | escape }}">
+  <form method="post" action="{{ action }}">
     {% if selectedEventId %}
       <input type="hidden" name="event_id" value="{{ selectedEventId }}">
     {% else %}
@@ -13,7 +13,7 @@
         <select class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="event_id" required>
           <option value="">Select an event</option>
           {% for event in events %}
-            <option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name | escape }}</option>
+            <option value="{{ event.id }}"{% if event.selected %} selected{% endif %}>{{ event.name }}</option>
           {% endfor %}
         </select>
       </label>

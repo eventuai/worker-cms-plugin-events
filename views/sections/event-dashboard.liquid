@@ -1,36 +1,36 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventsHref | escape }}">← Events</a>
-    <h1 class="flex flex-wrap items-center gap-2 text-2xl font-bold text-gray-900">{{ eventName | escape }}{% if archived %}<span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">Archived</span>{% endif %}{% if deleting %}<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Deleting</span>{% endif %}</h1>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ eventsHref }}">← Events</a>
+    <h1 class="flex flex-wrap items-center gap-2 text-2xl font-bold text-gray-900">{{ eventName }}{% if archived %}<span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">Archived</span>{% endif %}{% if deleting %}<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Deleting</span>{% endif %}</h1>
   </div>
   <div class="flex flex-wrap gap-2 justify-end">
-    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref | escape }}">
+    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref }}">
       <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
       <span class="hidden lg:inline">Adhoc check-in</span>
     </a>{% endif %}
-    {% if labelsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Labels" aria-label="Labels" href="{{ labelsHref | escape }}">
+    {% if labelsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Labels" aria-label="Labels" href="{{ labelsHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#tag"></use></svg>
       <span class="hidden lg:inline">Labels</span>
     </a>{% endif %}
-    {% if editHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit event" aria-label="Edit event" href="{{ editHref | escape }}">
+    {% if editHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Edit event" aria-label="Edit event" href="{{ editHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
       <span class="hidden lg:inline">Edit event</span>
     </a>{% endif %}
   </div>
 </div>
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | escape }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
 {% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">This event is archived and read-only. Restore it from Archive before making changes.</p>{% endif %}
 {% if deleting %}<p class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">This event is being deleted in the background. Large guest lists can take several minutes to finish.</p>{% endif %}
 
 {% if stats != blank %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="View all guests" aria-label="View all guests" href="{{ allGuestsHref | escape }}">
+  <a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="View all guests" aria-label="View all guests" href="{{ allGuestsHref }}">
     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
     <span>View all guests</span>
   </a>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
     {% for stat in stats %}
-      <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900"{% if stat.color %} style="color:{{ stat.color | escape }}"{% endif %}>{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label | escape }}</span></div>
+      <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900"{% if stat.color %} style="color:{{ stat.color }}"{% endif %}>{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label }}</span></div>
     {% endfor %}
   </div>
 </div>
@@ -40,30 +40,30 @@
   <div class="p-4 pb-0 sticky top-0 z-10 bg-white">
     <div class="flex gap-3 justify-between">
       <div>
-      <a class="hover:underline flex items-center gap-2 text-lg font-bold text-gray-900" href="{{ guestListsHref | escape }}"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>Guest lists</a>
+      <a class="hover:underline flex items-center gap-2 text-lg font-bold text-gray-900" href="{{ guestListsHref }}"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>Guest lists</a>
       <p class="mt-1 text-sm text-gray-500">Invitation, RSVP and check-in summary by list.</p>
       </div>
 
       <div>
-        {% if hasGuests and exportAllHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export" aria-label="Export guests" href="{{ exportAllHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export</span></a>{% endif %}
-        {% if importHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import" aria-label="Import guests" href="{{ importHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import</span></a>{% endif %}
-        {% if newGuestListHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="New guest list" aria-label="New guest list" href="{{ newGuestListHref | escape }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New Guest List</span></a>{% endif %}
+        {% if hasGuests and exportAllHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export" aria-label="Export guests" href="{{ exportAllHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export</span></a>{% endif %}
+        {% if importHref != blank %}<a class="hidden md:inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Import" aria-label="Import guests" href="{{ importHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import</span></a>{% endif %}
+        {% if newGuestListHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="New guest list" aria-label="New guest list" href="{{ newGuestListHref }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg><span class="hidden lg:inline">New Guest List</span></a>{% endif %}
       </div>
     </div>
 
     {% if hasGuests %}
       <div class="flex flex-wrap items-center gap-3 justify-center mt-4">
-      <form class="flex flex-wrap items-center gap-3 lg:grid lg:grid-cols-2 w-full" method="get" action="{{ guestSearchHref | escape }}">
+      <form class="flex flex-wrap items-center gap-3 lg:grid lg:grid-cols-2 w-full" method="get" action="{{ guestSearchHref }}">
       <input class="w-full block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="q" placeholder="Search name, email, phone or guest ID">
       <div class="flex flex-nowrap gap-3 justify-end">
         <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
           <option value="">statuses</option>
-          {% for status in statuses %}<option value="{{ status | escape }}">{{ status | escape }}</option>{% endfor %}
+          {% for status in statuses %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
         </select>
         <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
           <option value="">All color tags</option>
           <option value="none">No color tag</option>
-          {% for color in guestSearchColorOptions %}<option value="{{ color.value | escape }}">{{ color.label | escape }}</option>{% endfor %}
+          {% for color in guestSearchColorOptions %}<option value="{{ color.value }}">{{ color.label }}</option>{% endfor %}
         </select>
         <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="Search" aria-label="Search guests">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
@@ -75,7 +75,7 @@
 
   </div>
   <div class="overflow-x-auto w-full">
-  <table class="w-full min-w-[560px] text-left relative"{% if reorderAction != blank %} data-reorder="{{ reorderAction | escape }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only{% endif %}>
+  <table class="w-full min-w-[560px] text-left relative"{% if reorderAction != blank %} data-reorder="{{ reorderAction }}" data-reorder-key="updates" data-reorder-mode="weight" data-reorder-event-id="{{ reorderEventId }}" data-reorder-handle-only{% endif %}>
     <thead class="bg-gray-50 border-b border-gray-200">
       <tr>
         {% if reorderAction != blank %}<th class="ps-4 sm:px-4 py-3 w-10"></th>{% endif %}
@@ -86,7 +86,7 @@
         <tr data-id="{{ list.id }}">
           {% if reorderAction != blank %}<td class="ps-4 sm:px-4 py-3 text-gray-400" data-reorder-handle title="Drag to reorder" style="cursor:grab"><svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" /></svg></td>{% endif %}
           <td class="ps-4 sm:px-6 py-3 text-sm text-gray-700 min-w-[200px]">
-            <a class="block text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">{{ list.name | escape }}</a>
+            <a class="block text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">{{ list.name }}</a>
             <div>
 {% if list.summary.guest_count != list.summary.guest_total %}
 <strong>{{ list.summary.guest_count }}</strong> groups {% endif %}
@@ -97,21 +97,21 @@
           <td class="px-6 py-3 text-sm text-gray-700">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
               {% for item in list.invitationStatusCounts %}
-                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass | escape }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor | escape }}"{% endif %}>{{ item.label | escape }} {{ item.value }}</span>
+                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor }}"{% endif %}>{{ item.label }} {{ item.value }}</span>
               {% endfor %}
             </div>
           </td>
           <td class="px-6 py-3 text-sm text-gray-700">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
               {% for item in list.rsvpStatusCounts %}
-                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass | escape }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor | escape }}"{% endif %}>{{ item.label | escape }} {{ item.value }}</span>
+                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor }}"{% endif %}>{{ item.label }} {{ item.value }}</span>
               {% endfor %}
             </div>
           </td>
           <td class="px-6 py-3 text-sm text-gray-700">
 {% if list.summary.checked_in_count != list.summary.checked_in_total %}<strong>{{ list.summary.checked_in_count }}</strong> groups <br>{% endif %}
 <span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} people</span></td>
-          <td class="px-6 py-3 text-right"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href | escape }}">→</a></td>
+          <td class="px-6 py-3 text-right"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">→</a></td>
         </tr>
       {% else %}
         <tr><td colspan="7" class="px-6 py-10 text-center text-sm text-gray-400">No guest lists yet. Create one to begin inviting guests.</td></tr>
@@ -124,7 +124,7 @@
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 mt-4">
   <div class="flex justify-between gap-4 sticky top-0 z-10 bg-white" style="padding:1rem 1rem 0;margin-bottom:.75rem">
     <div><h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>Email templates</h2><p class="mt-1 text-sm text-gray-500">EDM templates for this event's invitations and blasts.</p></div>
-    {% if newEdmHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Add template" aria-label="Add template" href="{{ newEdmHref | escape }}">
+    {% if newEdmHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Add template" aria-label="Add template" href="{{ newEdmHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#plus"></use></svg>
       <span class="hidden lg:inline">Add template</span>
     </a>{% endif %}
@@ -135,21 +135,21 @@
     <tbody class="divide-y divide-gray-100">
       {% for edm in edms %}
         <tr>
-          <td class="px-6 py-3 text-sm text-gray-700">{% if edm.href != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.href | escape }}">{{ edm.name | escape }}</a>{% else %}<span class="font-medium text-gray-800">{{ edm.name | escape }}</span>{% endif %}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ edm.subject | escape }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{% if edm.href != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ edm.href }}">{{ edm.name }}</a>{% else %}<span class="font-medium text-gray-800">{{ edm.name }}</span>{% endif %}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ edm.subject }}</td>
           <td class="px-6 py-3 text-right whitespace-nowrap">
             <div class="inline-flex items-center gap-3">
-              <a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Preview email template" aria-label="Preview email template" href="{{ edm.previewHref | escape }}" target="_blank" rel="noopener">
+              <a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Preview email template" aria-label="Preview email template" href="{{ edm.previewHref }}" target="_blank" rel="noopener">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye"></use></svg>
                 <span class="sr-only">Preview</span>
               </a>
-              {% if edm.duplicateAction != blank %}<form method="post" action="{{ edm.duplicateAction | escape }}" class="inline shrink-0">
+              {% if edm.duplicateAction != blank %}<form method="post" action="{{ edm.duplicateAction }}" class="inline shrink-0">
                 <button class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 cursor-pointer" type="submit" title="Duplicate email template" aria-label="Duplicate email template">
                   <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
                   <span class="sr-only">Duplicate</span>
                 </button>
               </form>{% endif %}
-              {% if edm.href != blank %}<a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Edit email template" aria-label="Edit email template" href="{{ edm.href | escape }}">
+              {% if edm.href != blank %}<a class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800" title="Edit email template" aria-label="Edit email template" href="{{ edm.href }}">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#pencil-square"></use></svg>
                 <span class="sr-only">Edit</span>
               </a>{% endif %}
@@ -188,7 +188,7 @@
       {% for row in responses %}
         <tr>
           <td class="px-6 py-3 text-sm text-gray-700 whitespace-nowrap">{{ row.dateLabel }}<br><span class="text-xs text-gray-500">{{ row.timeLabel }}</span></td>
-          <td class="px-6 py-3 text-sm text-gray-700">{% if row.href != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.href | escape }}" data-private-field="name">{{ row.name | escape }}</a>{% else %}<span class="font-medium text-gray-800" data-private-field="name">{{ row.name | escape }}</span>{% endif %}<br><span class="text-xs text-gray-500" data-private-field="contact">{{ row.contact | escape }}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-700">{% if row.href != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.href }}" data-private-field="name">{{ row.name }}</a>{% else %}<span class="font-medium text-gray-800" data-private-field="name">{{ row.name }}</span>{% endif %}<br><span class="text-xs text-gray-500" data-private-field="contact">{{ row.contact }}</span></td>
           <td class="px-6 py-3 text-sm"><span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {% if row.status == 'confirmed' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">{{ row.status | capitalize }}</span></td>
           {% if responsesShowCheckin %}<td class="px-6 py-3 text-sm text-gray-700">{% if row.checkedIn %}<span class="text-indigo-600 font-medium">Yes</span>{% else %}—{% endif %}</td>{% endif %}
         </tr>
@@ -203,13 +203,13 @@
       <p class="text-sm text-gray-500">Showing {{ responsesRangeStart }}-{{ responsesRangeEnd }} of {{ responsesTotal }}</p>
       <div class="flex items-center gap-2">
         {% if responsesPrevHref %}
-          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesPrevHref | escape }}">Previous</a>
+          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesPrevHref }}">Previous</a>
         {% else %}
           <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">Previous</span>
         {% endif %}
         <span class="text-sm text-gray-500">Page {{ responsesPage }} of {{ responsesTotalPages }}</span>
         {% if responsesNextHref %}
-          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesNextHref | escape }}">Next</a>
+          <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesNextHref }}">Next</a>
         {% else %}
           <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">Next</span>
         {% endif %}
@@ -219,27 +219,27 @@
 </div>
 
   <div class="flex flex-wrap gap-2 mt-4">
-    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref | escape }}">
+    {% if adhocCheckinHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700" title="Adhoc check-in" aria-label="Adhoc check-in" href="{{ adhocCheckinHref }}">
       <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg>
       <span class="hidden lg:inline">Adhoc check-in</span>
     </a>{% endif %}
-    {% if sessionsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Sessions" aria-label="Sessions" href="{{ sessionsHref | escape }}">
+    {% if sessionsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Sessions" aria-label="Sessions" href="{{ sessionsHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#calendar"></use></svg>
       <span class="hidden lg:inline">Sessions</span>
     </a>{% endif %}
-    {% if duplicateHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Duplicate event" aria-label="Duplicate event" href="{{ duplicateHref | escape }}">
+    {% if duplicateHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Duplicate event" aria-label="Duplicate event" href="{{ duplicateHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#duplicate"></use></svg>
       <span class="hidden lg:inline">Duplicate</span>
     </a>{% endif %}
-    {% if registrationsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Public registrations" aria-label="Public registrations" href="{{ registrationsHref | escape }}">
+    {% if registrationsHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Public registrations" aria-label="Public registrations" href="{{ registrationsHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#users"></use></svg>
       <span class="hidden lg:inline">Registrations</span>
     </a>{% endif %}
-    {% if archiveHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Archive event" aria-label="Archive event" href="{{ archiveHref | escape }}">
+    {% if archiveHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Archive event" aria-label="Archive event" href="{{ archiveHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>
       <span class="hidden lg:inline">Archive</span>
     </a>{% endif %}
-    {% if deleteHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" title="Delete event" aria-label="Delete event" href="{{ deleteHref | escape }}">
+    {% if deleteHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" title="Delete event" aria-label="Delete event" href="{{ deleteHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg>
       <span class="hidden lg:inline">Delete</span>
     </a>{% endif %}

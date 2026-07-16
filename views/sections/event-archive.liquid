@@ -1,10 +1,10 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← {{ eventName }}</a>
     <h1 class="text-2xl font-bold text-gray-900">Archive event</h1>
     <p class="mt-1 text-sm text-gray-500">{{ guestTotal }} guest(s) reconciled against the contact database. Applying merges each guest's event activity into their contact record, moves this event's RSVP submissions to trash, and hides the event.</p>
   </div>
-  <form method="post" action="{{ action | escape }}" data-long-running-form>
+  <form method="post" action="{{ action }}" data-long-running-form>
     {% if archived %}
     <input type="hidden" name="action" value="unarchive">
     <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit">Restore event</button>
@@ -24,7 +24,7 @@
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem">
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
     {% for stat in tiles %}
-      <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900">{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label | escape }}</span></div>
+      <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900">{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label }}</span></div>
     {% endfor %}
   </div>
 </div>
@@ -35,10 +35,10 @@ expanded section never dominates the page and stays scrollable on narrow screens
 {% for section in sections %}
 <details class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem"{% if section.count > 0 %} open{% endif %}>
   <summary class="text-lg font-bold text-gray-900" style="cursor:pointer">
-    {{ section.label | escape }}
+    {{ section.label }}
     <span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700" style="margin-left:.5rem;vertical-align:middle">{{ section.count }}</span>
   </summary>
-  <p class="mt-2 text-sm text-gray-500 mb-4">{{ section.hint | escape }}</p>
+  <p class="mt-2 text-sm text-gray-500 mb-4">{{ section.hint }}</p>
   {% if section.count > 0 %}
   <div style="max-height:24rem;overflow:auto">
     <table class="w-full min-w-[680px] text-left text-sm" data-privacy-table>
@@ -53,10 +53,10 @@ expanded section never dominates the page and stays scrollable on narrow screens
       <tbody class="divide-y divide-gray-100">
         {% for row in section.rows %}
         <tr>
-          <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="name">{{ row.name | escape }}</span></td>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ row.listName | escape }}</td>
-          <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="email">{{ row.email | escape }}</span></td>
-          <td class="px-6 py-3 text-sm text-gray-500"><span data-private-field="contact">{{ row.detail | escape }}{% if row.contactHref != blank %} <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.contactHref | escape }}" target="_blank" rel="noopener">View contact ↗</a>{% endif %}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="name">{{ row.name }}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ row.listName }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700"><span data-private-field="email">{{ row.email }}</span></td>
+          <td class="px-6 py-3 text-sm text-gray-500"><span data-private-field="contact">{{ row.detail }}{% if row.contactHref != blank %} <a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.contactHref }}" target="_blank" rel="noopener">View contact ↗</a>{% endif %}</span></td>
         </tr>
         {% endfor %}
       </tbody>

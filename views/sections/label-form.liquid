@@ -1,11 +1,11 @@
-<div class="flex items-center justify-between gap-4 mb-4"><div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← Label templates</a><h1 class="text-2xl font-bold text-gray-900">{{ title | escape }}</h1><p class="mt-1 text-sm text-gray-500">{{ eventName | escape }}</p></div></div>
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:36rem">{{ flash | escape }}</p>{% endif %}
+<div class="flex items-center justify-between gap-4 mb-4"><div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← Label templates</a><h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1><p class="mt-1 text-sm text-gray-500">{{ eventName }}</p></div></div>
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:36rem">{{ flash }}</p>{% endif %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:36rem">
-  <form method="post" action="{{ action | escape }}" enctype="multipart/form-data">
-    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Template name</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" required value="{{ label.name | escape }}" placeholder="Guest badge 60×30"></label>
+  <form method="post" action="{{ action }}" enctype="multipart/form-data">
+    <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Template name</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" required value="{{ label.name }}" placeholder="Guest badge 60×30"></label>
     <div class="flex flex-wrap gap-3">
-      <label class="block mb-3 flex-1"><span class="block text-sm text-gray-700 mb-1">Width (mm)</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" type="number" min="10" max="210" name="width" value="{{ label.width | escape }}"></label>
-      <label class="block mb-3 flex-1"><span class="block text-sm text-gray-700 mb-1">Height (mm)</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" type="number" min="10" max="210" name="height" value="{{ label.height | escape }}"></label>
+      <label class="block mb-3 flex-1"><span class="block text-sm text-gray-700 mb-1">Width (mm)</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" type="number" min="10" max="210" name="width" value="{{ label.width }}"></label>
+      <label class="block mb-3 flex-1"><span class="block text-sm text-gray-700 mb-1">Height (mm)</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" type="number" min="10" max="210" name="height" value="{{ label.height }}"></label>
     </div>
     <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">Start from a design file (optional)</span><input class="block w-full text-sm text-gray-700" type="file" name="design_file" accept=".json,.txt"></label>
     <p class="mb-4 text-xs text-gray-500">Upload a <code>label-design-*.json</code> export from the legacy label editor (or this one) to start from that design — its size then wins over the width/height above. You can change everything later in the label editor.</p>

@@ -1,37 +1,37 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← Label templates</a>
-    <input id="label-name" form="labelSaveForm" class="block w-full border-0 p-0 bg-transparent text-2xl font-bold text-gray-900 focus:outline-none focus:ring-0" name="name" value="{{ labelName | escape }}" required autocomplete="off" placeholder="Template name" aria-label="Template name">
-    <p class="mt-1 text-sm text-gray-500">{{ eventName | escape }}</p>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← Label templates</a>
+    <input id="label-name" form="labelSaveForm" class="block w-full border-0 p-0 bg-transparent text-2xl font-bold text-gray-900 focus:outline-none focus:ring-0" name="name" value="{{ labelName }}" required autocomplete="off" placeholder="Template name" aria-label="Template name">
+    <p class="mt-1 text-sm text-gray-500">{{ eventName }}</p>
   </div>
   <div class="flex flex-wrap items-center justify-end gap-2">
     <button type="submit" form="labelSaveForm" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Save label" aria-label="Save label"><svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><use href="/assets/icons.svg#check-circle"></use></svg><span id="saveButtonText" class="hidden lg:inline">Save</span></button>
     <button type="button" id="exportLabel" hidden class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="Export JSON" aria-label="Export JSON"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg><span class="hidden lg:inline">Export JSON</span></button>
     <button type="button" id="importLabel" hidden class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" title="Import JSON" aria-label="Import JSON"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg><span class="hidden lg:inline">Import JSON</span></button>
     <input type="file" id="labelFileInput" accept=".json,.txt" hidden>
-    {% if isPublished %}<form method="post" action="{{ unpublishAction | escape }}" data-confirm="Unpublish this label template?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 text-sm font-semibold text-yellow-700 hover:bg-yellow-50 hover:text-yellow-800 cursor-pointer" title="Unpublish label" aria-label="Unpublish label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye-off"></use></svg><span class="hidden lg:inline">Unpublish</span></button></form>{% else %}<form method="post" action="{{ publishAction | escape }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-white px-4 text-sm font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 cursor-pointer" title="Publish label" aria-label="Publish label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">Publish</span></button></form>{% endif %}
-    <form method="post" action="{{ deleteAction | escape }}" data-confirm="Delete label template “{{ labelName | escape }}”?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer" title="Delete label" aria-label="Delete label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg><span class="hidden lg:inline">Delete</span></button></form>
+    {% if isPublished %}<form method="post" action="{{ unpublishAction }}" data-confirm="Unpublish this label template?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-yellow-300 bg-white px-4 text-sm font-semibold text-yellow-700 hover:bg-yellow-50 hover:text-yellow-800 cursor-pointer" title="Unpublish label" aria-label="Unpublish label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#eye-off"></use></svg><span class="hidden lg:inline">Unpublish</span></button></form>{% else %}<form method="post" action="{{ publishAction }}"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-white px-4 text-sm font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 cursor-pointer" title="Publish label" aria-label="Publish label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#cloud-upload"></use></svg><span class="hidden lg:inline">Publish</span></button></form>{% endif %}
+    <form method="post" action="{{ deleteAction }}" data-confirm="Delete label template “{{ labelName }}”?"><button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer" title="Delete label" aria-label="Delete label"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#trash"></use></svg><span class="hidden lg:inline">Delete</span></button></form>
   </div>
 </div>
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | escape }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
 <p id="labelEditorFallback" class="mb-4 rounded-lg bg-amber-50 border border-gray-200 px-4 py-3 text-sm text-amber-800">The interactive label editor script is not loaded (it may be awaiting approval). You can still rename or delete the template; the stored design is kept as-is.</p>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
   <!-- Preview column -->
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-    <form method="get" action="{{ selfHref | escape }}" id="labelGuestForm" class="mb-3">
+    <form method="get" action="{{ selfHref }}" id="labelGuestForm" class="mb-3">
       <div class="flex gap-2 mb-2">
-        <input type="search" name="q" id="guestSearchInput" value="{{ q | escape }}" placeholder="Search guest by name, email or organization…" aria-label="Search guests" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+        <input type="search" name="q" id="guestSearchInput" value="{{ q }}" placeholder="Search guest by name, email or organization…" aria-label="Search guests" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
         <button type="submit" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Search</button>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <select name="list" id="guestListSelect" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
           <option value="">Preview guest list…</option>
-          {% for list in guestLists %}<option value="{{ list.id }}"{% if list.selected %} selected{% endif %}>{{ list.name | escape }}</option>{% endfor %}
+          {% for list in guestLists %}<option value="{{ list.id }}"{% if list.selected %} selected{% endif %}>{{ list.name }}</option>{% endfor %}
         </select>
         <select name="guest" id="guestSelect" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"{% if selectedListId == blank and q == blank %} disabled{% endif %}>
-          <option value="">{% if q != blank %}{% if guests.size > 0 %}{{ guests.size }} matching guest{% if guests.size != 1 %}s{% endif %}…{% else %}No guests match “{{ q | escape }}”{% endif %}{% else %}Preview guest…{% endif %}</option>
-          {% for guest in guests %}<option value="{{ guest.id }}"{% if guest.selected %} selected{% endif %}>{{ guest.name | escape }}</option>{% endfor %}
+          <option value="">{% if q != blank %}{% if guests.size > 0 %}{{ guests.size }} matching guest{% if guests.size != 1 %}s{% endif %}…{% else %}No guests match “{{ q }}”{% endif %}{% else %}Preview guest…{% endif %}</option>
+          {% for guest in guests %}<option value="{{ guest.id }}"{% if guest.selected %} selected{% endif %}>{{ guest.name }}</option>{% endfor %}
         </select>
         <button type="submit" id="loadGuestButton" class="inline-flex h-9 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">Load</button>
       </div>
@@ -43,7 +43,7 @@
         <button type="button" id="printLabelButton" hidden class="inline-flex h-9 items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer">Print label</button>
       </div>
     </div>
-    <p class="mb-3 text-right text-xs text-gray-500">Uses the shared Check-in printer mode. <a href="{{ printerSettingsHref | escape }}" class="font-medium text-indigo-600 hover:text-indigo-800">Printer settings</a></p>
+    <p class="mb-3 text-right text-xs text-gray-500">Uses the shared Check-in printer mode. <a href="{{ printerSettingsHref }}" class="font-medium text-indigo-600 hover:text-indigo-800">Printer settings</a></p>
     <div id="svgPreviewContainer" class="flex justify-center items-center rounded-lg p-4 w-full overflow-x-auto" style="min-height:20rem;background-image:linear-gradient(45deg,#e5e7eb 25%,transparent 25%),linear-gradient(-45deg,#e5e7eb 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e5e7eb 75%),linear-gradient(-45deg,transparent 75%,#e5e7eb 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;">
       <div id="svgWrapper" class="relative" style="transition:transform .2s">
         <div class="pointer-events-none absolute top-0 left-0 w-full h-full" aria-hidden="true">
@@ -59,7 +59,7 @@
       </div>
     </div>
     <p class="mt-2 text-xs text-gray-400">Click an element to select it, drag to move. Arrow keys nudge; hold Shift for larger steps.</p>
-    <textarea id="labelTokens" hidden readonly>{{ tokensJson | escape }}</textarea>
+    <textarea id="labelTokens" hidden readonly>{{ tokensJson }}</textarea>
 
     <!-- Adhoc values -->
     <div id="adhocValuesPanel" class="mt-4 border-t border-gray-200 pt-4" hidden>
@@ -72,7 +72,7 @@
     </div>
 
     {% if selectedListId != blank %}
-    <section id="batchPrintPanel" data-storage-key="{{ batchStorageKey | escape }}" class="mt-4 border-t border-gray-200 pt-4">
+    <section id="batchPrintPanel" data-storage-key="{{ batchStorageKey }}" class="mt-4 border-t border-gray-200 pt-4">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
           <h3 class="text-sm font-semibold text-gray-800">Batch print</h3>
@@ -86,9 +86,9 @@
         <div>
           <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
             <input type="checkbox" class="batch-guest-checkbox h-4 w-4 mt-0.5" data-guest-id="{{ guest.id }}">
-            <span>{{ guest.name | escape }}</span>
+            <span>{{ guest.name }}</span>
           </label>
-          <textarea hidden readonly data-batch-tokens="{{ guest.id }}">{{ guest.tokensJson | escape }}</textarea>
+          <textarea hidden readonly data-batch-tokens="{{ guest.id }}">{{ guest.tokensJson }}</textarea>
         </div>
         {% endfor %}
       </div>
@@ -102,12 +102,12 @@
 
   <!-- Controls column -->
   <div class="space-y-4">
-    <form method="post" action="{{ action | escape }}" id="labelSaveForm" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-      <textarea name="design" id="labelDesignField" hidden readonly>{{ designJson | escape }}</textarea>
-      <input type="hidden" name="q" value="{{ q | escape }}">
-      <input type="hidden" name="list" value="{{ selectedListId | escape }}">
-      <input type="hidden" name="guest" value="{{ selectedGuestId | escape }}">
-      <input type="hidden" id="selectedGuestName" value="{{ selectedGuestName | escape }}">
+    <form method="post" action="{{ action }}" id="labelSaveForm" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <textarea name="design" id="labelDesignField" hidden readonly>{{ designJson }}</textarea>
+      <input type="hidden" name="q" value="{{ q }}">
+      <input type="hidden" name="list" value="{{ selectedListId }}">
+      <input type="hidden" name="guest" value="{{ selectedGuestId }}">
+      <input type="hidden" id="selectedGuestName" value="{{ selectedGuestName }}">
       <p id="unsavedHint" class="mt-2 text-xs text-amber-800" hidden>Unsaved changes — click Save to store this design.</p>
     </form>
 

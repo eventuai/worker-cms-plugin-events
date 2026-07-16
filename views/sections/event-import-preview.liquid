@@ -1,8 +1,8 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ importHref | escape }}">← Choose a different file</a>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ importHref }}">← Choose a different file</a>
     <h1 class="text-2xl font-bold text-gray-900">Preview import</h1>
-    <p class="mt-1 text-sm text-gray-500">{{ eventName | escape }}</p>
+    <p class="mt-1 text-sm text-gray-500">{{ eventName }}</p>
   </div>
 </div>
 
@@ -27,7 +27,7 @@
     <tbody class="divide-y divide-gray-100">
       {% for group in groups %}
         <tr>
-          <td class="px-6 py-3 text-sm font-medium text-gray-800">{{ group.listName | escape }}</td>
+          <td class="px-6 py-3 text-sm font-medium text-gray-800">{{ group.listName }}</td>
           <td class="px-6 py-3 text-sm">
             {% if group.listState == 'new' %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700">Will create</span>
             {% else %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Existing</span>{% endif %}
@@ -42,8 +42,8 @@
   </table>
 </div>
 
-<form method="post" action="{{ confirmAction | escape }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" data-long-running-form>
-  <textarea name="csv" style="display:none">{{ csv | escape }}</textarea>
+<form method="post" action="{{ confirmAction }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" data-long-running-form>
+  <textarea name="csv" style="display:none">{{ csv }}</textarea>
   <label class="block mb-4" style="max-width:30rem">
     <span class="block text-sm font-medium text-gray-700 mb-1">How should these be imported?</span>
     <select name="mode" class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
@@ -57,7 +57,7 @@
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>
       <span class="hidden lg:inline">Confirm import</span>
     </button>
-    <a href="{{ backHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
+    <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
   </div>
 </form>
 <script src="/admin/plugins/events/assets/long-running-submit.js" defer></script>

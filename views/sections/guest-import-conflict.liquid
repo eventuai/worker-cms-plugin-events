@@ -1,24 +1,24 @@
 <div class="mb-4">
   <h1 class="text-2xl font-bold text-gray-900">Import ID conflict</h1>
-  <p class="mt-1 text-sm text-gray-500">{{ heading | escape }}</p>
+  <p class="mt-1 text-sm text-gray-500">{{ heading }}</p>
 </div>
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
   <div class="mb-4 px-4 py-2 rounded-lg bg-amber-50 text-amber-800 text-sm">
-    The row “<span data-private-field="name">{{ guestName | escape }}</span>”{% if requestedId != '' %} asks for ID {{ requestedId }}, which{% else %} has an ID that{% endif %} is already used in the CMS (or repeated in the file), so the import stopped. Records imported before this row were saved.
+    The row “<span data-private-field="name">{{ guestName }}</span>”{% if requestedId != '' %} asks for ID {{ requestedId }}, which{% else %} has an ID that{% endif %} is already used in the CMS (or repeated in the file), so the import stopped. Records imported before this row were saved.
   </div>
   <p class="text-sm text-gray-600 mb-4">You can continue letting the CMS assign new IDs to the conflicting rows. Rows whose ID is free still keep the ID from the file — but QR codes or links from the old system that point at a replaced ID will no longer match.</p>
 
-  <form method="post" action="{{ confirmAction | escape }}" data-long-running-form>
-    <textarea name="csv" style="display:none">{{ csv | escape }}</textarea>
-    <input type="hidden" name="mode" value="{{ mode | escape }}">
+  <form method="post" action="{{ confirmAction }}" data-long-running-form>
+    <textarea name="csv" style="display:none">{{ csv }}</textarea>
+    <input type="hidden" name="mode" value="{{ mode }}">
     <input type="hidden" name="assign_new_ids" value="1">
     <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
       <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 cursor-pointer" title="Assign new IDs and continue" aria-label="Assign new IDs and continue" data-loading-label="Continuing import">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg>
         <span class="hidden lg:inline">Assign new IDs and continue</span>
       </button>
-      <a href="{{ backHref | escape }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
+      <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">Cancel</a>
     </div>
   </form>
 </div>

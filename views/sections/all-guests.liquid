@@ -1,38 +1,38 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref | escape }}">← {{ eventName | escape }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">{{ heading | escape }}</h1>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← {{ eventName }}</a>
+    <h1 class="text-2xl font-bold text-gray-900">{{ heading }}</h1>
     <p class="mt-1 text-sm text-gray-500" data-all-guests-summary>
       {% if asyncGuests %}<span data-all-guests-summary-text><span data-table-filter-count="guests">{{ initialCount }}</span> of {{ filteredCount }} matching guests rendered</span>
       {% else %}<span data-table-filter-count="guests">{{ filteredCount }}</span> of {{ totalCount }} guest{% if totalCount != 1 %}s{% endif %} across every list{% endif %}
     </p>
   </div>
   <div class="flex flex-wrap gap-2">
-    {% if exportHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export CSV" aria-label="Export CSV" href="{{ exportHref | escape }}">
+    {% if exportHref != blank %}<a class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Export CSV" aria-label="Export CSV" href="{{ exportHref }}">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#download"></use></svg>
       <span class="hidden lg:inline">Export CSV</span>
     </a>{% endif %}
   </div>
 </div>
 {% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">These guests belong to an archived event and are read-only.</p>{% endif %}
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | escape }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-  <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref | escape }}" data-table-filter-form data-table-filter-target="[data-table-filter='guests']" data-table-filter-count-target="[data-table-filter-count='guests']">
-    {% if selectedCustomFieldKey != blank %}<input type="hidden" name="cf" value="{{ selectedCustomFieldKey | escape }}">{% endif %}
-    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q | escape }}" placeholder="Search name, email, phone or guest ID">
+  <form class="flex flex-wrap items-center gap-3" method="get" action="{{ listHref }}" data-table-filter-form data-table-filter-target="[data-table-filter='guests']" data-table-filter-count-target="[data-table-filter-count='guests']">
+    {% if selectedCustomFieldKey != blank %}<input type="hidden" name="cf" value="{{ selectedCustomFieldKey }}">{% endif %}
+    <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" style="max-width:22rem" name="q" value="{{ q }}" placeholder="Search name, email, phone or guest ID">
     <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
       <option value="">All statuses</option>
-      {% for status in statuses %}<option value="{{ status | escape }}"{% if status == selectedStatus %} selected{% endif %}>{{ status | escape }}</option>{% endfor %}
+      {% for status in statuses %}<option value="{{ status }}"{% if status == selectedStatus %} selected{% endif %}>{{ status }}</option>{% endfor %}
     </select>
     <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
       <option value="">All color tags</option>
       <option value="none"{% if selectedColor == 'none' %} selected{% endif %}>No color tag</option>
-      {% for color in colorOptions %}<option value="{{ color.value | escape }}"{% if color.selected %} selected{% endif %}>{{ color.label | escape }}</option>{% endfor %}
+      {% for color in colorOptions %}<option value="{{ color.value }}"{% if color.selected %} selected{% endif %}>{{ color.label }}</option>{% endfor %}
     </select>
     <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" type="submit" title="Search" aria-label="Search guests">
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
     </button>
-    <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref | escape }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>Clear</a>
+    <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>Clear</a>
   </form>
 </div>
 {% if asyncGuests %}

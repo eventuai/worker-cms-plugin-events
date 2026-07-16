@@ -1,24 +1,24 @@
 <div class="flex items-center justify-between gap-4 mb-4">
   <div>
-    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listHref | escape }}">← {{ listName | escape }}</a>
+    <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listHref }}">← {{ listName }}</a>
     <h1 class="text-2xl font-bold text-gray-900">Add from contacts</h1>
-    <p class="mt-1 text-sm text-gray-500">Search the contact database and add people to {{ listName | escape }}{% if eventName != blank %} ({{ eventName | escape }}){% endif %}. Added guests stay linked to their contact record.</p>
+    <p class="mt-1 text-sm text-gray-500">Search the contact database and add people to {{ listName }}{% if eventName != blank %} ({{ eventName }}){% endif %}. Added guests stay linked to their contact record.</p>
   </div>
 </div>
 
 {% if flash != blank %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="margin-bottom:1rem">
-  <p class="text-sm text-gray-700">{{ flash | escape }}</p>
+  <p class="text-sm text-gray-700">{{ flash }}</p>
 </div>
 {% endif %}
 
-<form method="get" action="{{ searchAction | escape }}" class="flex flex-wrap items-center gap-1.5 mb-4">
-  <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1" type="search" name="q" value="{{ q | escape }}" placeholder="Search name, email, organization…">
+<form method="get" action="{{ searchAction }}" class="flex flex-wrap items-center gap-1.5 mb-4">
+  <input class="block px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1" type="search" name="q" value="{{ q }}" placeholder="Search name, email, organization…">
   <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Search</button>
 </form>
 
-<form method="post" action="{{ addAction | escape }}">
-  <input type="hidden" name="q" value="{{ q | escape }}">
+<form method="post" action="{{ addAction }}">
+  <input type="hidden" name="q" value="{{ q }}">
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
     <table class="w-full text-left text-sm">
       <thead class="bg-gray-50 border-b border-gray-200">
@@ -33,10 +33,10 @@
       <tbody class="divide-y divide-gray-100">
         {% for row in rows %}
         <tr>
-          <td class="px-4 py-3"><input type="checkbox" name="contact_ids" value="{{ row.id }}" aria-label="Select {{ row.name | escape }}"></td>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ row.name | escape }}{% if row.title != blank %}<div class="text-xs text-gray-400">{{ row.title | escape }}</div>{% endif %}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ row.email | escape }}</td>
-          <td class="px-6 py-3 text-sm text-gray-700">{{ row.organization | escape }}</td>
+          <td class="px-4 py-3"><input type="checkbox" name="contact_ids" value="{{ row.id }}" aria-label="Select {{ row.name }}"></td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ row.name }}{% if row.title != blank %}<div class="text-xs text-gray-400">{{ row.title }}</div>{% endif %}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ row.email }}</td>
+          <td class="px-6 py-3 text-sm text-gray-700">{{ row.organization }}</td>
           <td class="px-6 py-3 text-sm text-gray-700">{% if row.inList %}<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">yes</span>{% endif %}</td>
         </tr>
         {% else %}
@@ -48,7 +48,7 @@
   {% if hasRows %}
   <div class="flex flex-wrap gap-2" style="margin-top:1rem">
     <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer" type="submit">Add selected to list</button>
-    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer" type="submit" formaction="{{ removeAction | escape }}" data-confirm="Remove the selected contacts' guests from this list?">Remove selected from list</button>
+    <button class="inline-block px-4 py-2 rounded-lg text-sm font-semibold border border-transparent bg-red-600 text-white hover:bg-red-700 cursor-pointer" type="submit" formaction="{{ removeAction }}" data-confirm="Remove the selected contacts' guests from this list?">Remove selected from list</button>
   </div>
   {% endif %}
 </form>
