@@ -83,6 +83,7 @@
 
 </div>
 
+{% assign guestListEmptyMessage = "events.views.guest_list.no_guests_match_this_list" | t %}
 {% render "guest-table",
   guests: guests,
   statuses: statuses,
@@ -95,7 +96,7 @@
   hasCustomFields: hasCustomFields,
   customFieldOptions: customFieldOptions,
   selectedCustomFieldKey: selectedCustomFieldKey,
-  emptyMessage: "No guests match this list."
+  emptyMessage: guestListEmptyMessage
 %}
 <div class="mt-4">
   {% if deleteAction != blank %}

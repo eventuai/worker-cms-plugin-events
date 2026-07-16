@@ -30,4 +30,15 @@ describe('events UI locale catalog', () => {
     expect([...new Set(usedKeys.filter((key) => !(key in catalog)))]).toEqual([]);
     expect(Object.values(catalog).some((value) => /[\u0000-\u001f]/.test(value))).toBe(false);
   });
+
+  it('ships valid overrides for every CMS interface locale', async () => {
+    const english = flattenMessages(JSON.parse(await readFile(fileURLToPath(new URL('../views/locales/en.json', import.meta.url).href), 'utf8')));
+    for (const locale of ['zh-hans', 'zh-hant']) {
+      const localized = flattenMessages(JSON.parse(await readFile(fileURLToPath(new URL(`../views/locales/${locale}.json`, import.meta.url).href), 'utf8')));
+      expect(Object.keys(localized).length).toBeGreaterThan(0);
+      expect(Object.keys(localized).filter((key) => !(key in english))).toEqual([]);
+      if (locale === 'zh-hant') expect(Object.keys(english).filter((key) => !(key in localized))).toEqual([]);
+      expect(Object.values(localized).some((value) => /[\u0000-\u001f]/.test(value))).toBe(false);
+    }
+  });
 });

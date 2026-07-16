@@ -10,6 +10,11 @@
     return node;
   }
 
+  function message(name, fallback) {
+    var root = document.querySelector('[data-all-guests-async]');
+    return root && root.getAttribute('data-i18n-' + name) || fallback;
+  }
+
   function setHref(node, value) {
     if (!(node instanceof HTMLAnchorElement)) return;
     node.href = String(value || '');
@@ -63,10 +68,10 @@
     var label = document.createElement('span');
     if (checkedIn) {
       label.className = 'inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700';
-      label.textContent = 'Checked in';
+      label.textContent = message('checked-in', 'Checked in');
     } else {
       label.className = 'text-xs text-gray-400';
-      label.textContent = 'Not checked in';
+      label.textContent = message('not-checked-in', 'Not checked in');
     }
     cell.appendChild(label);
   }
@@ -116,7 +121,7 @@
     if (!summary) summary = document.querySelector('[data-all-guests-summary-text]');
     if (!summary) return;
     if (!done) {
-      summary.textContent = rendered + ' of ' + filtered + ' matching guests rendered';
+      summary.textContent = rendered + ' ' + message('of', 'of') + ' ' + filtered + ' ' + message('matching-rendered', 'matching guests rendered');
       return;
     }
     summary.textContent = '';
@@ -124,7 +129,7 @@
     count.setAttribute('data-table-filter-count', 'guests');
     count.textContent = String(filtered);
     summary.appendChild(count);
-    summary.appendChild(document.createTextNode(' of ' + total + ' guest' + (total === 1 ? '' : 's') + ' across every list'));
+    summary.appendChild(document.createTextNode(' ' + message('of', 'of') + ' ' + total + ' ' + message('across-lists', 'guests across every list')));
   }
 
   function nextPaint() {
@@ -168,7 +173,7 @@
         if (window.WorkerCmsColorTag) window.WorkerCmsColorTag.scan(fragment);
         tbody.appendChild(fragment);
         setSummary(root, rendered, filtered, total, false);
-        if (progress) progress.textContent = 'Rendering ' + rendered + ' of ' + filtered + ' matching guests…';
+        if (progress) progress.textContent = message('rendering', 'Rendering') + ' ' + rendered + ' ' + message('of', 'of') + ' ' + filtered + ' ' + message('matching-rendered', 'matching guests') + '…';
         await nextPaint();
       }
 
@@ -184,7 +189,7 @@
       if (loading) loading.remove();
       if (window.WorkerCmsTableFilter) window.WorkerCmsTableFilter.scan(document);
     } catch (error) {
-      if (progress) progress.textContent = 'The remaining guests could not be rendered. Refresh the page to try again.';
+      if (progress) progress.textContent = message('render-error', 'The remaining guests could not be rendered. Refresh the page to try again.');
       if (loading) loading.classList.add('border-red-200', 'bg-red-50');
     }
   }

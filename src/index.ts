@@ -521,16 +521,16 @@ interface Rollup {
   checkedIn: number; checkedInTotal: number;
 }
 
-function statTiles(r: Rollup): Array<{ label: string; value: number; color?: string }> {
+function statTiles(r: Rollup): Array<{ labelKey: string; value: number; color?: string }> {
   if(r.guests === 0) return [];
 
   return [
-    { label: 'Guests', value: r.guests },
-    { label: 'Headcount', value: r.total },
-    { label: 'Confirmed', value: r.confirmed, color: '#059669' },
-    { label: 'Declined', value: r.declined, color: '#e11d48' },
-    { label: 'To invite', value: r.toBeInvited, color: '#b45309' },
-    { label: 'Checked-in', value: r.checkedIn, color: '#4f46e5' },
+    { labelKey: 'events.views.event_dashboard.stat_guests', value: r.guests },
+    { labelKey: 'events.views.event_dashboard.stat_headcount', value: r.total },
+    { labelKey: 'events.views.event_dashboard.status_confirmed', value: r.confirmed, color: '#059669' },
+    { labelKey: 'events.views.event_dashboard.status_declined', value: r.declined, color: '#e11d48' },
+    { labelKey: 'events.views.event_dashboard.status_to_invite', value: r.toBeInvited, color: '#b45309' },
+    { labelKey: 'events.views.event_dashboard.checked_in', value: r.checkedIn, color: '#4f46e5' },
   ];
 }
 
@@ -553,15 +553,15 @@ function rollupGuestListSummaries(lists: CmsPage[]): Rollup {
 }
 
 interface StatusCount {
-  label: string;
+  labelKey: string;
   value: number;
   statusClass: string;
   statusColor: string;
 }
 
-function statusCount(label: string, status: string, value: number): StatusCount {
+function statusCount(labelKey: string, status: string, value: number): StatusCount {
   return {
-    label,
+    labelKey,
     value,
     statusClass: statusClass(status),
     statusColor: statusColor(status),
@@ -570,18 +570,18 @@ function statusCount(label: string, status: string, value: number): StatusCount 
 
 function invitationStatusCounts(summary: GuestListSummary): StatusCount[] {
   return [
-    statusCount('On hold', 'onhold', summary.onhold_count),
-    statusCount('To invite', 'to be invited', summary.to_be_invited_count),
-    statusCount('Invited', 'invited', summary.invited_count),
+    statusCount('events.views.event_dashboard.status_on_hold', 'onhold', summary.onhold_count),
+    statusCount('events.views.event_dashboard.status_to_invite', 'to be invited', summary.to_be_invited_count),
+    statusCount('events.views.event_dashboard.status_invited', 'invited', summary.invited_count),
   ];
 }
 
 function rsvpStatusCounts(summary: GuestListSummary): StatusCount[] {
   const counts = [
-    statusCount('Confirmed', 'confirmed', summary.confirmed_count),
-    statusCount('Declined', 'declined', summary.declined_count),
+    statusCount('events.views.event_dashboard.status_confirmed', 'confirmed', summary.confirmed_count),
+    statusCount('events.views.event_dashboard.status_declined', 'declined', summary.declined_count),
   ];
-  if (summary.unconfirmed_count > 0) counts.push(statusCount('Unconfirmed', 'unconfirmed', summary.unconfirmed_count));
+  if (summary.unconfirmed_count > 0) counts.push(statusCount('events.views.event_dashboard.status_unconfirmed', 'unconfirmed', summary.unconfirmed_count));
   return counts;
 }
 
@@ -965,7 +965,14 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     guestSearchHref: `${ADMIN_BASE}/events/${eventId}/all-guests`,
     hasGuests: r.guests > 0,
     guestSearchColorOptions: colorTagOptions(),
-    statuses: ['to be invited', 'onhold', 'invited', 'confirmed', 'declined', 'unconfirmed'],
+    statusOptions: [
+      { value: 'to be invited', labelKey: 'events.views.event_dashboard.status_to_invite' },
+      { value: 'onhold', labelKey: 'events.views.event_dashboard.status_on_hold' },
+      { value: 'invited', labelKey: 'events.views.event_dashboard.status_invited' },
+      { value: 'confirmed', labelKey: 'events.views.event_dashboard.status_confirmed' },
+      { value: 'declined', labelKey: 'events.views.event_dashboard.status_declined' },
+      { value: 'unconfirmed', labelKey: 'events.views.event_dashboard.status_unconfirmed' },
+    ],
     editHref: canEdit && mutable ? editHrefReturningTo(eventId, `${ADMIN_BASE}/events/${eventId}`) : '',
     duplicateHref: canEdit && !deleting ? `${ADMIN_BASE}/events/${eventId}/duplicate` : '',
     registrationsHref: archived ? '' : `${ADMIN_BASE}/events/${eventId}/registrations`,
@@ -1030,8 +1037,8 @@ function responsePageHref(eventId: number, url: URL, page: number): string {
   return `${ADMIN_BASE}/events/${eventId}${qs ? `?${qs}` : ''}#guest-responses`;
 }
 
-function colorTagOptions(): Array<{ value: string; label: string }> {
-  return COLOR_TAGS.map((value) => ({ value, label: value }));
+function colorTagOptions(): Array<{ value: string; labelKey: string }> {
+  return COLOR_TAGS.map((value) => ({ value, labelKey: `events.views.event_dashboard.color_${value}` }));
 }
 
 /** A guest counts as a "response" once they've confirmed or declined. */
@@ -1047,6 +1054,7 @@ interface ResponseRow {
   name: string;
   contact: string;
   status: string;
+  statusKey: string;
   checkedIn: boolean;
   href: string;
 }
@@ -1061,6 +1069,7 @@ function responseRow(list: CmsPage, guest: CmsPage, editable = true): ResponseRo
     name: guest.name || localized(guest.lect, 'name'),
     contact: attr(guest.lect, 'email') || attr(guest.lect, 'phone'),
     status: (attr(guest.lect, 'status') || '').trim().toLowerCase(),
+    statusKey: `events.views.event_dashboard.status_${(attr(guest.lect, 'status') || '').trim().toLowerCase()}`,
     checkedIn: checkins(guest.lect).length > 0,
     href: editable ? `/admin/pages/${guest.id}/edit?return_to=${encodeURIComponent(`${ADMIN_BASE}/rsvp/${list.id}`)}` : '',
   };

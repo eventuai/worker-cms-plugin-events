@@ -3,8 +3,8 @@
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">← {{ eventName }}</a>
     <h1 class="text-2xl font-bold text-gray-900">{{ heading }}</h1>
     <p class="mt-1 text-sm text-gray-500" data-all-guests-summary>
-      {% if asyncGuests %}<span data-all-guests-summary-text><span data-table-filter-count="guests">{{ initialCount }}</span> of {{ filteredCount }} matching guests rendered</span>
-      {% else %}<span data-table-filter-count="guests">{{ filteredCount }}</span> of {{ totalCount }} guest{% if totalCount != 1 %}s{% endif %} across every list{% endif %}
+      {% if asyncGuests %}<span data-all-guests-summary-text><span data-table-filter-count="guests">{{ initialCount }}</span> {{ "events.views.all_guests.of" | t }} {{ filteredCount }} {{ "events.views.all_guests.matching_guests_rendered" | t }}</span>
+      {% else %}<span data-table-filter-count="guests">{{ filteredCount }}</span> {{ "events.views.all_guests.of" | t }} {{ totalCount }} {{ "events.views.all_guests.guests_across_every_list" | t }}{% endif %}
     </p>
   </div>
   <div class="flex flex-wrap gap-2">
@@ -35,11 +35,12 @@
     <a class="text-sm font-semibold text-gray-500 hover:text-indigo-700" href="{{ listHref }}" data-table-filter-clear{% if q == blank and selectedStatus == blank and selectedColor == blank %} hidden{% endif %}>{{ "events.views.all_guests.clear" | t }}</a>
   </form>
 </div>
+{% assign allGuestsEmptyMessage = "events.views.all_guests.no_guests_match_filter" | t %}
 {% if asyncGuests %}
-  <div data-all-guests-async data-total-count="{{ totalCount }}" data-filtered-count="{{ filteredCount }}" data-initial-count="{{ initialCount }}">
+  <div data-all-guests-async data-total-count="{{ totalCount }}" data-filtered-count="{{ filteredCount }}" data-initial-count="{{ initialCount }}" data-i18n-checked-in="{{ "events.views.all_guests.checked_in" | t }}" data-i18n-not-checked-in="{{ "events.views.all_guests.not_checked_in" | t }}" data-i18n-of="{{ "events.views.all_guests.of" | t }}" data-i18n-matching-rendered="{{ "events.views.all_guests.matching_guests_rendered" | t }}" data-i18n-across-lists="{{ "events.views.all_guests.guests_across_every_list" | t }}" data-i18n-rendering="{{ "events.views.all_guests.rendering" | t }}" data-i18n-render-error="{{ "events.views.all_guests.render_error" | t }}">
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-4 mb-4 text-center" data-all-guests-loading role="status" aria-live="polite">
       <span class="inline-block h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" aria-hidden="true"></span>
-      <p class="mt-2 text-sm text-gray-500" data-all-guests-progress>Rendering {{ initialCount }} of {{ filteredCount }} matching guests…</p>
+      <p class="mt-2 text-sm text-gray-500" data-all-guests-progress>{{ "events.views.all_guests.rendering" | t }} {{ initialCount }} {{ "events.views.all_guests.of" | t }} {{ filteredCount }} {{ "events.views.all_guests.matching_guests" | t }}…</p>
     </div>
     <div data-all-guests-table>{% render "guest-table",
       guests: guests,
@@ -53,7 +54,7 @@
       hasCustomFields: hasCustomFields,
       customFieldOptions: customFieldOptions,
       selectedCustomFieldKey: selectedCustomFieldKey,
-      emptyMessage: "No guests match this filter."
+      emptyMessage: allGuestsEmptyMessage
     %}</div>
     {% comment %}Plugin HTML sanitization removes every non-approved script element,
     including application/json data blocks. A hidden inert element preserves the
@@ -73,7 +74,7 @@
     hasCustomFields: hasCustomFields,
     customFieldOptions: customFieldOptions,
     selectedCustomFieldKey: selectedCustomFieldKey,
-    emptyMessage: "No guests match this filter."
+    emptyMessage: allGuestsEmptyMessage
   %}
 {% endif %}
 {% if asyncGuests %}<script src="/admin/plugins/events/assets/all-guests-embedded.js" defer></script>{% endif %}

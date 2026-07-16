@@ -9,8 +9,8 @@
   <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
     <p class="font-semibold">{{ "events.views.event_delete.this_will_also_delete_everything_under_the_event" | t }}</p>
     <ul class="mt-2 list-disc ps-4">
-      <li>{{ listCount }} guest list{% unless listCount == 1 %}s{% endunless %} and all of their guests</li>
-      <li>{{ edmCount }} email template{% unless edmCount == 1 %}s{% endunless %}</li>
+      <li>{{ listCount }} {{ "events.views.event_delete.guest_lists_and_all_guests" | t }}</li>
+      <li>{{ edmCount }} {{ "events.views.event_delete.email_templates" | t }}</li>
     </ul>
     <p class="mt-2">{{ "events.views.event_delete.deleted_items_move_to_the_cms_trash_and_can_be_restored_from_there" | t }}</p>
   </div>

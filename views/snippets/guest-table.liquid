@@ -54,7 +54,7 @@
               </div>
             </div>
           </td>
-          {% if showListColumn %}<td class="px-6 py-3 text-sm text-gray-700" data-guest-list>{{ guest.listName }}</td>{% endif %}
+          {% if showListColumn %}<td class="px-6 py-3 text-sm text-gray-700 whitespace-nowrap" data-guest-list>{{ guest.listName }}</td>{% endif %}
           <td class="px-6 py-3 text-sm text-gray-700 max-w-[200px] lg:max-w-[400px] no-wrap truncate overflow-hidden">
             <span data-guest-organization>{{ guest.organization }}</span>
             <div class="text-gray-500 text-sm truncate overflow-hidden" data-guest-job-title{% if guest.job_title == blank %} hidden{% endif %}>{{ guest.job_title }}</div>

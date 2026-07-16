@@ -30,7 +30,7 @@
   </a>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
     {% for stat in stats %}
-      <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900"{% if stat.color %} style="color:{{ stat.color }}"{% endif %}>{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.label }}</span></div>
+      <div class="border border-gray-200 rounded-lg p-3 text-center"><b class="block text-2xl font-bold text-gray-900"{% if stat.color %} style="color:{{ stat.color }}"{% endif %}>{{ stat.value }}</b><span class="text-xs text-gray-500">{{ stat.labelKey | t }}</span></div>
     {% endfor %}
   </div>
 </div>
@@ -58,12 +58,12 @@
       <div class="flex flex-nowrap gap-3 justify-end">
         <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="status">
           <option value="">{{ "events.views.event_dashboard.statuses" | t }}</option>
-          {% for status in statuses %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
+          {% for status in statusOptions %}<option value="{{ status.value }}">{{ status.labelKey | t }}</option>{% endfor %}
         </select>
         <select class="block px-3 py-2 border border-gray-300 rounded-lg text-sm" name="color">
           <option value="">{{ "events.views.event_dashboard.all_color_tags" | t }}</option>
           <option value="none">{{ "events.views.event_dashboard.no_color_tag" | t }}</option>
-          {% for color in guestSearchColorOptions %}<option value="{{ color.value }}">{{ color.label }}</option>{% endfor %}
+          {% for color in guestSearchColorOptions %}<option value="{{ color.value }}">{{ color.labelKey | t }}</option>{% endfor %}
         </select>
         <button class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="{{ "events.views.event_dashboard.search" | t }}" aria-label="{{ "events.views.event_dashboard.search_guests" | t }}">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg>
@@ -90,27 +90,27 @@
             <div>
 {% if list.summary.guest_count != list.summary.guest_total %}
 <strong>{{ list.summary.guest_count }}</strong> groups {% endif %}
-<span class="text-sm text-gray-500">{{ list.summary.guest_total }} people</span>
+<span class="text-sm text-gray-500">{{ list.summary.guest_total }} {{ "events.views.event_dashboard.people" | t }}</span>
             </div>
           </td>
 
           <td class="px-6 py-3 text-sm text-gray-700">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
               {% for item in list.invitationStatusCounts %}
-                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor }}"{% endif %}>{{ item.label }} {{ item.value }}</span>
+                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor }}"{% endif %}>{{ item.labelKey | t }} {{ item.value }}</span>
               {% endfor %}
             </div>
           </td>
           <td class="px-6 py-3 text-sm text-gray-700">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
               {% for item in list.rsvpStatusCounts %}
-                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor }}"{% endif %}>{{ item.label }} {{ item.value }}</span>
+                <span class="whitespace-nowrap text-xs font-semibold {{ item.statusClass }}"{% if item.statusColor != blank %} style="color:{{ item.statusColor }}"{% endif %}>{{ item.labelKey | t }} {{ item.value }}</span>
               {% endfor %}
             </div>
           </td>
           <td class="px-6 py-3 text-sm text-gray-700">
 {% if list.summary.checked_in_count != list.summary.checked_in_total %}<strong>{{ list.summary.checked_in_count }}</strong> {{ "events.views.event_dashboard.groups" | t }} <br>{% endif %}
-<span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} people</span></td>
+<span class="text-sm text-gray-500">{{ list.summary.checked_in_total }} {{ "events.views.event_dashboard.people" | t }}</span></td>
           <td class="px-6 py-3 text-right"><a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ list.href }}">→</a></td>
         </tr>
       {% else %}
@@ -169,7 +169,7 @@
     <div>
       <h2 class="flex items-center gap-2 text-lg font-bold text-gray-900"><svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>{{ "events.views.event_dashboard.guest_responses" | t }}</h2>
       <p class="mt-1 text-sm text-gray-500">{{ "events.views.event_dashboard.guests_who_have_confirmed_or_declined_most_recent_first" | t }}</p>
-      {% if responsesTotal > 0 %}<span class="text-sm text-gray-500">{{ responsesTotal }} responses</span>{% endif %}
+      {% if responsesTotal > 0 %}<span class="text-sm text-gray-500">{{ responsesTotal }} {{ "events.views.event_dashboard.responses" | t }}</span>{% endif %}
     </div>
     {% if responsesTotal > 0 %}
       <div class="flex shrink-0 justify-end" data-privacy-control>
@@ -189,7 +189,7 @@
         <tr>
           <td class="px-6 py-3 text-sm text-gray-700 whitespace-nowrap">{{ row.dateLabel }}<br><span class="text-xs text-gray-500">{{ row.timeLabel }}</span></td>
           <td class="px-6 py-3 text-sm text-gray-700">{% if row.href != blank %}<a class="text-indigo-600 font-medium hover:text-indigo-800" href="{{ row.href }}" data-private-field="name">{{ row.name }}</a>{% else %}<span class="font-medium text-gray-800" data-private-field="name">{{ row.name }}</span>{% endif %}<br><span class="text-xs text-gray-500" data-private-field="contact">{{ row.contact }}</span></td>
-          <td class="px-6 py-3 text-sm"><span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {% if row.status == 'confirmed' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">{{ row.status | capitalize }}</span></td>
+          <td class="px-6 py-3 text-sm"><span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold {% if row.status == 'confirmed' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">{{ row.statusKey | t }}</span></td>
           {% if responsesShowCheckin %}<td class="px-6 py-3 text-sm text-gray-700">{% if row.checkedIn %}<span class="text-indigo-600 font-medium">{{ "events.views.event_dashboard.yes" | t }}</span>{% else %}—{% endif %}</td>{% endif %}
         </tr>
       {% else %}
@@ -200,14 +200,14 @@
   </div>
   {% if responsesTotal > responsesPerPage %}
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3">
-      <p class="text-sm text-gray-500">Showing {{ responsesRangeStart }}-{{ responsesRangeEnd }} of {{ responsesTotal }}</p>
+      <p class="text-sm text-gray-500">{{ "events.views.event_dashboard.showing" | t }} {{ responsesRangeStart }}-{{ responsesRangeEnd }} {{ "events.views.event_dashboard.of" | t }} {{ responsesTotal }}</p>
       <div class="flex items-center gap-2">
         {% if responsesPrevHref %}
           <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesPrevHref }}">{{ "events.views.event_dashboard.previous" | t }}</a>
         {% else %}
           <span class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 text-sm font-semibold text-gray-400">{{ "events.views.event_dashboard.previous" | t }}</span>
         {% endif %}
-        <span class="text-sm text-gray-500">Page {{ responsesPage }} of {{ responsesTotalPages }}</span>
+        <span class="text-sm text-gray-500">{{ "events.views.event_dashboard.page" | t }} {{ responsesPage }} {{ "events.views.event_dashboard.of" | t }} {{ responsesTotalPages }}</span>
         {% if responsesNextHref %}
           <a class="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" href="{{ responsesNextHref }}">{{ "events.views.event_dashboard.next" | t }}</a>
         {% else %}

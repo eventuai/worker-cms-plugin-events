@@ -13,6 +13,10 @@
   var designField = document.getElementById('labelDesignField');
   if (!svg || !designField) return;
 
+  function i18n(name, fallback) {
+    return svg.getAttribute('data-i18n-' + name) || fallback;
+  }
+
   // ---------------------------------------------------------------------
   // Text utilities (CJK/Latin aware wrapping + [@token] replacement)
   // ---------------------------------------------------------------------
@@ -1164,16 +1168,16 @@
     if (name) return name;
     var type = elementType(element);
     if (type === 'qrcode') {
-      var qrText = (element.getAttribute('data-qr-text') || 'QR code').substring(0, 20);
-      return 'QR: ' + qrText;
+      var qrText = (element.getAttribute('data-qr-text') || i18n('qr', 'QR code')).substring(0, 20);
+      return i18n('qr', 'QR code') + ': ' + qrText;
     }
     if (type === 'text') {
-      var text = (element.getAttribute('data-text') || element.textContent || 'Text').substring(0, 20);
-      return 'Text: ' + text;
+      var text = (element.getAttribute('data-text') || element.textContent || i18n('text', 'Text')).substring(0, 20);
+      return i18n('text', 'Text') + ': ' + text;
     }
-    if (type === 'image') return 'Image ' + (index + 1);
+    if (type === 'image') return i18n('image', 'Image') + ' ' + (index + 1);
     var shapeType = element.getAttribute('data-shape-type') || 'shape';
-    return (shapeType === 'rect' ? 'Rectangle ' : 'Ellipse ') + (index + 1);
+    return (shapeType === 'rect' ? i18n('rectangle', 'Rectangle') : i18n('ellipse', 'Ellipse')) + ' ' + (index + 1);
   }
 
   function updateElementSelectorDropdown() {
@@ -1182,7 +1186,7 @@
     controls.elementSelector.textContent = '';
     var placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = '— No element selected —';
+    placeholder.textContent = i18n('no-element', '— No element selected —');
     controls.elementSelector.appendChild(placeholder);
     allElements().forEach(function (element, index) {
       var option = document.createElement('option');
@@ -1199,7 +1203,7 @@
     controls.parentElement.textContent = '';
     var absolute = document.createElement('option');
     absolute.value = 'label';
-    absolute.textContent = 'Label (absolute)';
+    absolute.textContent = i18n('label-absolute', 'Label (absolute)');
     controls.parentElement.appendChild(absolute);
     allElements().forEach(function (element, index) {
       if (element === editor.selectedElement) return;
@@ -1356,7 +1360,7 @@
       elementId: generateElementId('text'),
       x: String(Math.round(centerX)),
       y: String(Math.round(centerY)),
-      text: 'Text ' + (editor.textElements.length + 1),
+      text: i18n('text', 'Text') + ' ' + (editor.textElements.length + 1),
       fontSize: '16',
       autoSplit: '1',
       parent: 'label',

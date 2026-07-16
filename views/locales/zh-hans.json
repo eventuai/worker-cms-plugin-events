@@ -1,0 +1,79 @@
+{
+  "plugins": {
+    "events": {
+      "nav": {
+        "events": "活动"
+      }
+    }
+  },
+  "events": {
+    "views": {
+      "events": {
+        "active": "进行中",
+        "archived": "已归档",
+        "delete_event": "删除活动",
+        "deleting": "正在删除",
+        "duplicate_event": "复制活动",
+        "events": "活动",
+        "manage_events_guests_and_check_in": "管理活动、嘉宾及签到。",
+        "name": "名称",
+        "new_event": "新增活动",
+        "no_events_yet": "尚未有活动。",
+        "start": "开始"
+      },
+      "event_dashboard": {
+        "archive": "归档",
+        "check_in": "签到",
+        "delete": "删除",
+        "duplicate": "复制",
+        "edit": "编辑",
+        "email_templates": "邮件模板",
+        "events": "← 活动",
+        "export": "导出",
+        "guest_list": "嘉宾名单",
+        "guest_lists": "嘉宾名单",
+        "guest_responses": "嘉宾回复",
+        "import": "导入",
+        "labels": "标签",
+        "name": "名称",
+        "new_guest_list": "新增嘉宾名单",
+        "next": "下一页",
+        "preview": "预览",
+        "previous": "上一页",
+        "registrations": "登记",
+        "response": "回复",
+        "search": "搜索",
+        "sessions": "场次",
+        "subject": "主题",
+        "view_all_guests": "查看所有嘉宾"
+      },
+      "guest_list": {
+        "add_from_contacts": "从联系人新增",
+        "all_color_tags": "所有颜色标签",
+        "all_statuses": "所有状态",
+        "clear": "清除",
+        "delete_list": "删除名单",
+        "edit_guest_list": "编辑嘉宾名单",
+        "export_csv": "导出 CSV",
+        "import_csv": "导入 CSV",
+        "new_guest": "新增嘉宾",
+        "publish": "发布",
+        "remove_duplicates": "移除重复项目",
+        "unpublish": "取消发布"
+      },
+      "guest_table": {
+        "check_in": "签到",
+        "edit": "编辑",
+        "email_send": "发送邮件",
+        "list": "名单",
+        "name_email": "名称／邮件",
+        "not_checked_in": "未签到",
+        "organisation": "机构",
+        "preview": "预览",
+        "re_send": "重新发送",
+        "send": "发送",
+        "status": "状态"
+      }
+    }
+  }
+}

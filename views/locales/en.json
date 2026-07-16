@@ -1,4 +1,11 @@
 {
+  "plugins": {
+    "events": {
+      "nav": {
+        "events": "Events"
+      }
+    }
+  },
   "events": {
     "views": {
       "adhoc_checkin": {
@@ -15,7 +22,16 @@
         "search": "Search",
         "search_guests": "Search guests",
         "search_name_email_phone_or_guest_id": "Search name, email, phone or guest ID",
-        "these_guests_belong_to_an_archived_event_and_are_read_only": "These guests belong to an archived event and are read-only."
+        "these_guests_belong_to_an_archived_event_and_are_read_only": "These guests belong to an archived event and are read-only.",
+        "checked_in": "Checked in",
+        "not_checked_in": "Not checked in",
+        "of": "of",
+        "matching_guests": "matching guests",
+        "matching_guests_rendered": "matching guests rendered",
+        "guests_across_every_list": "guests across every list",
+        "rendering": "Rendering",
+        "render_error": "The remaining guests could not be rendered. Refresh the page to try again.",
+        "no_guests_match_filter": "No guests match this filter."
       },
       "edm_edit": {
         "add_block": "Add block",
@@ -40,7 +56,8 @@
         "send_test_email": "Send test email",
         "sender_styling": "Sender & styling",
         "set_the_sender_email_above_and_save_before_sending_a_test": "Set the sender email above and save before sending a test.",
-        "test_example_com": "test@example.com"
+        "test_example_com": "test@example.com",
+        "language": "Language"
       },
       "edm_form": {
         "create_and_edit": "Create and edit",
@@ -152,6 +169,26 @@
         "subject": "Subject",
         "this_event_is_archived_and_read_only_restore_it_from_archive_before_maki": "This event is archived and read-only. Restore it from Archive before making changes.",
         "this_event_is_being_deleted_in_the_background_large_guest_lists_can_take": "This event is being deleted in the background. Large guest lists can take several minutes to finish.",
+        "color_blue": "blue",
+        "color_gray": "gray",
+        "color_green": "green",
+        "color_orange": "orange",
+        "color_purple": "purple",
+        "color_red": "red",
+        "color_yellow": "yellow",
+        "of": "of",
+        "page": "Page",
+        "people": "people",
+        "responses": "responses",
+        "showing": "Showing",
+        "stat_guests": "Guests",
+        "stat_headcount": "Headcount",
+        "status_confirmed": "Confirmed",
+        "status_declined": "Declined",
+        "status_invited": "Invited",
+        "status_on_hold": "On hold",
+        "status_to_invite": "To invite",
+        "status_unconfirmed": "Unconfirmed",
         "view_all_guests": "View all guests",
         "yes": "Yes"
       },
@@ -170,7 +207,9 @@
         "deleting_event": "Deleting event",
         "move": "Move",
         "this_will_also_delete_everything_under_the_event": "This will also delete everything under the event:",
-        "to_trash": "to trash."
+        "to_trash": "to trash.",
+        "guest_lists_and_all_guests": "guest lists and all of their guests",
+        "email_templates": "email templates"
       },
       "event_duplicate": {
         "cancel": "Cancel",
@@ -336,7 +375,12 @@
         "remove_the_selected_contacts_guests_from_this_list": "Remove the selected contacts' guests from this list?",
         "search": "Search",
         "search_name_email_organization": "Search name, email, organization…",
-        "yes": "yes"
+        "yes": "yes",
+        "search_and_add_people_to": "Search the contact database and add people to",
+        "added_guests_stay_linked": "Added guests stay linked to their contact record.",
+        "select": "Select",
+        "no_contacts_match": "No contacts match this search.",
+        "search_above": "Search the contact database above."
       },
       "guest_list_form": {
         "create_guest_list": "Create guest list",
@@ -379,7 +423,8 @@
         "unpublish": "Unpublish",
         "unpublish_guest_list": "Unpublish guest list",
         "unpublish_this_guest_list": "Unpublish this guest list?",
-        "update_from_contacts": "Update from contacts"
+        "update_from_contacts": "Update from contacts",
+        "no_guests_match_this_list": "No guests match this list."
       },
       "guest_lists": {
         "check_in": "Check-in",
@@ -466,6 +511,7 @@
         "down": "Down",
         "elements": "Elements",
         "ellipse": "+ Ellipse",
+        "ellipse_name": "Ellipse",
         "error_correction": "Error correction",
         "export_json": "Export JSON",
         "fantasy": "fantasy",
@@ -511,6 +557,7 @@
         "qr_code_2": "QR code",
         "qr_data_supports_placeholder_tokens_e_g_checkin_qrcode": "QR data — supports [@placeholder] tokens, e.g. [@checkin_qrcode]",
         "rectangle": "+ Rectangle",
+        "rectangle_name": "Rectangle",
         "relative_to": "Relative to",
         "remove": "Remove",
         "reset": "Reset",
@@ -557,7 +604,10 @@
         "x_offset_px": "X offset (px)",
         "y_anchor": "Y anchor",
         "values_to_preview_without_picking_a_guest": "values to preview without picking a guest.",
-        "y_offset_px": "Y offset (px)"
+        "y_offset_px": "Y offset (px)",
+        "matching_guests": "matching guests",
+        "no_guests_match": "No guests match",
+        "preview_guest": "Preview guest"
       },
       "label_form": {
         "create_label": "Create label",
@@ -568,7 +618,8 @@
         "template_name": "Template name",
         "design_export_description": "export from the legacy label editor (or this one) to start from that design — its size then wins over the width/height above. You can change everything later in the label editor.",
         "upload_a": "Upload a",
-        "width_mm": "Width (mm)"
+        "width_mm": "Width (mm)",
+        "new_label_template": "New label template"
       },
       "labels": {
         "delete": "Delete",
