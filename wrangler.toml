@@ -1,7 +1,7 @@
 name = "worker-cms-plugin-events"
 main = "src/index.ts"
 compatibility_date = "2026-03-24"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # Browser Run rasterizes downloadable QR ticket PNGs with Chromium's bundled
 # Noto CJK fonts. `remote = true` also makes the binding work in `wrangler dev`.
