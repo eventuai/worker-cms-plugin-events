@@ -2,6 +2,7 @@
   "id": "events",
   "name": "Events Suite",
   "version": "0.1.0",
+  "i18n": true,
   "hooks": ["create", "submission", "publish", "unpublish", "delete"],
   "autoPublishTypes": ["event", "guest", "mail_list", "edm", "label"],
   "nav": [

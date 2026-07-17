@@ -8,7 +8,7 @@
     <span class="hidden lg:inline">{{ "events.views.events.new_event" | t }}</span>
   </a>{% endif %}
 </div>
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | t }}</p>{% endif %}
 <nav class="flex flex-wrap gap-2 mb-4 text-sm">
   <a class="{% if showArchived %}text-gray-500 hover:text-indigo-700{% else %}font-semibold text-indigo-600{% endif %}" href="{{ activeHref }}">{{ "events.views.events.active" | t }}</a>
   <a class="{% if showArchived %}font-semibold text-indigo-600{% else %}text-gray-500 hover:text-indigo-700{% endif %}" href="{{ archivedHref }}">{{ "events.views.events.archived" | t }}</a>

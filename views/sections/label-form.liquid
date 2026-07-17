@@ -1,5 +1,5 @@
 <div class="flex items-center justify-between gap-4 mb-4"><div><a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">{{ "events.views.label_form.label_templates" | t }}</a><h1 class="text-2xl font-bold text-gray-900">{{ "events.views.label_form.new_label_template" | t }}</h1><p class="mt-1 text-sm text-gray-500">{{ eventName }}</p></div></div>
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:36rem">{{ flash }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:36rem">{{ flash | t }}</p>{% endif %}
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" style="max-width:36rem">
   <form method="post" action="{{ action }}" enctype="multipart/form-data">
     <label class="block mb-3"><span class="block text-sm text-gray-700 mb-1">{{ "events.views.label_form.template_name" | t }}</span><input class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" name="name" required value="{{ label.name }}" placeholder="{{ "events.views.label_form.guest_badge_60_30" | t }}"></label>

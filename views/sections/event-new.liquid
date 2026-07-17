@@ -10,7 +10,7 @@
     {% for error in errors %}<li>{{ error }}</li>{% endfor %}
   </ul>
 {% endif %}
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:48rem">{{ flash }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700" style="max-width:48rem">{{ flash | t }}</p>{% endif %}
 
 <form id="event-form" method="post" action="{{ action }}" data-editor-form class="space-y-4" style="max-width:48rem">
   <input type="hidden" name="page_type" value="event">

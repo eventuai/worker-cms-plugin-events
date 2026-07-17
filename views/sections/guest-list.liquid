@@ -15,7 +15,7 @@
 </div>
 
 {% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ "events.views.guest_list.this_guest_list_belongs_to_an_archived_event_and_is_read_only" | t }}</p>{% endif %}
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | t }}</p>{% endif %}
 
 {%- comment -%} ── Email campaign: link an EDM, then send / auto-send to guests ── {%- endcomment -%}
 {% if canManageEmail %}

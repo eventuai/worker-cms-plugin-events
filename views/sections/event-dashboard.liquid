@@ -18,7 +18,7 @@
     </a>{% endif %}
   </div>
 </div>
-{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash }}</p>{% endif %}
+{% if flash != blank %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ flash | t }}</p>{% endif %}
 {% if archived %}<p class="mb-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">{{ "events.views.event_dashboard.this_event_is_archived_and_read_only_restore_it_from_archive_before_maki" | t }}</p>{% endif %}
 {% if deleting %}<p class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">{{ "events.views.event_dashboard.this_event_is_being_deleted_in_the_background_large_guest_lists_can_take" | t }}</p>{% endif %}
 
