@@ -158,14 +158,17 @@ interface GuestFormField {
   inputName: string;
   id: string;
   label: string;
+  labelKey?: string;
   type: string;
   templateName: string;
   value: string;
   placeholder: string;
+  placeholderKey?: string;
   blankOption: boolean;
   blankLabel: string;
+  blankLabelKey?: string;
   required: boolean;
-  options: Array<{ value: string; label: string; selected: boolean }>;
+  options: Array<{ value: string; label: string; labelKey?: string; selected: boolean }>;
   checked: boolean;
   defaultValue: string;
   span: string;
@@ -174,6 +177,7 @@ interface GuestFormField {
 interface ActivityItem {
   kind: string;
   label: string;
+  labelKey: string;
   status: string;
   date: string;
   message: string;
@@ -665,6 +669,7 @@ async function guestFormView(
 
   return adminView(views, guest ? `Edit ${values.name}` : 'New guest', 'guest-form', {
     title: options.title ?? (guest ? 'Edit guest' : 'New guest'),
+    titleKey: guest ? 'events.views.guest_form.edit_guest' : 'events.views.guest_form.new_guest',
     readOnly,
     existingGuest: Boolean(guest),
     eventName: context.event?.name ?? 'Event',
@@ -2718,53 +2723,63 @@ function switchValue(lect: Record<string, unknown>, key: string): string {
 
 function guestDetailFields(values: Record<string, string>, language: string): GuestFormField[] {
   return [
-    guestFormField('name', 'Display name', values.name, 'textarea', { required: true }),
-    guestFormField('@picture', 'Picture', values.picture, 'picture', { span: 'md:col-span-2' }),
-    guestFormField('@prefix', 'Prefix', values.prefix),
+    guestFormField('name', 'Display name', values.name, 'textarea', { required: true, labelKey: 'events.views.guest_form.display_name' }),
+    guestFormField('@picture', 'Picture', values.picture, 'picture', { span: 'md:col-span-2', labelKey: 'events.views.guest_form.picture' }),
+    guestFormField('@prefix', 'Prefix', values.prefix, 'text', { labelKey: 'events.views.guest_form.prefix' }),
     guestFormField('@prefer_language', 'Preferred language', values.prefer_language, 'select', {
+      labelKey: 'events.views.guest_form.preferred_language',
       blankOption: true,
       blankLabel: 'Not set',
+      blankLabelKey: 'events.views.guest_form.not_set',
       options: [
-        { value: 'en', label: 'English', selected: values.prefer_language === 'en' },
+        { value: 'en', label: 'English', labelKey: 'events.views.guest_form.language_english', selected: values.prefer_language === 'en' },
         { value: 'zh-hant', label: '繁體中文', selected: values.prefer_language === 'zh-hant' },
         { value: 'zh-hans', label: '简体中文', selected: values.prefer_language === 'zh-hans' },
       ],
     }),
-    guestFormField('@nationality', 'Nationality', values.nationality),
-    guestFormField('@organization', 'Organisation', values.organization),
-    guestFormField('@job_title', 'Job title', values.job_title),
-    guestFormField(`.first_name|${language}`, 'First name', values.first_name),
-    guestFormField(`.last_name|${language}`, 'Last name', values.last_name),
-    guestFormField('@zh_hant_name', 'Traditional Chinese name', values.zh_hant_name),
-    guestFormField('@zh_hans_name', 'Simplified Chinese name', values.zh_hans_name),
+    guestFormField('@nationality', 'Nationality', values.nationality, 'text', { labelKey: 'events.views.guest_form.nationality' }),
+    guestFormField('@organization', 'Organisation', values.organization, 'text', { labelKey: 'events.views.guest_form.organisation' }),
+    guestFormField('@job_title', 'Job title', values.job_title, 'text', { labelKey: 'events.views.guest_form.job_title' }),
+    guestFormField(`.first_name|${language}`, 'First name', values.first_name, 'text', { labelKey: 'events.views.guest_form.first_name' }),
+    guestFormField(`.last_name|${language}`, 'Last name', values.last_name, 'text', { labelKey: 'events.views.guest_form.last_name' }),
+    guestFormField('@zh_hant_name', 'Traditional Chinese name', values.zh_hant_name, 'text', { labelKey: 'events.views.guest_form.traditional_chinese_name' }),
+    guestFormField('@zh_hans_name', 'Simplified Chinese name', values.zh_hans_name, 'text', { labelKey: 'events.views.guest_form.simplified_chinese_name' }),
   ];
 }
 
 function guestContactFields(values: Record<string, string>): GuestFormField[] {
   return [
 //    guestFormField('*contact', 'Source Contact ID', values.contact, 'page'),
-    guestFormField('@email', 'Email', values.email, 'email'),
-    guestFormField('@cc', 'CC email', values.cc),
-    guestFormField('@phone', 'Phone', values.phone),
-    guestFormField('@wechat', 'WeChat', values.wechat),
+    guestFormField('@email', 'Email', values.email, 'email', { labelKey: 'events.views.guest_form.email' }),
+    guestFormField('@cc', 'CC email', values.cc, 'text', { labelKey: 'events.views.guest_form.cc_email' }),
+    guestFormField('@phone', 'Phone', values.phone, 'text', { labelKey: 'events.views.guest_form.phone' }),
+    guestFormField('@wechat', 'WeChat', values.wechat, 'text', { labelKey: 'events.views.guest_form.wechat' }),
   ];
 }
 
 function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
   return [
     guestFormField('@status', 'Status', values.status, 'select', {
-      options: GUEST_STATUSES.map((status) => ({ value: status, label: status, selected: values.status === status })),
+      labelKey: 'events.views.guest_form.status',
+      options: GUEST_STATUSES.map((status) => ({
+        value: status,
+        label: status,
+        labelKey: `events.views.guest_form.status_${status.replace(/\s+/g, '_')}`,
+        selected: values.status === status,
+      })),
     }),
-    guestFormField('@allow_refill', 'Allow refill', values.allow_refill, 'switch'),
-    guestFormField('@primary_guest', 'Primary guest ID', values.primary_guest, 'number'),
-    guestFormField('@parent', 'Primary guest', values.parent),
-    guestFormField('@not_send', 'Pause email sends', values.not_send, 'switch'),
-    guestFormField('@plus_guests', 'Plus guests', values.plus_guests, 'number'),
-    guestFormField('@total_guests', 'Total guests', values.total_guests, 'number'),
-    guestFormField('@max_main_checkin', 'Max main check-ins', values.max_main_checkin, 'number'),
+    guestFormField('@allow_refill', 'Allow refill', values.allow_refill, 'switch', { labelKey: 'events.views.guest_form.allow_refill' }),
+    guestFormField('@primary_guest', 'Primary guest ID', values.primary_guest, 'number', { labelKey: 'events.views.guest_form.primary_guest_id' }),
+    guestFormField('@parent', 'Primary guest', values.parent, 'text', { labelKey: 'events.views.guest_form.primary_guest' }),
+    guestFormField('@not_send', 'Pause email sends', values.not_send, 'switch', { labelKey: 'events.views.guest_form.pause_email_sends' }),
+    guestFormField('@plus_guests', 'Plus guests', values.plus_guests, 'number', { labelKey: 'events.views.guest_form.plus_guests' }),
+    guestFormField('@total_guests', 'Total guests', values.total_guests, 'number', { labelKey: 'events.views.guest_form.total_guests' }),
+    guestFormField('@max_main_checkin', 'Max main check-ins', values.max_main_checkin, 'number', { labelKey: 'events.views.guest_form.max_main_checkins' }),
     guestFormField('@color_tag', 'Color tag', values.color_tag, 'select', {
       blankOption: true,
       blankLabel: 'No color tag',
+      labelKey: 'events.views.guest_form.color_tag',
+      blankLabelKey: 'events.views.guest_form.no_color_tag',
       options: COLOR_TAGS.map((color) => ({ value: color, label: color, selected: values.color_tag === color })),
     }),
   ];
@@ -2772,19 +2787,19 @@ function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
 
 function guestNoteFields(values: Record<string, string>): GuestFormField[] {
   return [
-    guestFormField('@remarks', 'Remarks', values.remarks, 'textarea', { span: 'md:col-span-2' }),
-    guestFormField('@checkin_remark', 'Check-in remark', values.checkin_remark, 'textarea', { span: 'md:col-span-2' }),
-    guestFormField('@qrcode_remark', 'QR code remark', values.qrcode_remark, 'textarea', { span: 'md:col-span-2' }),
+    guestFormField('@remarks', 'Remarks', values.remarks, 'textarea', { span: 'md:col-span-2', labelKey: 'events.views.guest_form.remarks' }),
+    guestFormField('@checkin_remark', 'Check-in remark', values.checkin_remark, 'textarea', { span: 'md:col-span-2', labelKey: 'events.views.guest_form.checkin_remark' }),
+    guestFormField('@qrcode_remark', 'QR code remark', values.qrcode_remark, 'textarea', { span: 'md:col-span-2', labelKey: 'events.views.guest_form.qr_code_remark' }),
   ];
 }
 
 function guestTicketFields(values: Record<string, string>): GuestFormField[] {
   return [
-    guestFormField('@rsvp_code', 'RSVP code', values.rsvp_code),
-    guestFormField('@qrcode', 'Ticket QR code', values.qrcode, 'text', { placeholder: 'Third-party QR code text' }),
-    guestFormField('@paired_qrcode', 'Paired badge QR code', values.paired_qrcode, 'text', { placeholder: 'RFID badge QR code text' }),
-    guestFormField('@barcode', 'Ticket barcode', values.barcode, 'text', { placeholder: 'Third-party Code128 barcode number' }),
-    guestFormField('@no', 'Guest number', values.no),
+    guestFormField('@rsvp_code', 'RSVP code', values.rsvp_code, 'text', { labelKey: 'events.views.guest_form.rsvp_code' }),
+    guestFormField('@qrcode', 'Ticket QR code', values.qrcode, 'text', { labelKey: 'events.views.guest_form.ticket_qr_code', placeholder: 'Third-party QR code text', placeholderKey: 'events.views.guest_form.third_party_qr_code_text' }),
+    guestFormField('@paired_qrcode', 'Paired badge QR code', values.paired_qrcode, 'text', { labelKey: 'events.views.guest_form.paired_badge_qr_code', placeholder: 'RFID badge QR code text', placeholderKey: 'events.views.guest_form.rfid_badge_qr_code_text' }),
+    guestFormField('@barcode', 'Ticket barcode', values.barcode, 'text', { labelKey: 'events.views.guest_form.ticket_barcode', placeholder: 'Third-party Code128 barcode number', placeholderKey: 'events.views.guest_form.third_party_code128_barcode_number' }),
+    guestFormField('@no', 'Guest number', values.no, 'text', { labelKey: 'events.views.guest_form.guest_number' }),
   ];
 }
 
@@ -2793,7 +2808,7 @@ function guestFormField(
   label: string,
   value: string,
   type = 'text',
-  options: Partial<Pick<GuestFormField, 'placeholder' | 'required' | 'options' | 'checked' | 'defaultValue' | 'span' | 'blankOption' | 'blankLabel'>> = {},
+  options: Partial<Pick<GuestFormField, 'placeholder' | 'required' | 'options' | 'checked' | 'defaultValue' | 'span' | 'blankOption' | 'blankLabel' | 'labelKey' | 'placeholderKey' | 'blankLabelKey'>> = {},
 ): GuestFormField {
   const normalizedType = pageFieldType(type);
   return {
@@ -2801,12 +2816,15 @@ function guestFormField(
     inputName,
     id: fieldId(inputName),
     label,
+    labelKey: options.labelKey,
     type: normalizedType,
     templateName: workerPageFieldTemplate(normalizedType),
     value,
     placeholder: options.placeholder ?? '',
+    placeholderKey: options.placeholderKey,
     blankOption: options.blankOption ?? false,
     blankLabel: options.blankLabel ?? '',
+    blankLabelKey: options.blankLabelKey,
     required: options.required ?? false,
     options: options.options ?? [],
     checked: options.checked ?? false,
@@ -2912,6 +2930,7 @@ async function guestActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityIt
     .map((entry) => ({
       kind: 'response',
       label: 'Response',
+      labelKey: 'events.views.guest_form.activity_response',
       status: String(entry.status ?? ''),
       date: String(entry.date ?? ''),
       message: String(entry.message ?? ''),
@@ -2920,6 +2939,7 @@ async function guestActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityIt
   const checkinActivity = checkins(guest.lect).map((entry) => ({
     kind: 'checkin',
     label: 'Check-in',
+    labelKey: 'events.views.guest_form.activity_checkin',
     status: String(entry.status ?? 'checked-in') || 'checked-in',
     date: String(entry.date ?? ''),
     message: String(entry.message ?? ''),
@@ -2965,6 +2985,7 @@ async function sentEdmActivity(cms: CmsClient, guest: CmsPage): Promise<Activity
       return {
         kind: 'edm',
         label: 'Sent eDM',
+        labelKey: 'events.views.guest_form.activity_sent_edm',
         status: name,
         date: String(record.date ?? record.sent_at ?? ''),
         message: String(record.message ?? record.subject ?? ''),

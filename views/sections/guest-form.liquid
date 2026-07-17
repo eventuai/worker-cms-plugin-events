@@ -1,7 +1,7 @@
 <div class="flex items-center justify-between gap-4 mb-4" style="max-width:48rem">
   <div>
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ listHref }}">← {{ listName }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
+    <h1 class="text-2xl font-bold text-gray-900">{% if titleKey != blank %}{{ titleKey | t }}{% else %}{{ title }}{% endif %}</h1>
     <p class="mt-1 text-sm text-gray-500">{{ eventName }}</p>
   </div>
   <div class="flex flex-col md:flex-row md:items-center gap-4">
@@ -18,7 +18,7 @@
       </div>
     {% endif %}
     {% if updateFromContactAction != blank %}
-      <form method="post" action="{{ updateFromContactAction }}" onsubmit="return confirm('Overwrite this guest with its linked contact record?')">
+      <form method="post" action="{{ updateFromContactAction }}" onsubmit="return confirm('{{ "events.views.guest_form.overwrite_from_contact" | t }}')">
         <button class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" type="submit" title="{{ "events.views.guest_form.update_from_contact" | t }}" aria-label="{{ "events.views.guest_form.update_from_contact" | t }}"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#user"></use></svg><span class="hidden lg:inline">{{ "events.views.guest_form.update_from_contact" | t }}</span></button>
       </form>
     {% endif %}
@@ -111,7 +111,7 @@
           <div class="py-4 first:pt-0 last:pb-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">{{ plus.number }}</span>
-              <span class="text-sm font-semibold text-gray-900">{% if plus.name != blank %}{{ plus.name }}{% else %}Unnamed plus guest{% endif %}</span>
+              <span class="text-sm font-semibold text-gray-900">{% if plus.name != blank %}{{ plus.name }}{% else %}{{ "events.views.guest_form.unnamed_plus_guest" | t }}{% endif %}</span>
             </div>
             {% if plus.organization != blank %}<p class="mt-1 pl-8 text-sm text-gray-600">{{ plus.organization }}</p>{% endif %}
             {% if plus.answers.size > 0 %}
@@ -179,7 +179,7 @@
   {% if deleteAction != blank %}<form id="guest-delete-form" method="post" action="{{ deleteAction }}" data-confirm="{{ "events.views.guest_form.delete_this_guest" | t }}"></form>{% endif %}
   <div class="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
     {% unless readOnly %}<button form="guest-form" type="submit" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">{{ "events.views.guest_form.save_guest" | t }}</button>{% endunless %}
-    <a href="{{ listHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{% if readOnly %}Back{% else %}Cancel{% endif %}</a>
+    <a href="{{ listHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{% if readOnly %}{{ "events.views.guest_form.back" | t }}{% else %}{{ "events.views.guest_form.cancel" | t }}{% endif %}</a>
     {% if qrHref != blank %}<a href="{{ qrHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{{ "events.views.guest_form.qr_code" | t }}</a>{% endif %}
     {% if deleteAction != blank %}<button form="guest-delete-form" type="submit" class="w-full px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors shadow-sm sm:ml-auto sm:w-auto">{{ "events.views.guest_form.delete" | t }}</button>{% endif %}
   </div>
@@ -193,11 +193,11 @@
       {% for item in activity %}
         <div class="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-2 py-3">
           <div class="text-xs text-gray-500 sm:text-right">
-            {% if item.date != blank %}{{ item.date | date: "%Y-%m-%d %H:%M" | default: item.date }}{% else %}No date{% endif %}
+            {% if item.date != blank %}{{ item.date | date: "%Y-%m-%d %H:%M" | default: item.date }}{% else %}{{ "events.views.guest_form.no_date" | t }}{% endif %}
           </div>
           <div>
             <div class="flex flex-wrap items-center gap-2">
-              <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold {% if item.kind == 'edm' %}bg-blue-50 text-blue-700{% elsif item.kind == 'checkin' %}bg-green-50 text-green-700{% else %}bg-gray-100 text-gray-700{% endif %}">{{ item.label }}</span>
+              <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold {% if item.kind == 'edm' %}bg-blue-50 text-blue-700{% elsif item.kind == 'checkin' %}bg-green-50 text-green-700{% else %}bg-gray-100 text-gray-700{% endif %}">{% if item.labelKey != blank %}{{ item.labelKey | t }}{% else %}{{ item.label }}{% endif %}</span>
               {% if item.status != blank %}<span class="text-sm font-semibold text-gray-900">{{ item.status | capitalize }}</span>{% endif %}
             </div>
             {% if item.message != blank %}<div class="mt-1 text-xs text-gray-500">{{ item.message }}</div>{% endif %}
