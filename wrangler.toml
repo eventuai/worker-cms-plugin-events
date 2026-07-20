@@ -1,6 +1,6 @@
 name = "worker-cms-plugin-events"
 main = "src/index.ts"
-compatibility_date = "2026-03-24"
+compatibility_date = "2026-07-14"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # Browser Run rasterizes downloadable QR ticket PNGs with Chromium's bundled
@@ -35,9 +35,10 @@ binding = "CF_VERSION_METADATA"
 # `secret` must match the CMS's Plugins → events → Shared secret. `signKey` signs
 # public tokens (QR / RSVP / unsubscribe links) and is what you copy into that
 # tenant's worker-rsvp + cms-plugin-checkin — never share the pairwise secret.
-[[kv_namespaces]]
-binding = "TENANTS"
-id = "5511819de9f24bd596b25996e2b39eff"
+# [[kv_namespaces]]
+# binding = "TENANTS"
+# id = "REPLACE_WITH_ID_FROM_npm_run_kv_setup"
+# preview_id = "REPLACE_WITH_ID_FROM_npm_run_kv_setup_preview"
 
 [vars]
 # Base URL of the CMS Worker — where this plugin reaches the Plugin API
