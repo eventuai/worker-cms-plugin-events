@@ -35,10 +35,9 @@ binding = "CF_VERSION_METADATA"
 # `secret` must match the CMS's Plugins → events → Shared secret. `signKey` signs
 # public tokens (QR / RSVP / unsubscribe links) and is what you copy into that
 # tenant's worker-rsvp + cms-plugin-checkin — never share the pairwise secret.
-# [[kv_namespaces]]
-# binding = "TENANTS"
-# id = "REPLACE_WITH_ID_FROM_npm_run_kv_setup"
-# preview_id = "REPLACE_WITH_ID_FROM_npm_run_kv_setup_preview"
+[[kv_namespaces]]
+binding = "TENANTS"
+id = "5511819de9f24bd596b25996e2b39eff"
 
 [vars]
 # Base URL of the CMS Worker — where this plugin reaches the Plugin API
