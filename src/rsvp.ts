@@ -181,7 +181,37 @@ interface ActivityItem {
   status: string;
   date: string;
   message: string;
+  responseEdmId?: string;
+  responseName?: string;
+  responseFields?: Array<{ label: string; value: string }>;
+  hasResponseFields?: boolean;
 }
+
+interface ResponseCustomSection {
+  edmId: string;
+  name: string;
+  previewHref: string;
+  hasFields: boolean;
+  responseRef: string;
+  submittedAt: string;
+  fields: Array<{ label: string; value: string }>;
+  /**
+   * The eDM this section's refill checkbox re-opens — the eDM id, or `latest`
+   * for a response submitted without one. Refill is per eDM, so only the newest
+   * submission of each eDM carries the control (`showRefill`).
+   */
+  refillScope: string;
+  showRefill: boolean;
+  refillOpen: boolean;
+  /** Repeater row this eDM's checkbox posts, e.g. `.refill[0]@edm`. */
+  refillField: string;
+}
+
+/** Refill scope for a response that carries no eDM id. */
+const DEFAULT_REFILL_SCOPE = 'latest';
+
+/** Submissions read back per guest editor render — one row per public submit. */
+const RESPONSE_HISTORY_LIMIT = 50;
 
 /** Signing context for per-guest check-in QR codes. */
 export interface QrOptions {
@@ -190,6 +220,14 @@ export interface QrOptions {
   /** Tenant ref appended (`?t=`) to minted check-in URLs so the shared
    *  check-in Worker verifies against the right tenant's key. */
   tenantRef?: string;
+}
+
+interface GuestQrTicket {
+  context: GuestListContext;
+  guest: CmsPage;
+  values: Record<string, string>;
+  payload: string;
+  svg: string;
 }
 
 export interface RsvpEnv extends EdmEnv {
@@ -335,9 +373,9 @@ export async function handleRsvpAdmin(
       if (!canManageEmail) return forbidden();
       return sendGuestEdm(request, cms, views, env, listId, guestId);
     }
-    if (segments[3] === 'preview' && request.method === 'POST') {
+    if (segments[3] === 'preview' && (request.method === 'GET' || request.method === 'POST')) {
       if (!canManageEmail) return forbidden();
-      return previewGuestEdm(cms, views, env, listId, guestId);
+      return previewGuestEdm(cms, views, env, listId, guestId, request.method === 'POST', pageId(url.searchParams.get('edm')));
     }
     if (segments[3] === 'qrcode') {
       if (!canCheckIn) return forbidden();
@@ -368,18 +406,48 @@ export async function handleRsvpAdmin(
  * form the RSVP admin route uses, using native CMS field names so the host page
  * save handler can own the write path.
  */
-export async function handleGuestEditView(request: Request, cms: CmsClient, views: Fetcher): Promise<Response> {
+export async function handleGuestEditView(
+  request: Request,
+  cms: CmsClient,
+  views: Fetcher,
+  refreshGuest?: (guestId: number) => Promise<CmsPage | undefined>,
+): Promise<Response> {
   const ctx = (await request.json().catch(() => null)) as EditViewContext | null;
   if (!ctx || ctx.pageType !== 'guest') return new Response('not found', { status: 404 });
 
-  const lect = parseLect(ctx.page.lect);
-  const listId = pageId(pointer(lect, 'mail_list')) ?? pageId(ctx.page.page_id) ?? pageId(ctx.page.pageId);
+  let currentGuest: CmsPage | undefined;
+  let lect = parseLect(ctx.page.lect);
+  let listId = pageId(pointer(lect, 'mail_list')) ?? pageId(ctx.page.page_id) ?? pageId(ctx.page.pageId);
   if (!listId) return new Response('not found', { status: 404 });
 
-  const context = await guestListContext(cms, listId);
+  let context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
 
-  const guest: CmsPage = {
+  // Archived editors are strictly read-only, including submission ingestion.
+  // Active guests pull the latest public RSVP before the form view model is
+  // built, then use that fresh row instead of the host's pre-plugin snapshot.
+  if (!eventIsArchived(context.event) && refreshGuest) {
+    const refreshed = await refreshGuest(ctx.page.id);
+    if (refreshed?.page_type === 'guest' && refreshed.id === ctx.page.id) {
+      currentGuest = refreshed;
+      lect = parseLect(refreshed.lect);
+      const refreshedListId = pageId(pointer(lect, 'mail_list')) ?? pageId(refreshed.page_id) ?? listId;
+      if (refreshedListId !== listId) {
+        listId = refreshedListId;
+        context = await guestListContext(cms, listId);
+        if (!context) return new Response('not found', { status: 404 });
+      }
+    }
+  }
+
+  const guest: CmsPage = currentGuest ? {
+    ...currentGuest,
+    page_id: listId,
+    lect: {
+      ...lect,
+      _pointers: { ...(lect._pointers as Record<string, unknown> ?? {}), mail_list: String(listId) },
+    },
+  } : {
     id: ctx.page.id,
     uuid: '',
     page_type: 'guest',
@@ -404,8 +472,8 @@ export async function handleGuestEditView(request: Request, cms: CmsClient, view
     backHref: ctx.backHref || `${ADMIN_BASE}/rsvp/${listId}`,
     returnTo: ctx.backHref || `${ADMIN_BASE}/rsvp/${listId}`,
     nativePageAction: true,
-    slug: ctx.page.slug ?? '',
-    weight: ctx.page.weight ?? 0,
+    slug: guest.slug || ctx.page.slug || '',
+    weight: guest.weight ?? ctx.page.weight ?? 0,
     language: ctx.language || 'mis',
   });
 }
@@ -639,6 +707,7 @@ async function guestFormView(
   } = {},
 ): Promise<Response> {
   const values = guest ? guestValues(guest) : emptyGuestValues();
+  const inlineQrTicket = guest ? buildGuestQrTicket(context, guest, listId) : null;
   const readOnly = eventIsArchived(context.event);
   const action = readOnly ? '' : options.action ?? (guest
     ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}`
@@ -651,8 +720,16 @@ async function guestFormView(
     moveLists = pages.filter((list) => list.id !== listId).map((list) => ({ id: list.id, name: list.name }));
   }
 
-  const adminCustomFields = adminCustomFieldsForGuest(context.event, context.list, guest);
-  const activity = guest ? await guestActivity(cms, guest) : [];
+  const responsePages = guest ? await guestResponsePages(cms, guest) : [];
+  const responsePlaceholders = guest ? latestResponsePlaceholders(guest, responsePages) : new Map<string, string>();
+  const adminCustomFields = adminCustomFieldsForGuest(context.event, context.list, guest, responsePlaceholders);
+  const guestEdmPages = guest ? await guestEdms(cms, guest, responsePages) : new Map<string, CmsPage>();
+  const responseHistorySections = guest ? guestResponseSections(guest, responsePages, guestEdmPages, listId) : [];
+  const responseCustomSections = withRefillControls(
+    latestResponseSectionsByTitle(responseHistorySections),
+    guest ? openRefillScopes(guest.lect) : new Set<string>(),
+  );
+  const activity = guest ? guestActivity(guest, guestEdmPages, responseHistorySections) : [];
   const plusGuests = guest ? plusGuestDetails(guest.lect) : [];
   const linkedCompanions = guest ? materializedCompanionLinks(guest.lect).map((companion) => ({
     ...companion,
@@ -702,10 +779,17 @@ async function guestFormView(
     ticketFields: guestTicketFields(values),
     adminCustomFields,
     hasAdminCustomFields: adminCustomFields.length > 0,
+    responseCustomSections,
+    hasResponseCustomSections: responseCustomSections.length > 0,
     activity,
     hasActivity: activity.length > 0,
     deleteAction: guest && !readOnly ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
     qrHref: guest ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode` : '',
+    guestQrPayload: inlineQrTicket?.payload ?? '',
+    guestQrSvg: inlineQrTicket?.svg ?? '',
+    guestQrPngSrc: guest
+      ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/qrcode.png${guest.updated_at ? `?r=${encodeURIComponent(guest.updated_at)}` : ''}`
+      : '',
     updateFromContactAction: guest && !readOnly && guestContactId(guest)
       ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/update-from-contact`
       : '',
@@ -901,14 +985,27 @@ async function autoSendEdm(request: Request, cms: CmsClient, views: Fetcher, env
 }
 
 /** Renders the list's EDM as it would reach this guest (preview, new tab). */
-async function previewGuestEdm(cms: CmsClient, views: Fetcher, env: EdmEnv, listId: number, guestId: number): Promise<Response> {
+async function previewGuestEdm(
+  cms: CmsClient,
+  views: Fetcher,
+  env: EdmEnv,
+  listId: number,
+  guestId: number,
+  publish: boolean,
+  edmId?: number | null,
+): Promise<Response> {
   const context = await guestListContext(cms, listId);
   if (!context) return new Response('not found', { status: 404 });
-  const edm = await resolveListEdm(cms, context.list);
-  if (!edm) return new Response('No EDM is linked to this guest list.', { status: 404 });
+  // Response-history links pin the EDM that produced that RSVP. The ordinary
+  // guest-list Preview action continues to use the list's selected EDM.
+  const edm = edmId ? await cms.get(edmId) : await resolveListEdm(cms, context.list);
+  if (!edm || edm.page_type !== 'edm') return new Response('No EDM is linked to this guest list.', { status: 404 });
   const guest = await cms.get(guestId);
   if (guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return new Response('not found', { status: 404 });
-  await publishRsvpContext(cms, context.eventId, context.list, edm, [guest]);
+  // The button's initial POST publishes the public RSVP context. A browser
+  // reload may arrive as GET, which must remain read-only while rendering the
+  // same guest-specific preview.
+  if (publish) await publishRsvpContext(cms, context.eventId, context.list, edm, [guest]);
   const html = await previewEdmForGuest(views, env, edm, context.eventId, listId, guest);
   return new Response(html, {
     headers: { 'content-type': 'text/html; charset=utf-8', 'x-cms-frame': '1' },
@@ -1382,7 +1479,7 @@ async function qrTicketPng(browser: BrowserRun | undefined, svg: string, filenam
 }
 
 function plusGuestTicketSvg(
-  ticket: NonNullable<Awaited<ReturnType<typeof guestQrTicket>>>,
+  ticket: GuestQrTicket,
   detail: PlusGuestDetail,
   payload: string,
 ): string {
@@ -1395,18 +1492,16 @@ function plusGuestTicketSvg(
   });
 }
 
-async function guestQrTicket(cms: CmsClient, listId: number, guestId: number): Promise<{
-  context: GuestListContext;
-  guest: CmsPage;
-  values: Record<string, string>;
-  payload: string;
-  svg: string;
-} | null> {
+async function guestQrTicket(cms: CmsClient, listId: number, guestId: number): Promise<GuestQrTicket | null> {
   const context = await guestListContext(cms, listId);
   const guest = await cms.get(guestId);
   if (!context || guest.page_type !== 'guest' || pointer(guest.lect, 'mail_list') !== String(listId)) return null;
+  return buildGuestQrTicket(context, guest, listId);
+}
+
+function buildGuestQrTicket(context: GuestListContext, guest: CmsPage, listId: number): GuestQrTicket {
   const values = guestValues(guest);
-  const payload = compactCheckinCode(listId, guestId);
+  const payload = compactCheckinCode(listId, guest.id);
   return {
     context,
     guest,
@@ -2515,14 +2610,17 @@ async function exportGuests(cms: CmsClient, listId: number): Promise<Response> {
   if (!context) return new Response('not found', { status: 404 });
   await chargeCreditAction(cms, 'export_guests', 1, { entityType: 'mail_list', entityId: listId });
   const pages = await cms.listAll('guest', { pointer: { key: 'mail_list', value: listId } });
-  const headers = ['id', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];
+  const customHeaders = guestExportCustomHeaders(pages);
+  const headers = ['id', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in', ...customHeaders];
   const rows = pages.map((guest) => {
     const values = guestValues(guest);
+    const customValues = guestExportCustomValues(guest);
     return [
       String(guest.id),
       values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
       values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks, values.paired_qrcode,
       checkins(guest.lect).length ? 'yes' : 'no',
+      ...customHeaders.map((header) => customValues[header] ?? ''),
     ];
   });
   const csv = [headers, ...rows].map((row) => row.map(csvValue).join(',')).join('\n');
@@ -2548,16 +2646,20 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
   const groupedGuests = await guestsByMailList(cms, lists);
   const guestsByList = lists.map((list) => groupedGuests.get(String(list.id)) ?? []);
 
-  const headers = ['id', 'mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in'];
+  const guests = guestsByList.flat();
+  const customHeaders = guestExportCustomHeaders(guests);
+  const headers = ['id', 'mail_list', 'name', 'last_name', 'email', 'phone', 'organization', 'job_title', 'plus_guests', 'status', 'prefer_language', 'cc', 'remarks', 'paired_qrcode', 'checked_in', ...customHeaders];
   const rows: string[][] = [];
   lists.forEach((list, index) => {
     for (const guest of guestsByList[index] ?? []) {
       const values = guestValues(guest);
+      const customValues = guestExportCustomValues(guest);
       rows.push([
         String(guest.id),
         list.name, values.name, values.last_name, values.email, values.phone, values.organization, values.job_title,
         values.plus_guests, values.status, values.prefer_language, values.cc, values.remarks, values.paired_qrcode,
         checkins(guest.lect).length ? 'yes' : 'no',
+        ...customHeaders.map((header) => customValues[header] ?? ''),
       ]);
     }
   });
@@ -2569,6 +2671,58 @@ export async function exportEventGuests(cms: CmsClient, eventId: number): Promis
       'content-disposition': `attachment; filename="${safeFilename(event.name)}-all-guests.csv"`,
     },
   });
+}
+
+/**
+ * Custom RSVP answers are normally copied to the guest's top-level lect, but
+ * guests created before that behaviour can have them only in an eDM-scoped
+ * `latest_response` snapshot. Keep the CSV round-trippable by using the
+ * stored custom-field keys as columns and falling back to those snapshots.
+ */
+function guestExportCustomHeaders(guests: CmsPage[]): string[] {
+  const headers = new Set<string>();
+  for (const guest of guests) {
+    for (const key of Object.keys(guestExportCustomValues(guest))) headers.add(key);
+  }
+  return [...headers].sort();
+}
+
+function guestExportCustomValues(guest: CmsPage): Record<string, string> {
+  const values = latestResponseCustomValues(guest.lect.latest_response);
+  for (const key of Object.keys(guest.lect)) {
+    if (!isCustomKey(key)) continue;
+    const value = attr(guest.lect, key);
+    if (value) values[key] = value;
+  }
+  return values;
+}
+
+function latestResponseCustomValues(latestResponse: unknown): Record<string, string> {
+  if (!latestResponse || typeof latestResponse !== 'object' || Array.isArray(latestResponse)) return {};
+
+  const values: Record<string, string> = {};
+  const timestamps = new Map<string, string>();
+  for (const [source, snapshot] of Object.entries(latestResponse as Record<string, unknown>)) {
+    // Accept the compact shape too, in case an older guest stored the answer
+    // map directly rather than under an eDM id.
+    if (isCustomKey(source) && typeof snapshot !== 'object') {
+      const value = String(snapshot ?? '').trim();
+      if (value) values[source] = value;
+      continue;
+    }
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) continue;
+
+    const answerMap = snapshot as Record<string, unknown>;
+    const submittedAt = String(answerMap.submitted_at ?? '');
+    for (const [key, answer] of Object.entries(answerMap)) {
+      if (!isCustomKey(key)) continue;
+      const value = String(answer ?? '').trim();
+      if (!value || (timestamps.get(key) ?? '') > submittedAt) continue;
+      values[key] = value;
+      timestamps.set(key, submittedAt);
+    }
+  }
+  return values;
 }
 
 async function guestListContext(cms: CmsClient, listId: number, includeLiveStatus = false): Promise<GuestListContext | null> {
@@ -2662,7 +2816,7 @@ function emptyGuestValues(): Record<string, string> {
   return {
     name: '', first_name: '', last_name: '', prefix: '', zh_hant_name: '', zh_hans_name: '',
     picture: '', contact: '', email: '', phone: '', cc: '', organization: '', job_title: '', wechat: '',
-    nationality: '', parent: '', allow_refill: '', primary_guest: '', not_send: '', plus_guests: '0',
+    nationality: '', parent: '', primary_guest: '', not_send: '', plus_guests: '0',
     total_guests: '', max_main_checkin: '', status: 'to be invited', prefer_language: '', color_tag: '',
     remarks: '', checkin_remark: '', qrcode_remark: '', rsvp_code: '', qrcode: '', paired_qrcode: '', barcode: '', no: '',
   };
@@ -2686,7 +2840,6 @@ function guestValues(guest: CmsPage): Record<string, string> {
     wechat: attr(guest.lect, 'wechat'),
     nationality: attr(guest.lect, 'nationality'),
     parent: attr(guest.lect, 'parent'),
-    allow_refill: switchValue(guest.lect, 'allow_refill'),
     primary_guest: String(pointer(guest.lect, 'primary_guest') || attr(guest.lect, 'primary_guest')).trim(),
     not_send: switchValue(guest.lect, 'not_send'),
     plus_guests: attr(guest.lect, 'plus_guests') || '0',
@@ -2768,7 +2921,6 @@ function guestRsvpFields(values: Record<string, string>): GuestFormField[] {
         selected: values.status === status,
       })),
     }),
-    guestFormField('@allow_refill', 'Allow refill', values.allow_refill, 'switch', { labelKey: 'events.views.guest_form.allow_refill' }),
     guestFormField('@primary_guest', 'Primary guest ID', values.primary_guest, 'number', { labelKey: 'events.views.guest_form.primary_guest_id' }),
     guestFormField('@parent', 'Primary guest', values.parent, 'text', { labelKey: 'events.views.guest_form.primary_guest' }),
     guestFormField('@not_send', 'Pause email sends', values.not_send, 'switch', { labelKey: 'events.views.guest_form.pause_email_sends' }),
@@ -2924,17 +3076,29 @@ function colorTagOptions(selectedColor: string): Array<{ value: string; label: s
   }));
 }
 
-async function guestActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityItem[]> {
+function guestActivity(
+  guest: CmsPage,
+  edmPages: Map<string, CmsPage>,
+  responseCustomSections: ResponseCustomSection[],
+): ActivityItem[] {
+  const matchedResponseSections = new Set<ResponseCustomSection>();
   const responseActivity = items(guest.lect, 'response')
     .filter(hasActivityContent)
-    .map((entry) => ({
-      kind: 'response',
-      label: 'Response',
-      labelKey: 'events.views.guest_form.activity_response',
-      status: String(entry.status ?? ''),
-      date: String(entry.date ?? ''),
-      message: String(entry.message ?? ''),
-    }));
+    .map((entry) => {
+      const responseSection = activityResponseSection(entry, responseCustomSections, matchedResponseSections);
+      return {
+        kind: 'response',
+        label: 'Response',
+        labelKey: 'events.views.guest_form.activity_response',
+        status: String(entry.status ?? ''),
+        date: String(entry.date ?? ''),
+        message: String(entry.message ?? ''),
+        responseEdmId: responseSection?.edmId ?? '',
+        responseName: responseSection?.name ?? '',
+        responseFields: responseSection?.fields ?? [],
+        hasResponseFields: Boolean(responseSection?.fields.length),
+      };
+    });
 
   const checkinActivity = checkins(guest.lect).map((entry) => ({
     kind: 'checkin',
@@ -2945,7 +3109,7 @@ async function guestActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityIt
     message: String(entry.message ?? ''),
   }));
 
-  const sentActivity = await sentEdmActivity(cms, guest);
+  const sentActivity = sentEdmActivity(guest, edmPages);
 
   return [...responseActivity, ...checkinActivity, ...sentActivity].sort((a, b) => {
     const aTime = Date.parse(a.date);
@@ -2957,31 +3121,39 @@ async function guestActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityIt
   });
 }
 
+function activityResponseSection(
+  entry: Record<string, unknown>,
+  sections: ResponseCustomSection[],
+  matched: Set<ResponseCustomSection>,
+): ResponseCustomSection | undefined {
+  const available = sections.filter((section) => !matched.has(section));
+  const responseRef = String(entry._ref ?? '').trim();
+  const date = String(entry.date ?? '').trim();
+  const edmId = String(entry.edm_id ?? entry.edm ?? '').trim();
+  let section = responseRef ? available.find((candidate) => candidate.responseRef === responseRef) : undefined;
+  if (!section && date) section = available.find((candidate) => candidate.submittedAt === date);
+  if (!section && edmId) {
+    const sameEdm = available.filter((candidate) => candidate.edmId === edmId);
+    if (sameEdm.length === 1) [section] = sameEdm;
+  }
+  if (section) matched.add(section);
+  return section;
+}
+
 function hasActivityContent(entry: Record<string, unknown>): boolean {
   return ['status', 'date', 'message'].some((key) => String(entry[key] ?? '').trim() !== '');
 }
 
-async function sentEdmActivity(cms: CmsClient, guest: CmsPage): Promise<ActivityItem[]> {
+function sentEdmActivity(guest: CmsPage, edmPages: Map<string, CmsPage>): ActivityItem[] {
   const sent = Array.isArray(guest.lect.sent_edm) ? guest.lect.sent_edm : [];
   if (!sent.length) return [];
-
-  const edmNames = new Map<string, string>();
-  const ids = [...new Set(sent.map(sentEdmId).filter(Boolean))];
-  await Promise.all(ids.map(async (id) => {
-    try {
-      const edm = await cms.get(Number(id));
-      if (edm.page_type === 'edm') edmNames.set(id, edm.name);
-    } catch (error) {
-      if (!(error instanceof CmsApiError && error.status === 404)) throw error;
-    }
-  }));
 
   return sent
     .map((entry) => {
       const id = sentEdmId(entry);
       if (!id) return null;
       const record = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry as Record<string, unknown> : {};
-      const name = edmNames.get(id) ?? `EDM ${id}`;
+      const name = edmPages.get(id)?.name ?? `EDM ${id}`;
       return {
         kind: 'edm',
         label: 'Sent eDM',
@@ -2992,6 +3164,271 @@ async function sentEdmActivity(cms: CmsClient, guest: CmsPage): Promise<Activity
       };
     })
     .filter((entry): entry is ActivityItem => entry !== null);
+}
+
+/**
+ * Every ingested submission for this guest, newest first. These pages are the
+ * durable record — one row per public submit — while the guest's
+ * `latest_response` map only keeps the newest snapshot per eDM.
+ */
+async function guestResponsePages(cms: CmsClient, guest: CmsPage): Promise<CmsPage[]> {
+  let pages: CmsPage[];
+  try {
+    ({ pages } = await cms.list('rsvp_response', { parentId: guest.id, limit: RESPONSE_HISTORY_LIMIT }));
+  } catch (error) {
+    // Keep the editor usable when submissions cannot be read; the guest's
+    // `latest_response` snapshot still renders via the fallback below.
+    if (!(error instanceof CmsApiError)) throw error;
+    console.error('[events-suite] guest response history unavailable', error);
+    return [];
+  }
+  return pages
+    .filter((page) => page.page_type === 'rsvp_response')
+    .sort((a, b) => responseSubmittedAt(b).localeCompare(responseSubmittedAt(a)));
+}
+
+function responseSubmittedAt(page: CmsPage): string {
+  return attr(page.lect, 'submitted_at').trim() || String(page.created_at ?? '');
+}
+
+async function guestEdms(cms: CmsClient, guest: CmsPage, responsePages: CmsPage[] = []): Promise<Map<string, CmsPage>> {
+  const latestResponse = guest.lect.latest_response;
+  const responseIds = latestResponse && typeof latestResponse === 'object' && !Array.isArray(latestResponse)
+    ? Object.keys(latestResponse).filter((id) => id !== 'admin')
+    : [];
+  const submittedIds = responsePages.map((page) => attr(page.lect, 'edm_id').trim());
+  const sentIds = (Array.isArray(guest.lect.sent_edm) ? guest.lect.sent_edm : []).map(sentEdmId);
+  const ids = [...new Set([...responseIds, ...submittedIds, ...sentIds].filter((id) => /^\d+$/.test(id)))];
+  const pages = new Map<string, CmsPage>();
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const edm = await cms.get(Number(id));
+      if (edm.page_type === 'edm') pages.set(id, edm);
+    } catch (error) {
+      if (!(error instanceof CmsApiError && error.status === 404)) throw error;
+    }
+  }));
+  return pages;
+}
+
+/**
+ * One section per submission, newest first. Falls back to the guest's
+ * `latest_response` map for guests whose submissions predate submission
+ * ingest (or were entered by an admin), which keeps at most one entry per eDM.
+ */
+function guestResponseSections(
+  guest: CmsPage,
+  responsePages: CmsPage[],
+  edmPages: Map<string, CmsPage>,
+  listId: number,
+): ResponseCustomSection[] {
+  if (responsePages.length === 0) return guestResponseCustomSections(guest, edmPages, listId);
+  return responsePages.map((page) => responsePageSection(page, edmPages, listId, guest.id));
+}
+
+/**
+ * Places the refill checkbox on the newest submission of each eDM — permission
+ * is per eDM, so a second submission against the same one must not offer its
+ * own control — and ticks the eDMs the guest's `refill` list re-opens. Any
+ * number of eDMs can be open at once; each closes on its own next submission.
+ */
+function withRefillControls(sections: ResponseCustomSection[], openScopes: Set<string>): ResponseCustomSection[] {
+  const seen = new Set<string>();
+  return sections.map((section) => {
+    const showRefill = !seen.has(section.refillScope);
+    seen.add(section.refillScope);
+    return {
+      ...section,
+      showRefill,
+      // Row index must be stable per eDM: the posted array replaces the stored
+      // one by position, and every row posts (see the empty twin in the view).
+      refillField: `.refill[${seen.size - 1}]@edm`,
+      refillOpen: showRefill && openScopes.has(section.refillScope),
+    };
+  });
+}
+
+/** eDM scopes the guest's `refill` rows currently re-open. */
+export function openRefillScopes(lect: Record<string, unknown>): Set<string> {
+  return new Set(
+    items(lect, 'refill')
+      .map((entry) => String(entry.edm ?? '').trim())
+      .filter((scope) => scope !== ''),
+  );
+}
+
+/**
+ * The Response card is a compact latest-state summary. Different EDM records
+ * may share the same visible email title, so keep only the newest submission
+ * for each normalized title. Activity receives the unfiltered history.
+ */
+function latestResponseSectionsByTitle(sections: ResponseCustomSection[]): ResponseCustomSection[] {
+  const titles = new Set<string>();
+  return sections.filter((section) => {
+    const title = section.name.trim().toLocaleLowerCase();
+    if (titles.has(title)) return false;
+    titles.add(title);
+    return true;
+  });
+}
+
+function responsePageSection(
+  page: CmsPage,
+  edmPages: Map<string, CmsPage>,
+  listId: number,
+  guestId: number,
+): ResponseCustomSection {
+  const edmId = attr(page.lect, 'edm_id').trim();
+  const edm = edmPages.get(edmId);
+  const labels = responseCustomLabels(edm);
+  const answers = page.lect.answers && typeof page.lect.answers === 'object' && !Array.isArray(page.lect.answers)
+    ? page.lect.answers as Record<string, unknown>
+    : {};
+  const fields = Object.entries(answers)
+    .filter(([key, answer]) => isResponseCustomKey(key) && String(answer ?? '').trim() !== '')
+    .map(([key, answer]) => ({
+      label: labels.get(key) ?? responseCustomLabel(key),
+      value: String(answer).trim(),
+    }));
+  return {
+    edmId,
+    name: edm?.name ?? (edmId ? `EDM ${edmId}` : 'Response'),
+    previewHref: responseGuestPreviewHref(listId, guestId, edm),
+    hasFields: fields.length > 0,
+    responseRef: page.uuid,
+    submittedAt: responseSubmittedAt(page),
+    fields,
+    refillScope: edmId || DEFAULT_REFILL_SCOPE,
+    showRefill: false,
+    refillOpen: false,
+    refillField: '',
+  };
+}
+
+function guestResponseCustomSections(
+  guest: CmsPage,
+  edmPages: Map<string, CmsPage>,
+  listId: number,
+): ResponseCustomSection[] {
+  const latestResponse = guest.lect.latest_response;
+  if (!latestResponse || typeof latestResponse !== 'object' || Array.isArray(latestResponse)) return [];
+
+  return Object.entries(latestResponse as Record<string, unknown>)
+    .filter(([id]) => id !== 'admin')
+    .map(([id, value]) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      const record = value as Record<string, unknown>;
+      const edm = edmPages.get(id);
+      const labels = responseCustomLabels(edm);
+      const fields = Object.entries(record)
+        .filter(([key, answer]) => isResponseCustomKey(key) && String(answer ?? '').trim() !== '')
+        .map(([key, answer]) => ({
+          label: labels.get(key) ?? responseCustomLabel(key),
+          value: String(answer).trim(),
+        }));
+      if (!fields.length && !/^\d+$/.test(id)) return null;
+      return {
+        edmId: id,
+        name: edm?.name ?? (/^\d+$/.test(id) ? `EDM ${id}` : 'Response'),
+        previewHref: responseGuestPreviewHref(listId, guest.id, edm),
+        hasFields: fields.length > 0,
+        responseRef: String(record._ref ?? '').trim(),
+        submittedAt: String(record.submitted_at ?? '').trim(),
+        fields,
+        refillScope: /^\d+$/.test(id) ? id : DEFAULT_REFILL_SCOPE,
+        showRefill: false,
+        refillOpen: false,
+        refillField: '',
+      };
+    })
+    .filter((section): section is ResponseCustomSection => section !== null);
+}
+
+function responseGuestPreviewHref(listId: number, guestId: number, edm?: CmsPage): string {
+  return edm
+    ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guestId}/preview?edm=${edm.id}`
+    : '';
+}
+
+function responseCustomLabels(edm?: CmsPage): Map<string, string> {
+  const labels = new Map<string, string>();
+  if (!edm) return labels;
+  for (const source of adminCustomBlocks(edm, 'edm')) {
+    for (const input of items(source.block, 'custom_input')) {
+      const label = localized(input, 'label') || attr(input, 'label') || attr(input, 'name');
+      if (!label) continue;
+      for (const key of responseCustomKeysForLabel(label)) labels.set(key, label);
+    }
+  }
+  return labels;
+}
+
+/**
+ * Public RSVP custom inputs use a stable key parsed from their label. Keep the
+ * legacy dashed and current underscored forms together so an admin field can
+ * find answers submitted by either generation of RSVP form.
+ */
+function responseCustomKeysForLabel(label: string): string[] {
+  return [
+    `rsvp-custom-${adminLegacyFieldSlug(label)}`,
+    `rsvp_custom_${adminFieldSlug(label)}`,
+  ];
+}
+
+/**
+ * Values from the newest response for each public custom-input key. These are
+ * are normally display hints for the guest editor. Required custom fields are
+ * the exception: the matching answer is used as the field value when no admin
+ * `rsvp_custom_*` value exists, so the CMS can submit a valid edit form.
+ */
+function latestResponsePlaceholders(guest: CmsPage, responsePages: CmsPage[]): Map<string, string> {
+  const placeholders = new Map<string, string>();
+  const addResponse = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    for (const [key, answer] of Object.entries(value as Record<string, unknown>)) {
+      if (!isResponseCustomKey(key)) continue;
+      const variants = responseCustomKeyVariants(key);
+      if (variants.some((variant) => placeholders.has(variant))) continue;
+      for (const variant of variants) placeholders.set(variant, String(answer ?? '').trim());
+    }
+  };
+
+  // `guestResponsePages` is newest first. A blank answer on the latest reply
+  // intentionally suppresses an older placeholder for that same field.
+  for (const page of responsePages) addResponse(page.lect.answers);
+  if (responsePages.length > 0) return placeholders;
+
+  // Older guests may only have the collapsed per-EDM snapshot. Sort it by the
+  // recorded submit time before deriving the same read-only hints.
+  const latest = guest.lect.latest_response;
+  if (!latest || typeof latest !== 'object' || Array.isArray(latest)) return placeholders;
+  const snapshots = Object.entries(latest as Record<string, unknown>)
+    .filter(([id, value]) => id !== 'admin' && Boolean(value) && typeof value === 'object' && !Array.isArray(value))
+    .sort(([, a], [, b]) => String((b as Record<string, unknown>).submitted_at ?? '')
+      .localeCompare(String((a as Record<string, unknown>).submitted_at ?? '')));
+  for (const [, snapshot] of snapshots) addResponse(snapshot);
+  return placeholders;
+}
+
+function responseCustomKeyVariants(key: string): string[] {
+  if (key.startsWith('rsvp-custom-')) {
+    const slug = key.slice('rsvp-custom-'.length);
+    return [key, `rsvp_custom_${adminFieldSlug(slug)}`];
+  }
+  if (key.startsWith('rsvp_custom_')) {
+    const slug = key.slice('rsvp_custom_'.length);
+    return [key, `rsvp-custom-${slug.replace(/_/g, '-')}`];
+  }
+  return [key];
+}
+
+function isResponseCustomKey(key: string): boolean {
+  return key.startsWith('rsvp-custom-') || key.startsWith('rsvp_custom_');
+}
+
+function responseCustomLabel(key: string): string {
+  const label = key.replace(/^(?:rsvp-custom-|rsvp_custom_)/, '').replace(/[-_]+/g, ' ').trim();
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : key;
 }
 
 function sentEdmId(entry: unknown): string {
@@ -3007,7 +3444,12 @@ function guestStatus(guest: CmsPage): GuestStatus {
   return normalizeStatus(attr(guest.lect, 'status')) ?? 'to be invited';
 }
 
-function adminCustomFieldsForGuest(event: CmsPage | null, list: CmsPage, guest?: CmsPage): AdminCustomField[] {
+function adminCustomFieldsForGuest(
+  event: CmsPage | null,
+  list: CmsPage,
+  guest?: CmsPage,
+  responsePlaceholders = new Map<string, string>(),
+): AdminCustomField[] {
   const fields: AdminCustomField[] = [];
   const seenTypes = new Set<string>();
   for (const source of [
@@ -3025,7 +3467,16 @@ function adminCustomFieldsForGuest(event: CmsPage | null, list: CmsPage, guest?:
       const legacyLabelKey = adminLegacyFieldSlug(label);
       const key = `rsvp_custom_${includeBlockId ? `${adminFieldSlug(blockKey)}_` : ''}${labelKey}`;
       const legacyKey = `rsvp-custom-${includeBlockId ? `${source.id}-` : ''}${legacyLabelKey}`;
-      const value = attr(guest?.lect ?? {}, key);
+      const storedValue = attr(guest?.lect ?? {}, key);
+      const responseValue = responseCustomKeysForLabel(label)
+          .map((responseKey) => responsePlaceholders.get(responseKey))
+          .find((responseValue) => responseValue !== undefined) ?? '';
+      const required = attr(input, 'required') === 'yes' || attr(input, 'required') === 'true';
+      // HTML required validation does not accept a placeholder. Preserve the
+      // public RSVP answer as a real form value only when this required admin
+      // field has not yet been saved under its `rsvp_custom_*` key.
+      const value = storedValue || (required ? responseValue : '');
+      const placeholder = value ? '' : responseValue;
       const type = adminInputType(attr(input, 'type'));
       const defaultValue = attr(input, 'default_value');
       fields.push({
@@ -3037,10 +3488,10 @@ function adminCustomFieldsForGuest(event: CmsPage | null, list: CmsPage, guest?:
         label,
         type,
         templateName: workerPageFieldTemplate(type),
-        placeholder: '',
+        placeholder,
         blankOption: type === 'select',
         blankLabel: '',
-        required: attr(input, 'required') === 'yes' || attr(input, 'required') === 'true',
+        required,
         value,
         defaultValue,
         options: adminInputOptions(defaultValue, value),
@@ -3151,7 +3602,6 @@ function guestInput(
     ['wechat', formText(form, 'wechat') || formText(form, '@wechat')],
     ['nationality', formText(form, 'nationality') || formText(form, '@nationality')],
     ['parent', formText(form, 'parent') || formText(form, '@parent')],
-    ['allow_refill', formText(form, 'allow_refill') || formText(form, '@allow_refill')],
     ['primary_guest', formText(form, 'primary_guest') || formText(form, '@primary_guest')],
     ['not_send', formText(form, 'not_send') || formText(form, '@not_send')],
     ['plus_guests', formText(form, 'plus_guests') || formText(form, '@plus_guests') || '0'],
@@ -3198,7 +3648,6 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
       wechat: fields.get('wechat') ?? '',
       nationality: fields.get('nationality') ?? '',
       parent: fields.get('parent') ?? '',
-      allow_refill: fields.get('allow_refill') ?? '',
       primary_guest: fields.get('primary_guest') ?? '',
       not_send: fields.get('not_send') ?? '',
       plus_guests: fields.get('plus_guests') ?? '0',

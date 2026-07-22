@@ -84,6 +84,7 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
       plus_guests: attr(page.lect, 'plus_guests') || '0',
       message: attr(page.lect, 'message'),
       submitted_at: submittedAt,
+      _ref: page.uuid,
     };
     const customAnswers = Object.fromEntries(
       Object.entries(answers).filter(([key]) => key.startsWith('rsvp-custom-')),
@@ -102,8 +103,9 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
           name: link.name,
           organization: link.organization,
         })),
-        // Refill permission is single-use, matching the legacy RSVP submit.
-        allow_refill: '',
+        // Refill permission is single-use and per eDM: this submission closes
+        // its own eDM and leaves any other re-opened eDM untouched.
+        refill: closedRefill(guest.lect, edmId),
         ...customAnswers,
         latest_response: { ...latestResponse, [edmId || 'latest']: responseSnapshot },
         response: [...realEntries(responseLog), {
@@ -114,13 +116,30 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
         }],
       },
     });
-  } else if (attr(guest.lect, 'allow_refill')) {
+  } else if (refillOpenFor(guest.lect, attr(page.lect, 'edm_id').trim())) {
     // Repair a partial prior application without duplicating its response log.
-    await cms.update(guest.id, { lect: { allow_refill: '' } });
+    await cms.update(guest.id, { lect: { refill: closedRefill(guest.lect, attr(page.lect, 'edm_id').trim()) } });
   }
 
   await cms.update(page.id, { lect: { applied_at: now, applied_guest_id: String(guest.id) } });
   return 'applied';
+}
+
+/** Scope key a response's eDM id maps to in the guest's `refill` list. */
+function refillScope(edmId: string): string {
+  return edmId.trim() || 'latest';
+}
+
+function refillOpenFor(lect: Record<string, unknown>, edmId: string): boolean {
+  return items(lect, 'refill').some((entry) => String(entry.edm ?? '').trim() === refillScope(edmId));
+}
+
+/** The guest's `refill` rows minus the eDM this response just consumed. */
+function closedRefill(lect: Record<string, unknown>, edmId: string): Array<Record<string, string>> {
+  return items(lect, 'refill')
+    .map((entry) => String(entry.edm ?? '').trim())
+    .filter((scope) => scope !== '' && scope !== refillScope(edmId))
+    .map((scope) => ({ edm: scope }));
 }
 
 interface CompanionSyncResult {

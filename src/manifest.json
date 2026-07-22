@@ -49,6 +49,7 @@
   ],
   "assets": [
     { "path": "/assets/event-new.js", "label": "New event auto slug" },
+    { "path": "/assets/editor-scroll.js", "label": "Plugin editor scroll restoration" },
     { "path": "/assets/all-guests-embedded.js", "label": "Progressive all-guests table rendering" },
     { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
     { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" },
@@ -67,7 +68,7 @@
         "keep": [
           "name", "first_name", "last_name", "prefix", "zh_hant_name", "zh_hans_name",
           "email", "organization", "job_title", "status", "plus_guests",
-          "prefer_language", "allow_refill", "not_send", "response"
+          "prefer_language", "refill", "not_send", "response"
         ]
       },
       "edm": { "drop": ["sender", "reply_to", "bcc"] }
@@ -89,7 +90,6 @@
       "guest": [
         "*mail_list",
         "*contact",
-        "@allow_refill:switch",
         "@picture:picture", 
         "@email:email", 
         "@primary_guest", 
@@ -123,7 +123,8 @@
         {
           "response": ["@status", "@date", "@message"],
           "checkin": ["@status", "@date", "@message"],
-          "sent_edm": ["@edm", "@date", "@message"]
+          "sent_edm": ["@edm", "@date", "@message"],
+          "refill": ["@edm"]
         }
       ],
       "label": [
@@ -134,7 +135,7 @@
         "@button_color", "@button_text_color", "@headline_font_size", "@headline_padding",
         "@table_padding", "@paragraph_bottom_margin",
         "*event", "@sender", "@reply_to", "@bcc",
-        "subject", "heading", "body:richtext/md", "landing_subject", "date_text", "time",
+        "subject", "heading", "@featured_image:picture", "body:richtext/md", "landing_subject", "date_text", "time",
         "address_1", "address_2", "address_3",
         "thankyou_heading:text", "thankyou_body:richtext/md", "@thankyou_picture:picture",
         "decline_heading:text", "decline_body:richtext/md",

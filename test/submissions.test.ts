@@ -181,7 +181,7 @@ describe('rsvp_response submission hook', () => {
   it('applies the response to the guest and stamps the response page', async () => {
     const calls = stubCms([
       responsePage,
-      { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Lovelace', lect: { status: 'invited', allow_refill: 'yes', response: [{}], latest_response: { '49': { status: 'invited' } }, _pointers: { event: '7', mail_list: '8' } } },
+      { id: 9, page_type: 'guest', page_id: 8, name: 'Ada Lovelace', lect: { status: 'invited', refill: [{ edm: '50' }, { edm: '49' }], response: [{}], latest_response: { '49': { status: 'invited' } }, _pointers: { event: '7', mail_list: '8' } } },
     ]);
 
     const response = await plugin.fetch(hookRequest({ id: 501, page_type: 'rsvp_response' }), env());
@@ -199,7 +199,8 @@ describe('rsvp_response submission hook', () => {
           name: 'Charles Babbage',
           organization: '',
         }],
-        allow_refill: '',
+        // eDM 50 was just used; a re-open granted for eDM 49 survives.
+        refill: [{ edm: '49' }],
         'rsvp-custom-meal-preference': 'vegan',
         latest_response: {
           '49': { status: 'invited' },
@@ -211,6 +212,7 @@ describe('rsvp_response submission hook', () => {
             plus_guests: '2',
             message: 'sorry!',
             submitted_at: '2026-07-07T10:00:00.000Z',
+            _ref: 'sub-uuid-1',
           },
         },
         response: [{
@@ -289,7 +291,7 @@ describe('rsvp_response submission hook', () => {
     expect(calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/501')).toBeTruthy();
   });
 
-  it('clears allow_refill on retry when the response was already logged', async () => {
+  it('closes only the used eDM refill row on retry when it was already logged', async () => {
     const calls = stubCms([
       responsePage,
       {
@@ -297,7 +299,7 @@ describe('rsvp_response submission hook', () => {
         page_type: 'guest',
         lect: {
           status: 'declined',
-          allow_refill: 'yes',
+          refill: [{ edm: '50' }, { edm: '49' }],
           response: [{ status: 'declined', date: '2026-07-07', _ref: 'sub-uuid-1' }],
         },
       },
@@ -307,7 +309,7 @@ describe('rsvp_response submission hook', () => {
 
     expect(response.status).toBe(200);
     const guestPut = calls.find((call) => call.method === 'PUT' && call.path === '/__cms/pages/9');
-    expect(guestPut?.body).toEqual({ lect: { allow_refill: '' } });
+    expect(guestPut?.body).toEqual({ lect: { refill: [{ edm: '49' }] } });
   });
 
   it('skips entirely when the response page is already applied', async () => {
