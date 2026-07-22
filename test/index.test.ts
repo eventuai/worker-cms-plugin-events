@@ -1589,8 +1589,18 @@ describe('events admin', () => {
         guestQueries += 1;
         expect(url.searchParams.get('pointer_values')).toBe('8,9');
         return Response.json({ pages: [
-          { id: 1, name: 'Ada', lect: { status: 'confirmed', email: 'ada@x.io', _pointers: { mail_list: '8' } } },
-          { id: 2, name: 'Grace', lect: { status: 'invited', _pointers: { mail_list: '9' } } },
+          {
+            id: 1,
+            name: 'Ada',
+            lect: {
+              status: 'confirmed',
+              email: 'ada@x.io',
+              // Older guests may retain custom answers only in this snapshot.
+              latest_response: { '51': { 'rsvp-custom-diet': 'Vegan', submitted_at: '2026-07-22T10:00:00Z' } },
+              _pointers: { mail_list: '8' },
+            },
+          },
+          { id: 2, name: 'Grace', lect: { status: 'invited', rsvp_custom_parking: 'Accessible', _pointers: { mail_list: '9' } } },
         ], total: 2 });
       }
       return new Response('not found', { status: 404 });
@@ -1610,6 +1620,9 @@ describe('events admin', () => {
     expect(csv).toContain('"VIP","Ada"');
     expect(csv).toContain('"General","Grace"');
     expect(csv).toContain('"ada@x.io"');
+    expect(csv).toContain('"rsvp-custom-diet","rsvp_custom_parking"');
+    expect(csv).toContain('"Vegan",""');
+    expect(csv).toContain('"","Accessible"');
   });
 
   it('moves a guest into another list of the same event', async () => {
@@ -3016,7 +3029,6 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('name="*contact" value="200"');
     expect(html).toContain('name="@picture"');
     expect(html).toContain('value="/media/pictures/ada.jpg"');
-    expect(html).toContain('name="@allow_refill"');
     expect(html).toContain('name="@primary_guest"');
     expect(html).toContain('>Primary guest ID</span>');
     expect(html).toContain('value="123"');
@@ -3049,6 +3061,11 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('value="BADGE-QR-789"');
     expect(html).toContain('name="@barcode"');
     expect(html).toContain('value="BAR-456"');
+    expect(html).toContain('data-guest-qr-preview');
+    expect(html).toContain(`data-guest-qr-payload="${compactCheckinCode(8, 9)}"`);
+    expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/9/qrcode"');
+    expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/9/qrcode.png" download');
+    expect(html).toContain('Open full QR ticket');
     expect(html).toContain('name=".last_name|mis"');
     expect(html).toContain('Additional information');
     expect(html).toContain('name="@rsvp_custom_diet"');
@@ -3061,6 +3078,112 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(htmlWithPresence).toContain('id="presence-bar"');
     expect(htmlWithPresence).toContain('data-page-id="9"');
     expect(htmlWithPresence).toContain('data-editor-form');
+  });
+
+  it('uses the newest matching public RSVP answer for additional-information fields', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/ingest/submissions') return Response.json({ scanned: 0, created: 0, more: false });
+      if (url.pathname === '/__cms/pages/9') {
+        return Response.json({ page: {
+          id: 9,
+          page_type: 'guest',
+          page_id: 8,
+          name: 'Ada Lovelace',
+          lect: { _pointers: { event: '7', mail_list: '8' } },
+        } });
+      }
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: {
+          id: 7,
+          page_type: 'event',
+          name: 'Town & Country',
+          lect: { _blocks: [{
+            _type: 'rsvp-custom',
+            custom_input: [
+              { type: 'text', label: { mis: 'Dietary requirements' } },
+              { type: 'text', required: 'yes', label: { mis: 'Accessibility requirements' } },
+            ],
+          }] },
+        } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'rsvp_response') {
+        return Response.json({ pages: [
+          {
+            id: -1001,
+            uuid: 'response-old',
+            page_type: 'rsvp_response',
+            page_id: 9,
+            lect: {
+              submitted_at: '2026-07-20T09:00:00Z',
+              answers: {
+                'rsvp-custom-dietary-requirements': 'Vegetarian',
+                'rsvp-custom-accessibility-requirements': 'No assistance needed',
+              },
+            },
+          },
+          {
+            id: -1002,
+            uuid: 'response-new',
+            page_type: 'rsvp_response',
+            page_id: 9,
+            lect: {
+              submitted_at: '2026-07-21T09:00:00Z',
+              answers: {
+                'rsvp-custom-dietary-requirements': 'Vegan',
+                'rsvp-custom-accessibility-requirements': 'Wheelchair access',
+              },
+            },
+          },
+        ], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({
+        action: '/admin/pages/9',
+        backHref: '/admin/plugins/events/rsvp/8',
+        pageType: 'guest',
+        page: {
+          id: 9,
+          name: 'Ada Lovelace',
+          slug: 'ada-lovelace',
+          pageType: 'guest',
+          page_id: 8,
+          lect: JSON.stringify({ _pointers: { event: '7', mail_list: '8' } }),
+        },
+      })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const payload = await response.clone().json() as {
+      adminCustomFields: Array<{ key: string; value: string; placeholder: string }>;
+    };
+    expect(payload.adminCustomFields).toContainEqual(expect.objectContaining({
+      key: 'rsvp_custom_dietary_requirements',
+      value: '',
+      placeholder: 'Vegan',
+    }));
+    expect(payload.adminCustomFields).toContainEqual(expect.objectContaining({
+      key: 'rsvp_custom_accessibility_requirements',
+      value: 'Wheelchair access',
+      placeholder: '',
+      required: true,
+    }));
+    const html = await renderedText(response);
+    expect(html).toMatch(/name="@rsvp_custom_dietary_requirements"[^>]*value=""[^>]*placeholder="Vegan"/);
+    expect(html).not.toMatch(/name="@rsvp_custom_dietary_requirements"[^>]*value="Vegan"/);
+    expect(html).toMatch(/name="@rsvp_custom_accessibility_requirements"[^>]*value="Wheelchair access"[^>]*placeholder=""[^>]*required/);
   });
 
   it('renders an RSVP-created companion as an independent guest linked to its primary', async () => {
@@ -3110,7 +3233,33 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
         return Response.json({ page: { id: 7, page_type: 'event', name: 'Town & Country', lect: {} } });
       }
       if (url.pathname === '/__cms/pages/50') {
-        return Response.json({ page: { id: 50, page_type: 'edm', name: 'Annual invite', lect: {} } });
+        return Response.json({ page: {
+          id: 50,
+          page_type: 'edm',
+          name: 'Annual invite',
+          lect: {
+            _blocks: [{
+              _type: 'rsvp-custom',
+              custom_input: [
+                { label: { mis: 'How did you hear about this event' } },
+                { label: { mis: 'Accessibility requirements' } },
+              ],
+            }],
+          },
+        } });
+      }
+      if (url.pathname === '/__cms/pages/51') {
+        return Response.json({ page: {
+          id: 51,
+          page_type: 'edm',
+          name: 'Reminder invite',
+          lect: {
+            _blocks: [{
+              _type: 'rsvp-custom',
+              custom_input: [{ label: { mis: 'Parking requirements' } }],
+            }],
+          },
+        } });
       }
       if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
         return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
@@ -3137,10 +3286,31 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
             name: { mis: 'Ada Lovelace' },
             email: 'ada@example.com',
             status: 'confirmed',
+            // Refill re-opened for eDM 51 only.
+            allow_refill: '51',
             _pointers: { event: '7', mail_list: '8' },
-            response: [{ status: 'confirmed', date: '2026-06-25T09:30:00Z', message: 'Looking forward to it' }],
+            response: [
+              { status: 'confirmed', date: '2026-06-25T09:30:00Z', message: 'Looking forward to it', _ref: 'response-50' },
+              { status: 'confirmed', date: '2026-06-25T10:30:00Z', message: 'Updated response', _ref: 'response-51' },
+            ],
             checkin: [{ status: 'checked-in', date: '2026-06-26T01:15:00Z', message: 'front desk' }],
             sent_edm: [{ edm: '50', date: '2026-06-24T08:00:00Z', message: 'manual send' }],
+            latest_response: {
+              admin: { 'rsvp-custom-internal-note': 'Do not display' },
+              '50': {
+                'rsvp-custom-how-did-you-hear-about-this-event': 'From Instagram',
+                'rsvp-custom-accessibility-requirements': 'No',
+                status: 'confirmed',
+                submitted_at: '2026-06-25T09:30:00Z',
+                _ref: 'response-50',
+              },
+              '51': {
+                'rsvp-custom-parking-requirements': 'Accessible parking space',
+                status: 'confirmed',
+                submitted_at: '2026-06-25T10:30:00Z',
+                _ref: 'response-51',
+              },
+            },
           }),
         },
       })),
@@ -3157,6 +3327,236 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('Sent eDM');
     expect(html).toContain('Annual invite');
     expect(html).toContain('manual send');
+    expect(html).toContain('Custom information');
+    expect(html).toContain('How did you hear about this event:');
+    expect(html).toContain('From Instagram');
+    expect(html).toContain('Accessibility requirements:');
+    expect(html).toContain('Parking requirements:');
+    expect(html.match(/From Instagram/g)).toHaveLength(2);
+    expect(html.match(/Accessible parking space/g)).toHaveLength(2);
+    expect(html).toContain('data-response-edm-id="50"');
+    expect(html).toContain('data-response-edm-id="51"');
+    expect(html).toContain('Re-open (refill)');
+    expect(html).toContain('data-response-heading class="flex flex-wrap items-center justify-between gap-3"');
+    expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/9/preview?edm=50" target="_blank"');
+    expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/9/preview?edm=51" target="_blank"');
+    // One refill radio per eDM plus the "re-open nothing" option, and only the
+    // eDM named by allow_refill is checked.
+    expect(html.match(/name="@allow_refill"/g)).toHaveLength(3);
+    expect(html).toMatch(/name="@allow_refill" value="50" form="guest-form"(?! checked)/);
+    expect(html).toMatch(/name="@allow_refill" value="51" form="guest-form" checked/);
+    expect(html).toMatch(/name="@allow_refill" value="" form="guest-form"(?! checked)/);
+    expect(html).not.toContain('/responses/50/reopen');
+    expect(html.match(/data-activity-response-details/g)).toHaveLength(2);
+    expect(html).not.toMatch(/<details[^>]*data-activity-response-details[^>]*\sopen(?:\s|>)/);
+    expect(html).not.toContain('Do not display');
+    expect(html.indexOf('Custom information')).toBeLessThan(html.indexOf('Activity'));
+  });
+
+  it('shows only the latest submission per email title in Response while keeping every detail in Activity', async () => {
+    const responsePages = [
+      {
+        id: -1001,
+        uuid: 'response-first',
+        page_type: 'rsvp_response',
+        page_id: 9,
+        name: 'Ada — confirmed',
+        lect: {
+          edm_id: '50',
+          status: 'confirmed',
+          submitted_at: '2026-06-25T09:30:00Z',
+          applied_at: '2026-06-25T09:31:00Z',
+          answers: { 'rsvp-custom-parking-requirements': 'No parking needed' },
+        },
+      },
+      {
+        id: -1002,
+        uuid: 'response-second',
+        page_type: 'rsvp_response',
+        page_id: 9,
+        name: 'Ada — confirmed',
+        lect: {
+          edm_id: '51',
+          status: 'confirmed',
+          submitted_at: '2026-06-26T11:00:00Z',
+          applied_at: '2026-06-26T11:01:00Z',
+          answers: { 'rsvp-custom-parking-requirements': 'Accessible parking space' },
+        },
+      },
+    ];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/ingest/submissions') return Response.json({ scanned: 0, created: 0, more: false });
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'rsvp_response') {
+        return Response.json({ pages: responsePages, total: responsePages.length });
+      }
+      if (url.pathname === '/__cms/pages/9') {
+        return Response.json({ page: {
+          id: 9,
+          page_type: 'guest',
+          page_id: 8,
+          name: 'Ada Lovelace',
+          lect: {
+            status: 'confirmed',
+            _pointers: { event: '7', mail_list: '8' },
+            response: [
+              { status: 'confirmed', date: '2026-06-25T09:30:00Z', _ref: 'response-first' },
+              { status: 'confirmed', date: '2026-06-26T11:00:00Z', _ref: 'response-second' },
+            ],
+            // Only the newest submit survives here — the history must not
+            // depend on this collapsed snapshot.
+            latest_response: {
+              '50': {
+                'rsvp-custom-parking-requirements': 'No parking needed',
+                submitted_at: '2026-06-25T09:30:00Z',
+                _ref: 'response-first',
+              },
+              '51': {
+                'rsvp-custom-parking-requirements': 'Accessible parking space',
+                submitted_at: '2026-06-26T11:00:00Z',
+                _ref: 'response-second',
+              },
+            },
+          },
+        } });
+      }
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/50') {
+        return Response.json({ page: {
+          id: 50,
+          page_type: 'edm',
+          name: 'Annual invite',
+          lect: { _blocks: [{ _type: 'rsvp-custom', custom_input: [{ label: { mis: 'Parking requirements' } }] }] },
+        } });
+      }
+      if (url.pathname === '/__cms/pages/51') {
+        return Response.json({ page: {
+          id: 51,
+          page_type: 'edm',
+          // A different EDM can reuse the same visible email title.
+          name: 'Annual invite',
+          lect: { _blocks: [{ _type: 'rsvp-custom', custom_input: [{ label: { mis: 'Parking requirements' } }] }] },
+        } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({
+        action: '/admin/pages/9',
+        backHref: '/admin/plugins/events/rsvp/8',
+        pageType: 'guest',
+        page: { id: 9, name: 'Ada Lovelace', slug: 'ada-lovelace', pageType: 'guest', page_id: 8, lect: '{}' },
+      })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    // Response is a latest-per-title summary, so only the newer of the two
+    // EDM records named "Annual invite" appears there.
+    expect(html.match(/data-response-submission/g)).toHaveLength(1);
+    expect(html).toContain('data-response-ref="response-second"');
+    expect(html).not.toContain('data-response-ref="response-first"');
+    // Activity retains both collapsed submission details.
+    expect(html.match(/data-activity-response-details/g)).toHaveLength(2);
+    expect(html).toContain('data-response-edm-id="50"');
+    expect(html).toContain('data-response-edm-id="51"');
+    expect(html.match(/No parking needed/g)).toHaveLength(1);
+    expect(html.match(/Accessible parking space/g)).toHaveLength(2);
+    // Rendered in the runtime's local zone — assert the day, not the offset.
+    expect(html).toMatch(/2026-06-25 \d{2}:\d{2}/);
+    expect(html).toMatch(/2026-06-26 \d{2}:\d{2}/);
+  });
+
+  it('refreshes public submissions before rendering the guest refill radio', async () => {
+    let submissionsRefreshed = false;
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/ingest/submissions' && init?.method === 'POST') {
+        submissionsRefreshed = true;
+        return Response.json({ scanned: 1, created: 1, more: false });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'rsvp_response') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages/9') {
+        return Response.json({ page: {
+          id: 9,
+          page_type: 'guest',
+          page_id: 8,
+          name: 'Ada Lovelace',
+          slug: 'ada-lovelace',
+          weight: 0,
+          lect: {
+            allow_refill: submissionsRefreshed ? '' : '50',
+            latest_response: {
+              '50': {
+                'rsvp-custom-diet': 'Vegan',
+                submitted_at: '2026-07-22T10:00:00Z',
+              },
+            },
+            _pointers: { event: '7', mail_list: '8' },
+          },
+        } });
+      }
+      if (url.pathname === '/__cms/pages/8') {
+        return Response.json({ page: { id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } } });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/50') {
+        return Response.json({ page: { id: 50, page_type: 'edm', name: 'Invite', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [{ id: 8, page_type: 'mail_list', name: 'VIP', lect: { _pointers: { event: '7' } } }], total: 1 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(editContext({
+        action: '/admin/pages/9',
+        backHref: '/admin/plugins/events/rsvp/8',
+        pageType: 'guest',
+        page: {
+          id: 9,
+          name: 'Ada Lovelace',
+          slug: 'ada-lovelace',
+          pageType: 'guest',
+          page_id: 8,
+          // This is the stale snapshot the CMS loaded before the plugin pulled
+          // the just-submitted refill response.
+          lect: JSON.stringify({
+            allow_refill: '50',
+            latest_response: { '50': { 'rsvp-custom-diet': 'Vegetarian' } },
+            _pointers: { event: '7', mail_list: '8' },
+          }),
+        },
+      })),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(submissionsRefreshed).toBe(true);
+    const html = await renderedText(response);
+    expect(html).not.toMatch(/name="@allow_refill" value="50"[^>]* checked/);
+    expect(html).toMatch(/name="@allow_refill" value=""[^>]* checked/);
+    expect(html).toContain('Vegan');
+    expect(html).not.toContain('Vegetarian');
   });
 
   it('does not serve the old plugin guest edit URL', async () => {
@@ -3966,7 +4366,7 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     expect(html).not.toContain('href="https://rsvp.eventuai.com/rsvp/7/8/55/');
   });
 
-  it('does not allow a state-changing guest preview over GET', async () => {
+  it('reloads a guest preview over GET without publishing RSVP context', async () => {
     const captured: { published?: number[][] } = {};
     vi.stubGlobal('fetch', rsvpEdmFetch(captured));
 
@@ -3974,8 +4374,44 @@ describe('RSVP EDM sending (guest-list controls)', () => {
       headers: { 'x-plugin-secret': 'shared-secret' },
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
     expect(captured.published).toBeUndefined();
+    expect(response.headers.get('content-type')).toContain('text/html');
+    const html = await renderedText(response);
+    expect(html).toContain('Hello Ada, Analytical Engines.');
+    expect(html).toContain('RSVP now');
+  });
+
+  it('renders the response-linked EDM as the guest, not the generic EDM preview', async () => {
+    const captured: { published?: number[][] } = {};
+    const baseFetch = rsvpEdmFetch(captured);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/51') {
+        return Response.json({ page: {
+          id: 51,
+          page_type: 'edm',
+          name: 'Reminder',
+          page_id: 7,
+          lect: {
+            subject: { en: 'Reminder' },
+            body: { en: '<p>Response email for {{name}}</p>' },
+            rsvp_button: { en: 'RSVP now' },
+          },
+        } });
+      }
+      return baseFetch(input, init);
+    }));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview?edm=51', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(captured.published).toBeUndefined();
+    const html = await renderedText(response);
+    expect(html).toContain('Response email for Ada');
+    expect(html).not.toContain('Hello Ada, Analytical Engines.');
   });
 
   it('does not send when publishing the RSVP context fails', async () => {

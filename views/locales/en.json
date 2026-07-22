@@ -312,6 +312,7 @@
         "checkin_remark": "Check-in remark",
         "color_tag": "Color tag",
         "contact": "Contact",
+        "custom_information": "Custom information",
         "delete": "Delete",
         "delete_this_guest": "Delete this guest?",
         "each_named_companion_has_an_independent_guest_record_qr_code_rsvp_detail": "Each named companion has an independent guest record, QR code, RSVP details, and check-in history.",
@@ -349,7 +350,9 @@
         "primary_guest": "Primary guest",
         "primary_guest_id": "Primary guest ID",
         "qr_code": "QR code",
+        "open_full_qr_ticket": "Open full QR ticket",
         "qr_code_remark": "QR code remark",
+        "reopen_response": "Re-open (refill)",
         "remarks": "Remarks",
         "rfid_badge_qr_code_text": "RFID badge QR code text",
         "rsvp": "RSVP",
@@ -375,7 +378,10 @@
         "unnamed_plus_guest": "Unnamed plus guest",
         "unnamed_plus_guests": "Unnamed plus guests",
         "update_from_contact": "Update from contact",
-        "wechat": "WeChat"
+        "wechat": "WeChat",
+        "latest_submission": "Latest submission",
+        "refill_none": "Do not re-open any RSVP form",
+        "refill_hint": "Re-opening lets the guest submit that eDM’s RSVP form once more. It closes again after the next submission."
       },
       "guest_import_conflict": {
         "assign_new_ids_and_continue": "Assign new IDs and continue",

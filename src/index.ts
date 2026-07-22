@@ -170,7 +170,21 @@ export default {
       }
       const edmResponse = await handleEdmEditView(request.clone(), cms, env.VIEWS, env);
       if (edmResponse.status !== 404) return edmResponse;
-      const guestResponse = await handleGuestEditView(request.clone(), cms, env.VIEWS);
+      const guestResponse = await handleGuestEditView(request.clone(), cms, env.VIEWS, async (guestId) => {
+        try {
+          // A guest may have submitted a public RSVP immediately before this
+          // editor request. Pull and apply it, then replace the CMS-provided
+          // pre-plugin snapshot with the current guest row.
+          await refreshSubmissions(cms);
+          const current = await cms.get(guestId);
+          return current.page_type === 'guest' ? current : undefined;
+        } catch (error) {
+          // Keep the editor available when the public submission source is
+          // temporarily unavailable; the next load can refresh it again.
+          console.error('[events-suite] guest editor submission refresh failed', error);
+          return undefined;
+        }
+      });
       if (guestResponse.status !== 404) return guestResponse;
       return handleEventEditView(request, cms);
     }

@@ -211,6 +211,7 @@ describe('rsvp_response submission hook', () => {
             plus_guests: '2',
             message: 'sorry!',
             submitted_at: '2026-07-07T10:00:00.000Z',
+            _ref: 'sub-uuid-1',
           },
         },
         response: [{

@@ -34,6 +34,7 @@
         "checkin_remark": "签到备注",
         "color_tag": "颜色标签",
         "contact": "联系人",
+        "custom_information": "自定义资料",
         "delete": "删除",
         "delete_this_guest": "要删除此嘉宾吗？",
         "display_name": "显示名称",
@@ -71,7 +72,9 @@
         "primary_guest": "主嘉宾",
         "primary_guest_id": "主嘉宾 ID",
         "qr_code": "二维码",
+        "open_full_qr_ticket": "打开完整二维码门票",
         "qr_code_remark": "二维码备注",
+        "reopen_response": "重新打开（补充资料）",
         "remarks": "备注",
         "rfid_badge_qr_code_text": "RFID 证件二维码文字",
         "rsvp": "RSVP",
@@ -97,7 +100,10 @@
         "unnamed_plus_guest": "未命名同行嘉宾",
         "unnamed_plus_guests": "未命名同行嘉宾",
         "update_from_contact": "从联系人更新",
-        "wechat": "微信"
+        "wechat": "微信",
+        "latest_submission": "最新提交",
+        "refill_none": "不重新开放任何 RSVP 表格",
+        "refill_hint": "重新开放后，嘉宾可再次提交该封 eDM 的 RSVP 表格；下次提交后会自动关闭。"
       },
       "event_dashboard": {
         "archive": "归档",

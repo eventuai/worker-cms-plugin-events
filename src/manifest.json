@@ -90,7 +90,7 @@
       "guest": [
         "*mail_list",
         "*contact",
-        "@allow_refill:switch",
+        "@allow_refill",
         "@picture:picture", 
         "@email:email", 
         "@primary_guest", 

@@ -84,6 +84,7 @@ export async function applyResponsePage(cms: CmsClient, response: CmsPage | numb
       plus_guests: attr(page.lect, 'plus_guests') || '0',
       message: attr(page.lect, 'message'),
       submitted_at: submittedAt,
+      _ref: page.uuid,
     };
     const customAnswers = Object.fromEntries(
       Object.entries(answers).filter(([key]) => key.startsWith('rsvp-custom-')),
