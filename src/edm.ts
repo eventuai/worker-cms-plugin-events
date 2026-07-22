@@ -982,7 +982,10 @@ export function previewEdmForGuest(
   return (async () => {
     const rsvpUrl = eventId ? await guestRsvpUrl(env, eventId, listId, guest, edm.id) : '';
     return renderEmail(views, edm, env, {
-      rsvpUrl,
+      // A guest preview should still show the configured RSVP call-to-action
+      // when this tenant has no public RSVP origin yet. The real send path
+      // keeps requiring a signed URL, so only previews receive this safe link.
+      rsvpUrl: rsvpUrl || '#',
       server: env.PUBLIC_BASE_URL,
       language,
       tokenValues: await guestEmailTokens(env, eventId, listId, guest, rsvpUrl),
@@ -1221,7 +1224,8 @@ function edmTokens(edm: CmsPage, language?: string): Record<string, string> {
     subject: localized(lect, 'subject', language) || edm.name,
     heading: localized(lect, 'heading', language),
     body: safeHtml(localized(lect, 'body', language)),
-    rsvp_button: localized(lect, 'rsvp_button', language) || 'RSVP',
+    // An intentionally blank label disables the generated RSVP CTA.
+    rsvp_button: localized(lect, 'rsvp_button', language),
     text_color: attr(lect, 'text_color'),
     font_size: attr(lect, 'font_size'),
     font_family: attr(lect, 'font_family'),

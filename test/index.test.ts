@@ -264,7 +264,7 @@ describe('plugin contract', () => {
         sample_kind: 'sample-rsvp',
         subject: { mis: 'RSVP for Launch' },
         rsvp_button: { mis: 'RSVP now' },
-        quick_confirm: 'yes',
+        quick_confirm: 'no',
         _pointers: { event: '7' },
       },
     });
@@ -2495,6 +2495,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
       blocks: Array<{ fields: Array<{ name: string; value: string }>; deleteAction: string }>;
       previewHref: string;
       previewLangs: Array<{ href: string }>;
+      responseSwitchFields: Array<{ name: string; value: string }>;
     };
     // Form posts back to the CMS save handler.
     expect(payload.action).toBe('/admin/pages/50');
@@ -2514,6 +2515,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     // with per-language tabs that retarget it.
     expect(payload.previewHref).toBe('/admin/plugins/events/edm/50/preview?language=mis');
     expect(payload.previewLangs.some((lang) => lang.href === '/admin/plugins/events/edm/50/preview?language=en')).toBe(true);
+    expect(payload.responseSwitchFields[0]).toMatchObject({ name: '@quick_confirm', value: 'no' });
 
     const html = await renderedText(response);
     expect(html).toContain('name="@sender"');
@@ -3546,7 +3548,12 @@ describe('event tooling (reorder, import, all-guests, QR)', () => {
 
 describe('RSVP EDM sending (guest-list controls)', () => {
   // A list (8) under event 7, linked to EDM 50, with one good-quality guest (55).
-  function rsvpEdmFetch(captured?: { put?: RequestInit; published?: number[][] }, includeQr = false, guestLect: Record<string, unknown> = {}) {
+  function rsvpEdmFetch(
+    captured?: { put?: RequestInit; published?: number[][] },
+    includeQr = false,
+    guestLect: Record<string, unknown> = {},
+    edmLect: Record<string, unknown> = {},
+  ) {
     return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
       const p = url.pathname;
@@ -3568,8 +3575,10 @@ describe('RSVP EDM sending (guest-list controls)', () => {
           subject: { en: 'Hi' },
           heading: { en: 'Join us' },
           body: { en: '<p>Hello {{name}}, {{company||organization}}.</p>' },
+          rsvp_button: { en: 'RSVP now' },
           sender: 'events@example.com',
           _blocks: includeQr ? [{ _type: 'rsvp-qrcode', title: { en: 'Your pass' }, message: { en: 'Present this code at the door.' }, size: '180' }] : [],
+          ...edmLect,
         } } });
       }
       if (p === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
@@ -3740,8 +3749,42 @@ describe('RSVP EDM sending (guest-list controls)', () => {
     const html = await renderedText(response);
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('Hello Ada, Analytical Engines.');
+    expect(html).toContain('href="https://cms.eventuai.com/rsvp/7/8/55/');
+    expect(html).toContain('RSVP now');
     expect(html).not.toContain('{{name}}');
     expect(html).not.toContain('{{company||organization}}');
+  });
+
+  it('shows the configured RSVP button in a guest preview without a public RSVP origin', async () => {
+    vi.stubGlobal('fetch', rsvpEdmFetch());
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('href="#"');
+    expect(html).toContain('RSVP now');
+  });
+
+  it('hides the generated RSVP button when its configured text is blank', async () => {
+    vi.stubGlobal('fetch', rsvpEdmFetch(undefined, false, {}, { rsvp_button: { en: '' } }));
+
+    const response = await plugin.fetch(request('/__plugin/admin/rsvp/8/guests/55/preview', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({
+      CMS_URL: 'https://cms.test',
+      PLUGIN_SECRET: 'shared-secret',
+      PUBLIC_BASE_URL: 'https://rsvp.eventuai.com',
+    }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).not.toContain('RSVP now');
+    expect(html).not.toContain('href="https://rsvp.eventuai.com/rsvp/7/8/55/');
   });
 
   it('does not allow a state-changing guest preview over GET', async () => {

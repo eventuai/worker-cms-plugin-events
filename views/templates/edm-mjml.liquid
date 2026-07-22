@@ -9,6 +9,6 @@
 {% when 'rsvp-qrcode' %}{% render "mjml/rsvp-qrcode", tokens: block, server: server %}
 {% endcase %}
 {% endfor %}
-{% if rsvpUrl != blank %}
-    <mj-button href="{{ rsvpUrl }}">{{ rsvp_button | default: "RSVP" }}</mj-button>
+{% if rsvpUrl != blank and rsvp_button != blank %}
+    <mj-button href="{{ rsvpUrl }}">{{ rsvp_button }}</mj-button>
 {% endif %}
