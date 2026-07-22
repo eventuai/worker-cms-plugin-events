@@ -196,16 +196,18 @@ interface ResponseCustomSection {
   submittedAt: string;
   fields: Array<{ label: string; value: string }>;
   /**
-   * `allow_refill` value that re-opens this eDM's form — the eDM id, or
-   * `latest` for a response submitted without one. Refill is per eDM, so only
-   * the newest submission of each eDM carries the control (`showRefill`).
+   * The eDM this section's refill checkbox re-opens — the eDM id, or `latest`
+   * for a response submitted without one. Refill is per eDM, so only the newest
+   * submission of each eDM carries the control (`showRefill`).
    */
   refillScope: string;
   showRefill: boolean;
   refillOpen: boolean;
+  /** Repeater row this eDM's checkbox posts, e.g. `.refill[0]@edm`. */
+  refillField: string;
 }
 
-/** `allow_refill` scope for a response that carries no eDM id. */
+/** Refill scope for a response that carries no eDM id. */
 const DEFAULT_REFILL_SCOPE = 'latest';
 
 /** Submissions read back per guest editor render — one row per public submit. */
@@ -725,7 +727,7 @@ async function guestFormView(
   const responseHistorySections = guest ? guestResponseSections(guest, responsePages, guestEdmPages, listId) : [];
   const responseCustomSections = withRefillControls(
     latestResponseSectionsByTitle(responseHistorySections),
-    values.allow_refill,
+    guest ? openRefillScopes(guest.lect) : new Set<string>(),
   );
   const activity = guest ? guestActivity(guest, guestEdmPages, responseHistorySections) : [];
   const plusGuests = guest ? plusGuestDetails(guest.lect) : [];
@@ -779,10 +781,6 @@ async function guestFormView(
     hasAdminCustomFields: adminCustomFields.length > 0,
     responseCustomSections,
     hasResponseCustomSections: responseCustomSections.length > 0,
-    // Refill is scoped to one eDM: `allow_refill` holds that eDM's scope, and
-    // an empty value re-opens nothing.
-    allowRefillScope: values.allow_refill,
-    refillOpen: responseCustomSections.some((section) => section.refillOpen),
     activity,
     hasActivity: activity.length > 0,
     deleteAction: guest && !readOnly ? `${ADMIN_BASE}/rsvp/${listId}/guests/${guest.id}/delete` : '',
@@ -2818,7 +2816,7 @@ function emptyGuestValues(): Record<string, string> {
   return {
     name: '', first_name: '', last_name: '', prefix: '', zh_hant_name: '', zh_hans_name: '',
     picture: '', contact: '', email: '', phone: '', cc: '', organization: '', job_title: '', wechat: '',
-    nationality: '', parent: '', allow_refill: '', primary_guest: '', not_send: '', plus_guests: '0',
+    nationality: '', parent: '', primary_guest: '', not_send: '', plus_guests: '0',
     total_guests: '', max_main_checkin: '', status: 'to be invited', prefer_language: '', color_tag: '',
     remarks: '', checkin_remark: '', qrcode_remark: '', rsvp_code: '', qrcode: '', paired_qrcode: '', barcode: '', no: '',
   };
@@ -2842,8 +2840,6 @@ function guestValues(guest: CmsPage): Record<string, string> {
     wechat: attr(guest.lect, 'wechat'),
     nationality: attr(guest.lect, 'nationality'),
     parent: attr(guest.lect, 'parent'),
-    // Not a switch: holds the eDM scope whose RSVP form is re-opened.
-    allow_refill: attr(guest.lect, 'allow_refill').trim(),
     primary_guest: String(pointer(guest.lect, 'primary_guest') || attr(guest.lect, 'primary_guest')).trim(),
     not_send: switchValue(guest.lect, 'not_send'),
     plus_guests: attr(guest.lect, 'plus_guests') || '0',
@@ -3231,21 +3227,34 @@ function guestResponseSections(
 }
 
 /**
- * Places the refill radio on the newest submission of each eDM — permission is
- * per eDM, so a second submission against the same one must not offer its own
- * control — and marks the eDM the guest's `allow_refill` currently re-opens.
+ * Places the refill checkbox on the newest submission of each eDM — permission
+ * is per eDM, so a second submission against the same one must not offer its
+ * own control — and ticks the eDMs the guest's `refill` list re-opens. Any
+ * number of eDMs can be open at once; each closes on its own next submission.
  */
-function withRefillControls(sections: ResponseCustomSection[], allowRefillScope: string): ResponseCustomSection[] {
-  const scopes = new Set<string>();
+function withRefillControls(sections: ResponseCustomSection[], openScopes: Set<string>): ResponseCustomSection[] {
+  const seen = new Set<string>();
   return sections.map((section) => {
-    const showRefill = !scopes.has(section.refillScope);
-    scopes.add(section.refillScope);
+    const showRefill = !seen.has(section.refillScope);
+    seen.add(section.refillScope);
     return {
       ...section,
       showRefill,
-      refillOpen: showRefill && section.refillScope === allowRefillScope,
+      // Row index must be stable per eDM: the posted array replaces the stored
+      // one by position, and every row posts (see the empty twin in the view).
+      refillField: `.refill[${seen.size - 1}]@edm`,
+      refillOpen: showRefill && openScopes.has(section.refillScope),
     };
   });
+}
+
+/** eDM scopes the guest's `refill` rows currently re-open. */
+export function openRefillScopes(lect: Record<string, unknown>): Set<string> {
+  return new Set(
+    items(lect, 'refill')
+      .map((entry) => String(entry.edm ?? '').trim())
+      .filter((scope) => scope !== ''),
+  );
 }
 
 /**
@@ -3292,6 +3301,7 @@ function responsePageSection(
     refillScope: edmId || DEFAULT_REFILL_SCOPE,
     showRefill: false,
     refillOpen: false,
+    refillField: '',
   };
 }
 
@@ -3328,6 +3338,7 @@ function guestResponseCustomSections(
         refillScope: /^\d+$/.test(id) ? id : DEFAULT_REFILL_SCOPE,
         showRefill: false,
         refillOpen: false,
+        refillField: '',
       };
     })
     .filter((section): section is ResponseCustomSection => section !== null);
@@ -3591,7 +3602,6 @@ function guestInput(
     ['wechat', formText(form, 'wechat') || formText(form, '@wechat')],
     ['nationality', formText(form, 'nationality') || formText(form, '@nationality')],
     ['parent', formText(form, 'parent') || formText(form, '@parent')],
-    ['allow_refill', formText(form, 'allow_refill') || formText(form, '@allow_refill')],
     ['primary_guest', formText(form, 'primary_guest') || formText(form, '@primary_guest')],
     ['not_send', formText(form, 'not_send') || formText(form, '@not_send')],
     ['plus_guests', formText(form, 'plus_guests') || formText(form, '@plus_guests') || '0'],
@@ -3638,7 +3648,6 @@ function guestPageInput(name: string, fields: Map<string, string>, eventId: numb
       wechat: fields.get('wechat') ?? '',
       nationality: fields.get('nationality') ?? '',
       parent: fields.get('parent') ?? '',
-      allow_refill: fields.get('allow_refill') ?? '',
       primary_guest: fields.get('primary_guest') ?? '',
       not_send: fields.get('not_send') ?? '',
       plus_guests: fields.get('plus_guests') ?? '0',

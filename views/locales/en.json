@@ -39,6 +39,7 @@
         "cancel": "Cancel",
         "content_blocks": "Content blocks",
         "delete": "Delete",
+        "drag_to_reorder": "Drag to reorder",
         "edms": "← EDMs",
         "email_content": "Email content",
         "email_preview": "Email preview",
@@ -54,8 +55,9 @@
         "select_an_event": "Select an event…",
         "send_a_test": "Send a test",
         "send_test_email": "Send test email",
-        "sender_styling": "Sender & styling",
+        "sender": "Sender",
         "set_the_sender_email_above_and_save_before_sending_a_test": "Set the sender email above and save before sending a test.",
+        "styling": "Styling",
         "test_example_com": "test@example.com",
         "language": "Language"
       },
@@ -305,7 +307,6 @@
         "activity_response": "Response",
         "activity_sent_edm": "Sent eDM",
         "additional_information": "Additional information",
-        "allow_refill": "Allow refill",
         "back": "Back",
         "cancel": "Cancel",
         "cc_email": "CC email",
@@ -380,8 +381,7 @@
         "update_from_contact": "Update from contact",
         "wechat": "WeChat",
         "latest_submission": "Latest submission",
-        "refill_none": "Do not re-open any RSVP form",
-        "refill_hint": "Re-opening lets the guest submit that eDM’s RSVP form once more. It closes again after the next submission."
+        "refill_hint": "Tick an eDM to let the guest submit its RSVP form once more. Each ticked eDM closes again after its next submission."
       },
       "guest_import_conflict": {
         "assign_new_ids_and_continue": "Assign new IDs and continue",

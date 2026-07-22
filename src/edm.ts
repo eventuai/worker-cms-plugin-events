@@ -227,7 +227,15 @@ interface EditFieldVM {
   blankLabel: string;
   span: string;
 }
-interface EditRowVM { label: string; deleteAction: string; canDelete: boolean; fields: EditFieldVM[]; }
+interface EditRowVM {
+  label: string;
+  weightId: string;
+  weightName: string;
+  weightValue: number;
+  deleteAction: string;
+  canDelete: boolean;
+  fields: EditFieldVM[];
+}
 interface EditBlockVM {
   index: number;
   type: string;
@@ -378,8 +386,14 @@ function editBlocks(lect: Record<string, unknown>, lang: string, defaultLang: st
     const rowSpec = EDM_BLOCK_ROWS[type];
     const rowItems = rowSpec ? items(block, rowSpec.item) : [];
     const rows: EditRowVM[] = rowSpec
-      ? rowItems.map((row, rowIndex) => ({
-          label: `${rowSpec.label} ${rowIndex + 1}`,
+      ? rowItems
+        .map((row, rowIndex) => ({ row, rowIndex, weight: itemWeight(row, rowIndex) }))
+        .sort((left, right) => left.weight - right.weight || left.rowIndex - right.rowIndex)
+        .map(({ row, rowIndex, weight }, displayIndex) => ({
+          label: `${rowSpec.label} ${displayIndex + 1}`,
+          weightId: fieldId(`${prefix}.${rowSpec.item}[${rowIndex}]@_weight`),
+          weightName: `${prefix}.${rowSpec.item}[${rowIndex}]@_weight`,
+          weightValue: weight,
           deleteAction: `block-item-delete:${index}|${rowSpec.item}|${rowIndex}`,
           // RSVP custom-input blocks always keep one editable input. Other
           // repeaters (attachments, table rows, etc.) may still become empty.
@@ -407,6 +421,11 @@ function editBlocks(lect: Record<string, unknown>, lang: string, defaultLang: st
   });
   // Display in weight order, but the field names keep the original array index.
   return models.sort((a, b) => a.weightValue - b.weightValue);
+}
+
+function itemWeight(item: Record<string, unknown>, fallback: number): number {
+  const weight = Number(item._weight);
+  return Number.isFinite(weight) ? weight : fallback;
 }
 
 /**
@@ -462,7 +481,6 @@ export async function handleEdmEditView(
     events: events.map((event) => ({ id: event.id, name: event.name })),
     flash: ctx.flash ?? '',
     errors: ctx.errors ?? [],
-    nameField: editField('name', 'Template name', ctx.page.name, 'text', { placeholder: 'Invitation email', required: true }),
     // Attributes (sender / styling) — `@field` names.
     sender: attr(lect, 'sender'),
     reply_to: attr(lect, 'reply_to'),

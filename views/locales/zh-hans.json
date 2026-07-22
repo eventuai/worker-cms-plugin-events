@@ -8,6 +8,9 @@
   },
   "events": {
     "views": {
+      "edm_edit": {
+        "drag_to_reorder": "拖曳以重新排序"
+      },
       "events": {
         "active": "进行中",
         "archived": "已归档",
@@ -27,7 +30,6 @@
         "activity_response": "回复",
         "activity_sent_edm": "已发送 EDM",
         "additional_information": "其他资料",
-        "allow_refill": "允许补充资料",
         "back": "返回",
         "cancel": "取消",
         "cc_email": "抄送邮件",
@@ -102,8 +104,7 @@
         "update_from_contact": "从联系人更新",
         "wechat": "微信",
         "latest_submission": "最新提交",
-        "refill_none": "不重新开放任何 RSVP 表格",
-        "refill_hint": "重新开放后，嘉宾可再次提交该封 eDM 的 RSVP 表格；下次提交后会自动关闭。"
+        "refill_hint": "勾选某封 eDM，嘉宾即可再次提交该封的 RSVP 表格；每封在下次提交后会自动关闭。"
       },
       "event_dashboard": {
         "archive": "归档",

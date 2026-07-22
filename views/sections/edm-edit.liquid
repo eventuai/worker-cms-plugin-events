@@ -11,12 +11,21 @@
 {%- assign cls_lbl = "block text-sm font-medium text-gray-700 mb-1" -%}
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-  <div class="min-w-0">
+  <div class="w-full">
     <a class="inline-block text-xs text-gray-500 mb-1 hover:text-indigo-700" href="{{ backHref }}">{{ "events.views.edm_edit.edms" | t }}</a>
-    <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
-    {% if eventName != blank %}<p class="mt-1 text-sm text-gray-500">Email template for {{ eventName }}</p>{% endif %}
+    <input id="edm-name" form="main-form" class="block w-full border-0 p-0 bg-transparent text-2xl font-bold text-gray-900 focus:outline-none focus:ring-0" name="name" value="{{ name }}" required autocomplete="off" placeholder="Template name" aria-label="Template name">
+    <div class="mt-1 flex w-full text-xs font-mono text-gray-500">/<input id="edm-slug" form="main-form" class="w-full border-0 bg-transparent font-mono text-xs focus:outline-none focus:ring-0" name="slug" value="{{ slug }}" required autocomplete="off" placeholder="slug" aria-label="Slug"></div>
+    {% unless hasEvent %}
+      <label class="mt-3 block">
+        <span class="{{ cls_lbl }}">{{ "events.views.edm_edit.event" | t }}</span>
+        <select name="*event" form="main-form" required class="{{ cls_input }}">
+          <option value="">{{ "events.views.edm_edit.select_an_event" | t }}</option>
+          {% for event in events %}<option value="{{ event.id }}">{{ event.name }}</option>{% endfor %}
+        </select>
+      </label>
+    {% endunless %}
   </div>
-  <div class="flex flex-wrap items-center gap-2">
+  <div class="flex flex-nowrap items-center gap-2">
     {% if cmsEditPresence.pageId != blank %}
       <div id="presence-bar"
            class="flex items-center gap-1.5 shrink-0"
@@ -44,38 +53,15 @@
 <form id="main-form" method="post" action="{{ action }}" data-editor-form class="space-y-6" style="max-width:54rem">
   {%- comment -%} Carry the page basics the editor doesn't surface visually. {%- endcomment -%}
   <input type="hidden" name="page_type" value="edm">
-  <input type="hidden" name="slug" value="{{ slug }}">
   <input type="hidden" name="weight" value="{{ weight }}">
   <input type="hidden" name="return_to" value="{{ backHref }}">
   {% if hasEvent %}<input type="hidden" name="*event" value="{{ eventId }}">{% endif %}
 
-  {%- comment -%} ── Template name + event picker ── {%- endcomment -%}
+  {%- comment -%} ── Sender ── {%- endcomment -%}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-    {% render nameField.templateName, field: nameField %}
-    <span class="block text-xs text-gray-400">{{ "events.views.edm_edit.internal_only_not_shown_to_guests" | t }}</span>
-    {% unless hasEvent %}
-      <label class="block">
-        <span class="{{ cls_lbl }}">{{ "events.views.edm_edit.event" | t }}</span>
-        <select name="*event" required class="{{ cls_input }}">
-          <option value="">{{ "events.views.edm_edit.select_an_event" | t }}</option>
-          {% for event in events %}<option value="{{ event.id }}">{{ event.name }}</option>{% endfor %}
-        </select>
-      </label>
-    {% endunless %}
-  </div>
-
-  {%- comment -%} ── Sender & styling ── {%- endcomment -%}
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.edm_edit.sender_styling" | t }}</h2>
+    <h2 class="text-lg font-bold text-gray-900">{{ "events.views.edm_edit.sender" | t }}</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {% for field in senderFields %}
-        <div class="{{ field.span }}">
-          {% render field.templateName, field: field %}
-        </div>
-      {% endfor %}
-    </div>
-    <div class="grid grid-cols-2 gap-4">
-      {% for field in styleFields %}
         <div class="{{ field.span }}">
           {% render field.templateName, field: field %}
         </div>
@@ -144,17 +130,27 @@
                       <span class="text-sm font-semibold text-gray-700">{{ block.rowLabel }}s</span>
                       <button form="main-form" type="submit" name="action" value="{{ block.addRowAction }}" class="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer">Add {{ block.rowLabel | downcase }}</button>
                     </div>
+                    <div data-weight-sortable class="space-y-3">
                     {% for row in block.rows %}
-                      <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+                      <div data-weight-sortable-row class="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
                         <div class="flex items-center justify-between gap-2">
-                          <span class="text-xs text-gray-400">{{ row.label }}</span>
-                          {% if row.canDelete %}<button form="main-form" type="submit" name="action" value="{{ row.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">{{ "events.views.edm_edit.remove" | t }}</button>{% endif %}
+                          <span class="flex min-w-0 items-center gap-1.5">
+                            <button type="button" data-weight-sortable-handle title="{{ "events.views.edm_edit.drag_to_reorder" | t }}" aria-label="{{ "events.views.edm_edit.drag_to_reorder" | t }}" class="inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing">
+                              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><use href="/assets/icons.svg#list"></use></svg>
+                            </button>
+                            <span class="text-xs text-gray-400">{{ row.label }}</span>
+                          </span>
+                          <span class="flex shrink-0 items-center gap-3">
+                            <span class="flex items-center gap-1 text-sm text-gray-500"><span aria-hidden="true">#</span><label for="{{ row.weightId }}" class="sr-only">{{ row.label }} weight</label><input data-weight-sortable-input id="{{ row.weightId }}" type="number" name="{{ row.weightName }}" value="{{ row.weightValue }}" class="w-12 border-b border-transparent bg-transparent p-0 text-right text-lg font-bold focus:border-indigo-500 focus:outline-none"></span>
+                            {% if row.canDelete %}<button form="main-form" type="submit" name="action" value="{{ row.deleteAction }}" class="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer">{{ "events.views.edm_edit.remove" | t }}</button>{% endif %}
+                          </span>
                         </div>
                         {% for field in row.fields %}
                           {% render field.templateName, field: field %}
                         {% endfor %}
                       </div>
                     {% endfor %}
+                    </div>
                   </div>
                 {% endif %}
               </div>
@@ -200,6 +196,18 @@
     </div>
   </details>
 
+  {%- comment -%} ── Styling ── {%- endcomment -%}
+  <details class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <summary class="text-lg font-bold text-gray-900 cursor-pointer">{{ "events.views.edm_edit.styling" | t }}</summary>
+    <div class="grid grid-cols-2 gap-4" style="padding-top:1rem">
+      {% for field in styleFields %}
+        <div class="{{ field.span }}">
+          {% render field.templateName, field: field %}
+        </div>
+      {% endfor %}
+    </div>
+  </details>
+
   <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
     <button type="submit" name="action" value="update" class="w-full px-6 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm sm:w-auto">{{ "events.views.edm_edit.save" | t }}</button>
     <a href="{{ backHref }}" class="w-full px-6 py-2 text-center bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors sm:w-auto">{{ "events.views.edm_edit.cancel" | t }}</a>
@@ -210,6 +218,7 @@
 </form>
 
 <script src="/admin/plugins/events/assets/editor-scroll.js" defer></script>
+<script src="/admin/plugins/events/assets/event-new.js" defer></script>
 
 {% if previewHref != blank %}
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6" style="max-width:54rem;margin-top:1.5rem">

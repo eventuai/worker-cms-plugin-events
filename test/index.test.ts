@@ -332,6 +332,8 @@ describe('plugin contract', () => {
     expect(source).toContain("'cms-editor-scroll:' + window.location.pathname");
     expect(source).toContain("'block-item-add'");
     expect(source).toContain("form[data-editor-form]");
+    expect(source).toContain('data-weight-sortable');
+    expect(source).toContain('input.value = String(index)');
 
     const key = 'cms-editor-scroll:/admin/pages/50/edit';
     const stored = new Map([[key, '640']]);
@@ -350,6 +352,10 @@ describe('plugin contract', () => {
     };
     const documentMock = {
       activeElement: null,
+      querySelectorAll(selector: string) {
+        expect(selector).toBe('[data-weight-sortable]');
+        return [];
+      },
       querySelector(selector: string) {
         expect(selector).toBe('form[data-editor-form]');
         return {
@@ -359,6 +365,7 @@ describe('plugin contract', () => {
           },
         };
       },
+      addEventListener() {},
     };
     Function('window', 'document', source)(windowMock, documentMock);
 
@@ -2670,7 +2677,12 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(payload.responseSwitchFields[0]).toMatchObject({ name: '@quick_confirm', value: 'no' });
 
     const html = await renderedText(response);
+    expect(html).toContain('id="edm-name"');
+    expect(html).toContain('id="edm-slug"');
+    expect(html).toContain('name="slug" value="save-the-date"');
+    expect(html).not.toContain('Internal only — not shown to guests.');
     expect(html).toContain('name="@sender"');
+    expect(html).toContain('<h2 class="text-lg font-bold text-gray-900">Sender</h2>');
     expect(html).toContain('name=".subject|mis"');
     expect(html).toContain('data-picture-url type="text" name="@featured_image"');
     expect(html.indexOf('name=".heading|mis"')).toBeLessThan(html.indexOf('name="@featured_image"'));
@@ -2684,6 +2696,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('data-picture-url type="text" name="@thankyou_picture"');
     expect(html).not.toContain('type="url" name="@thankyou_picture"');
     expect(html).not.toContain('/admin/plugins/events/assets/picture-upload.js');
+    expect(html.indexOf('RSVP &amp; response pages')).toBeLessThan(html.indexOf('<summary class="text-lg font-bold text-gray-900 cursor-pointer">Styling</summary>'));
 
     const htmlWithPresence = await renderView(views(), '/sections/edm-edit.liquid', {
       ...payload,
@@ -2694,6 +2707,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(htmlWithPresence).toContain('data-editor-form');
     expect(htmlWithPresence).toContain('method="post" action="/admin/plugins/events/edm/50/preview?language=mis" target="_blank"');
     expect(htmlWithPresence).toContain('<script src="/admin/plugins/events/assets/editor-scroll.js" defer></script>');
+    expect(htmlWithPresence).toContain('<script src="/admin/plugins/events/assets/event-new.js" defer></script>');
   });
 
   it('uses a supported-type selector for RSVP custom-input rows', async () => {
@@ -2706,6 +2720,13 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
         _type: 'rsvp-custom',
         _weight: 0,
         custom_input: [{ required: 'yes', type: 'select', label: { mis: 'Meal preference' }, default_value: { mis: 'veg:Vegetarian|meat:Meat' } }],
+      }, {
+        _type: 'table',
+        _weight: 1,
+        row: [
+          { _weight: 8, name: { mis: 'Later row' }, description: { mis: 'Second' } },
+          { _weight: 2, name: { mis: 'Earlier row' }, description: { mis: 'First' } },
+        ],
       }],
     });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -2721,10 +2742,16 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     const payload = await response.clone().json() as {
-      blocks: Array<{ rows: Array<{ canDelete: boolean; fields: Array<{ inputName: string; type: string; options: Array<{ value: string; selected: boolean }> }> }> }>;
+      blocks: Array<{ rows: Array<{ canDelete: boolean; weightName: string; weightValue: number; fields: Array<{ inputName: string; type: string; options: Array<{ value: string; selected: boolean }> }> }> }>;
     };
     const typeField = payload.blocks[0].rows[0].fields.find((field) => field.inputName === '#0.custom_input[0]@type');
     expect(payload.blocks[0].rows[0].canDelete).toBe(false);
+    expect(payload.blocks[0].rows[0]).toMatchObject({ weightName: '#0.custom_input[0]@_weight', weightValue: 0 });
+    expect(payload.blocks[1].rows.map((row) => row.weightName)).toEqual([
+      '#1.row[1]@_weight',
+      '#1.row[0]@_weight',
+    ]);
+    expect(payload.blocks[1].rows.map((row) => row.weightValue)).toEqual([2, 8]);
     expect(typeField?.type).toBe('select');
     expect(typeField?.options).toEqual(expect.arrayContaining([
       expect.objectContaining({ value: 'select', selected: true }),
@@ -2732,6 +2759,9 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     ]));
 
     const html = await renderedText(response);
+    expect(html).toContain('data-weight-sortable');
+    expect(html).toContain('data-weight-sortable-handle');
+    expect(html).toContain('name="#0.custom_input[0]@_weight"');
     expect(html).toContain('name="#0.custom_input[0]@type"');
     expect(html).toContain('>Select<');
     expect(html).not.toContain('value="block-item-delete:0|custom_input|0"');
@@ -3287,7 +3317,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
             email: 'ada@example.com',
             status: 'confirmed',
             // Refill re-opened for eDM 51 only.
-            allow_refill: '51',
+            refill: [{ edm: '51' }],
             _pointers: { event: '7', mail_list: '8' },
             response: [
               { status: 'confirmed', date: '2026-06-25T09:30:00Z', message: 'Looking forward to it', _ref: 'response-50' },
@@ -3340,12 +3370,12 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toContain('data-response-heading class="flex flex-wrap items-center justify-between gap-3"');
     expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/9/preview?edm=50" target="_blank"');
     expect(html).toContain('href="/admin/plugins/events/rsvp/8/guests/9/preview?edm=51" target="_blank"');
-    // One refill radio per eDM plus the "re-open nothing" option, and only the
-    // eDM named by allow_refill is checked.
-    expect(html.match(/name="@allow_refill"/g)).toHaveLength(3);
-    expect(html).toMatch(/name="@allow_refill" value="50" form="guest-form"(?! checked)/);
-    expect(html).toMatch(/name="@allow_refill" value="51" form="guest-form" checked/);
-    expect(html).toMatch(/name="@allow_refill" value="" form="guest-form"(?! checked)/);
+    // One refill checkbox per eDM — each with its own repeater row — and only
+    // the eDM listed in `refill` is ticked.
+    expect(html).toMatch(/type="checkbox" name="\.refill\[0]@edm" value="50" form="guest-form"(?! checked)/);
+    expect(html).toMatch(/type="checkbox" name="\.refill\[1]@edm" value="51" form="guest-form" checked/);
+    // Every checkbox carries an empty twin so unticking clears the stored row.
+    expect(html.match(/type="hidden" name="\.refill\[\d]@edm" value=""/g)).toHaveLength(2);
     expect(html).not.toContain('/responses/50/reopen');
     expect(html.match(/data-activity-response-details/g)).toHaveLength(2);
     expect(html).not.toMatch(/<details[^>]*data-activity-response-details[^>]*\sopen(?:\s|>)/);
@@ -3479,7 +3509,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(html).toMatch(/2026-06-26 \d{2}:\d{2}/);
   });
 
-  it('refreshes public submissions before rendering the guest refill radio', async () => {
+  it('refreshes public submissions before rendering the guest refill checkbox', async () => {
     let submissionsRefreshed = false;
     const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -3499,7 +3529,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
           slug: 'ada-lovelace',
           weight: 0,
           lect: {
-            allow_refill: submissionsRefreshed ? '' : '50',
+            refill: submissionsRefreshed ? [] : [{ edm: '50' }],
             latest_response: {
               '50': {
                 'rsvp-custom-diet': 'Vegan',
@@ -3542,7 +3572,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
           // This is the stale snapshot the CMS loaded before the plugin pulled
           // the just-submitted refill response.
           lect: JSON.stringify({
-            allow_refill: '50',
+            refill: [{ edm: '50' }],
             latest_response: { '50': { 'rsvp-custom-diet': 'Vegetarian' } },
             _pointers: { event: '7', mail_list: '8' },
           }),
@@ -3553,8 +3583,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(response.status).toBe(200);
     expect(submissionsRefreshed).toBe(true);
     const html = await renderedText(response);
-    expect(html).not.toMatch(/name="@allow_refill" value="50"[^>]* checked/);
-    expect(html).toMatch(/name="@allow_refill" value=""[^>]* checked/);
+    expect(html).not.toMatch(/name="\.refill\[0]@edm" value="50"[^>]* checked/);
     expect(html).toContain('Vegan');
     expect(html).not.toContain('Vegetarian');
   });
