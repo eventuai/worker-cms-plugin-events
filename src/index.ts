@@ -943,6 +943,7 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
   const r = rollupGuestListSummaries(guestLists);
   // Admin-controlled display order (list weight, then name).
   const orderedLists = [...guestLists].sort(compareByWeightThenName);
+  const orderedEdms = [...edms].sort(compareByWeightThenName);
 
   return adminView(views, event.name, 'event-dashboard', {
     flash: url.searchParams.get('flash') ?? '',
@@ -996,7 +997,9 @@ async function eventDashboard(cms: CmsClient, views: Fetcher, eventId: number, u
     }),
     newGuestListHref: canEdit && mutable ? `${ADMIN_BASE}/rsvp/new?event_id=${eventId}` : '',
     // Email Templates section — EDMs belonging to this event.
-    edms: edms.map((edm) => ({
+    edmReorderAction: canManageEmail && mutable ? CMS_BATCH_WEIGHT_ACTION : '',
+    edms: orderedEdms.map((edm) => ({
+      id: edm.id,
       name: edm.name,
       subject: localized(edm.lect, 'subject') || edm.name,
       // Edit directly in the page editor (the plugin renders the EDM edit view),

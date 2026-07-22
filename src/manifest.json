@@ -49,6 +49,7 @@
   ],
   "assets": [
     { "path": "/assets/event-new.js", "label": "New event auto slug" },
+    { "path": "/assets/editor-scroll.js", "label": "Plugin editor scroll restoration" },
     { "path": "/assets/all-guests-embedded.js", "label": "Progressive all-guests table rendering" },
     { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
     { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" },
@@ -134,7 +135,7 @@
         "@button_color", "@button_text_color", "@headline_font_size", "@headline_padding",
         "@table_padding", "@paragraph_bottom_margin",
         "*event", "@sender", "@reply_to", "@bcc",
-        "subject", "heading", "body:richtext/md", "landing_subject", "date_text", "time",
+        "subject", "heading", "@featured_image:picture", "body:richtext/md", "landing_subject", "date_text", "time",
         "address_1", "address_2", "address_3",
         "thankyou_heading:text", "thankyou_body:richtext/md", "@thankyou_picture:picture",
         "decline_heading:text", "decline_body:richtext/md",

@@ -227,7 +227,7 @@ interface EditFieldVM {
   blankLabel: string;
   span: string;
 }
-interface EditRowVM { label: string; deleteAction: string; fields: EditFieldVM[]; }
+interface EditRowVM { label: string; deleteAction: string; canDelete: boolean; fields: EditFieldVM[]; }
 interface EditBlockVM {
   index: number;
   type: string;
@@ -376,10 +376,14 @@ function editBlocks(lect: Record<string, unknown>, lang: string, defaultLang: st
     const prefix = `#${index}`;
     const fields = (EDM_BLOCK_FIELDS[type] ?? []).map((spec) => fieldVM(block, prefix, spec, lang, defaultLang));
     const rowSpec = EDM_BLOCK_ROWS[type];
+    const rowItems = rowSpec ? items(block, rowSpec.item) : [];
     const rows: EditRowVM[] = rowSpec
-      ? items(block, rowSpec.item).map((row, rowIndex) => ({
+      ? rowItems.map((row, rowIndex) => ({
           label: `${rowSpec.label} ${rowIndex + 1}`,
           deleteAction: `block-item-delete:${index}|${rowSpec.item}|${rowIndex}`,
+          // RSVP custom-input blocks always keep one editable input. Other
+          // repeaters (attachments, table rows, etc.) may still become empty.
+          canDelete: rowSpec.item !== 'custom_input' || rowItems.length > 1,
           fields: rowSpec.fields.map((spec) => rowFieldVM(row, `${prefix}.${rowSpec.item}[${rowIndex}]`, spec, rowSpec.item, lang, defaultLang)),
         }))
       : [];
@@ -484,6 +488,7 @@ export async function handleEdmEditView(
     // Localized content — `.field|<lang>` names.
     subject: localizedField('subject', 'Subject', lect, lang, defaultLang, 'text', lang === defaultLang),
     heading: localizedField('heading', 'Headline', lect, lang, defaultLang),
+    featured_image_field: attrField('featured_image', 'Featured image', lect, 'picture'),
     body_field: localizedField('body', 'Body', lect, lang, defaultLang, 'richtext/md'),
     rsvp_button: localizedField('rsvp_button', 'RSVP button text', lect, lang, defaultLang),
     rsvp_form_button: localizedField('rsvp_form_button', 'RSVP form button', lect, lang, defaultLang),
@@ -508,6 +513,7 @@ export async function handleEdmEditView(
     blockOptions: EDM_BLOCK_OPTIONS,
     // EDM-specific actions (edit mode only).
     previewHref: isEdit ? `${selfHref}/preview?language=${encodeURIComponent(lang)}` : '',
+    previewPublishAction: isEdit ? `${selfHref}/preview?language=${encodeURIComponent(lang)}` : '',
     // Language tabs for the preview pane — each loads the iframe in that language
     // (anchors targeting the iframe by name, so no client JS is needed).
     previewLangs: isEdit
@@ -540,7 +546,12 @@ export async function handleEdmAdmin(
 
   const edmId = pageId(segments[0]);
   if (!edmId) return notFoundView(views, 'EDM not found.', jsonOnly);
-  if (segments[1] === 'preview') return edmPreview(cms, views, env, edmId, url.searchParams.get('language') ?? undefined);
+  if (segments[1] === 'preview' && request.method === 'POST') {
+    return edmPreview(cms, views, env, edmId, url.searchParams.get('language') ?? undefined, true);
+  }
+  if (segments[1] === 'preview' && request.method === 'GET') {
+    return edmPreview(cms, views, env, edmId, url.searchParams.get('language') ?? undefined);
+  }
   if (segments[1] === 'duplicate' && request.method === 'POST') return duplicateEdm(cms, views, edmId, jsonOnly);
   if (segments[1] === 'send-test' && request.method === 'POST') return sendTest(request, cms, views, env, edmId, jsonOnly);
   if (segments[1] === 'assign-list' && request.method === 'POST') return assignGuestList(request, cms, views, edmId, jsonOnly);
@@ -696,18 +707,36 @@ async function duplicateEdm(cms: CmsClient, views: Fetcher, edmId: number, jsonO
   return redirect(editorHref(copy.id));
 }
 
-async function edmPreview(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId: number, language?: string): Promise<Response> {
+async function edmPreview(
+  cms: CmsClient,
+  views: Fetcher,
+  env: EdmEnv,
+  edmId: number,
+  language?: string,
+  publish = false,
+): Promise<Response> {
   const edm = await cms.get(edmId);
   if (edm.page_type !== 'edm') return notFoundView(views, 'EDM not found.');
   const eventId = pageId(pointer(edm.lect, 'event')) ?? pageId(edm.page_id);
   let eventSlug = '';
+  let validEvent = false;
   if (eventId) {
     try {
       const event = await cms.get(eventId);
-      if (event.page_type === 'event') eventSlug = event.slug;
+      if (event.page_type === 'event') {
+        eventSlug = event.slug;
+        validEvent = true;
+      }
     } catch (error) {
       if (!(error instanceof CmsApiError && error.status === 404)) throw error;
     }
+  }
+  // Match the RSVP guest Preview workflow: the deliberate button POST makes
+  // the public registration context current before opening a preview. The
+  // editor's embedded GET preview stays read-only and never publishes on load.
+  if (publish) {
+    if (!eventId || !validEvent) return new Response('EDM is not linked to a valid event.', { status: 400 });
+    await cms.publishMany([eventId, edm.id]);
   }
   const publicBase = env.PUBLIC_BASE_URL?.replace(/\/+$/, '');
   const languagePrefix = language && PUBLIC_RSVP_LANGUAGES.includes(language.toLowerCase()) ? `/${language.toLowerCase()}` : '';
@@ -1012,8 +1041,8 @@ async function renderEmail(
     deferGuestQr?: boolean;
   } = {},
 ): Promise<string> {
-  const tokens = edmTokens(edm, options.language);
   const server = options.server ?? '';
+  const tokens = edmTokens(edm, options.language, server);
   // The unsubscribe block renders a per-recipient link. Like the RSVP URL, the
   // template carries a {{unsubscribe_url}} token that the per-guest
   // applyTemplateTokens pass fills in (worker-rsvp resolves the link) — only
@@ -1218,11 +1247,12 @@ function escapeHtml(value: string): string {
 }
 
 /** Flat token map the MJML layout reads (content + styling), each a string. */
-function edmTokens(edm: CmsPage, language?: string): Record<string, string> {
+function edmTokens(edm: CmsPage, language?: string, server = ''): Record<string, string> {
   const lect = edm.lect;
   return {
     subject: localized(lect, 'subject', language) || edm.name,
     heading: localized(lect, 'heading', language),
+    featured_image: emailAssetUrl(server, attr(lect, 'featured_image')),
     body: safeHtml(localized(lect, 'body', language)),
     // An intentionally blank label disables the generated RSVP CTA.
     rsvp_button: localized(lect, 'rsvp_button', language),
@@ -1238,6 +1268,14 @@ function edmTokens(edm: CmsPage, language?: string): Record<string, string> {
     table_padding: attr(lect, 'table_padding'),
     line_height: attr(lect, 'line_height'),
   };
+}
+
+/** Resolve uploaded CMS media against the public RSVP origin without mangling absolute image URLs. */
+function emailAssetUrl(server: string, value: string): string {
+  const src = value.trim();
+  if (!src || /^(https?:)?\/\//i.test(src) || src.startsWith('data:')) return src;
+  const base = server.replace(/\/+$/, '');
+  return base && src.startsWith('/') ? `${base}${src}` : src;
 }
 
 /**

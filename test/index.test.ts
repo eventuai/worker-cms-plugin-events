@@ -126,7 +126,7 @@ describe('plugin contract', () => {
     expect(response.status).toBe(200);
     const manifest = await response.json() as {
       contentTypes: {
-        blueprint: { guest: string[] };
+        blueprint: { guest: string[]; edm: string[] };
         taxonomies: Record<string, string>;
         taxonomyLists: Record<string, string[]>;
       };
@@ -145,6 +145,7 @@ describe('plugin contract', () => {
       ],
       assets: [
         { path: '/assets/event-new.js', label: 'New event auto slug' },
+        { path: '/assets/editor-scroll.js', label: 'Plugin editor scroll restoration' },
         { path: '/assets/all-guests-embedded.js', label: 'Progressive all-guests table rendering' },
         { path: '/assets/long-running-submit.js', label: 'Long-running form loading state' },
         { path: '/assets/import-continue.js', label: 'Resumable import and deletion continuation' },
@@ -171,6 +172,7 @@ describe('plugin contract', () => {
     });
     expect(manifest.contentTypes.blueprint.guest).toContain('@barcode');
     expect(manifest.contentTypes.blueprint.guest).toContain('@paired_qrcode');
+    expect(manifest.contentTypes.blueprint.edm).toContain('@featured_image:picture');
   });
 
   it('exposes the Worker deploy revision so CMS invalidates cached plugin views', async () => {
@@ -320,6 +322,53 @@ describe('plugin contract', () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("document.getElementById('event-name')");
+  });
+
+  it('serves editor scroll restoration for structured edit actions', async () => {
+    const response = await plugin.fetch(request('/assets/editor-scroll.js'), env({ PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const source = await response.text();
+    expect(source).toContain("'cms-editor-scroll:' + window.location.pathname");
+    expect(source).toContain("'block-item-add'");
+    expect(source).toContain("form[data-editor-form]");
+
+    const key = 'cms-editor-scroll:/admin/pages/50/edit';
+    const stored = new Map([[key, '640']]);
+    const scrollTo = vi.fn();
+    let submit: ((event: { submitter: { getAttribute(name: string): string } }) => void) | undefined;
+    const windowMock = {
+      location: { pathname: '/admin/pages/50/edit' },
+      scrollY: 420,
+      scrollTo,
+      requestAnimationFrame(callback: () => void) { callback(); },
+      sessionStorage: {
+        getItem(storageKey: string) { return stored.get(storageKey) ?? null; },
+        setItem(storageKey: string, value: string) { stored.set(storageKey, value); },
+        removeItem(storageKey: string) { stored.delete(storageKey); },
+      },
+    };
+    const documentMock = {
+      activeElement: null,
+      querySelector(selector: string) {
+        expect(selector).toBe('form[data-editor-form]');
+        return {
+          addEventListener(type: string, listener: typeof submit) {
+            expect(type).toBe('submit');
+            submit = listener;
+          },
+        };
+      },
+    };
+    Function('window', 'document', source)(windowMock, documentMock);
+
+    expect(scrollTo).toHaveBeenCalledWith(0, 640);
+    expect(stored.has(key)).toBe(false);
+    submit?.({ submitter: { getAttribute: () => 'block-item-add:0|custom_input' } });
+    expect(stored.get(key)).toBe('420');
+    stored.delete(key);
+    submit?.({ submitter: { getAttribute: () => 'update' } });
+    expect(stored.has(key)).toBe(false);
   });
 
   it('requires the shared secret for admin routes and renders RSVP guest lists when authorized', async () => {
@@ -586,6 +635,12 @@ describe('events admin', () => {
     expect(html).toContain('<use href="/assets/icons.svg#duplicate"></use>');
     expect(html).toContain('title="Edit email template"');
     expect(html).toContain('<use href="/assets/icons.svg#pencil-square"></use>');
+    const emailTemplates = html.slice(html.indexOf('Email templates'), html.indexOf('Guest responses'));
+    expect(emailTemplates).toContain('data-reorder="/admin/pages/batch-weight"');
+    expect(emailTemplates).toContain('data-reorder-key="updates"');
+    expect(emailTemplates).toContain('data-reorder-handle-only');
+    expect(emailTemplates).toContain('data-id="50"');
+    expect(emailTemplates).toContain('data-reorder-handle');
     expect(html).not.toContain('Preview ↗');
     expect(html).not.toContain('Edit →');
     // Guest responses section: the confirmed guest appears, with her date.
@@ -595,6 +650,41 @@ describe('events admin', () => {
     expect(html).toContain('<div data-privacy-control hidden></div>');
     expect(html).toContain('Ada');
     expect(html).toContain('2026-09-01');
+  });
+
+  it('renders email templates in saved weight order', async () => {
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages' && init?.method === 'POST') {
+        return Response.json({ page: adhocList(10, 7) });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'mail_list') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'edm') {
+        return Response.json({ pages: [
+          { id: 50, page_type: 'edm', name: 'Follow up', weight: 20, lect: { _pointers: { event: '7' } } },
+          { id: 51, page_type: 'edm', name: 'Invitation', weight: 10, lect: { _pointers: { event: '7' } } },
+        ], total: 2 });
+      }
+      if (url.pathname === '/__cms/pages' && url.searchParams.get('page_type') === 'guest') {
+        return Response.json({ pages: [], total: 0 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/events/7', {
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    const emailTemplates = html.slice(html.indexOf('Email templates'), html.indexOf('Guest responses'));
+    expect(emailTemplates.indexOf('Invitation')).toBeLessThan(emailTemplates.indexOf('Follow up'));
   });
 
   it('shows a deleting notice on the event dashboard without creating adhoc lists', async () => {
@@ -2101,6 +2191,7 @@ describe('EDM and labels', () => {
           lect: {
             subject: { en: 'You are invited' },
             heading: { en: 'Join us in October' },
+            featured_image: '/media/pictures/invite-hero.jpg',
             body: { en: '<p>We would love to see you.</p>' },
             rsvp_button: { en: 'RSVP now' },
             bg_color: '#0f172a', text_color: '#e2e8f0', button_color: '#4f46e5',
@@ -2137,7 +2228,10 @@ describe('EDM and labels', () => {
     expect(html).toContain('RSVP now');
     // Tokens and blocks rendered.
     expect(html).toContain('Join us in October');
+    expect(html).toContain('src="https://rsvp.eventuai.com/media/pictures/invite-hero.jpg"');
     expect(html).toContain('<p>We would love to see you.</p>');
+    expect(html.indexOf('Join us in October')).toBeLessThan(html.indexOf('invite-hero.jpg'));
+    expect(html.indexOf('invite-hero.jpg')).toBeLessThan(html.indexOf('We would love to see you.'));
     expect(html).toContain('Talks &amp; dinner.');
     expect(html).toContain('href="https://maps.example/x"');
     expect(html).toContain('Directions');
@@ -2145,6 +2239,41 @@ describe('EDM and labels', () => {
     // Styling tokens applied.
     expect(html).toContain('#0f172a'); // bg color
     expect(html).toContain('#4f46e5'); // button color
+  });
+
+  it('publishes the event and EDM before rendering a button-triggered preview', async () => {
+    const published: number[][] = [];
+    const cmsFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/publish' && init?.method === 'POST') {
+        const ids = (JSON.parse(String(init.body)) as { ids: number[] }).ids;
+        published.push(ids);
+        return Response.json({ published: ids, errors: [], count: ids.length });
+      }
+      if (url.pathname === '/__cms/pages/7') {
+        return Response.json({ page: { id: 7, page_type: 'event', name: 'Launch Night', slug: 'launch-night', lect: {} } });
+      }
+      if (url.pathname === '/__cms/pages/12') {
+        return Response.json({ page: {
+          id: 12,
+          page_type: 'edm',
+          name: 'Invite',
+          slug: 'invite',
+          lect: { _pointers: { event: '7' }, heading: { mis: 'Join us' }, rsvp_button: { mis: 'RSVP' } },
+        } });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', cmsFetch);
+
+    const response = await plugin.fetch(request('/__plugin/admin/edm/12/preview?language=mis', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret' },
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    expect(published).toEqual([[7, 12]]);
+    expect(await renderedText(response)).toContain('Preview of EDM: Invite');
   });
 
   it('renders the EDM preview in the requested language', async () => {
@@ -2189,7 +2318,7 @@ describe('EDM and labels', () => {
         return Response.json({ html: '<html><body>FROM_MJML_API</body></html>', errors: [] });
       }
       if (url.pathname === '/__cms/pages/12') {
-        return Response.json({ page: { id: 12, page_type: 'edm', name: 'Invite', page_id: 7, lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' } } } });
+        return Response.json({ page: { id: 12, page_type: 'edm', name: 'Invite', page_id: 7, lect: { subject: { en: 'Hi' }, heading: { en: 'Join us' }, featured_image: '/media/pictures/invite-hero.jpg' } } });
       }
       return new Response('not found', { status: 404 });
     });
@@ -2209,6 +2338,7 @@ describe('EDM and labels', () => {
     expect(mjmlAuth).toBe(`Basic ${btoa('app-1:secret-2')}`);
     expect(JSON.parse(mjmlBody).mjml).toContain('<mjml>');
     expect(JSON.parse(mjmlBody).mjml).toContain('Join us');
+    expect(JSON.parse(mjmlBody).mjml).toContain('<mj-image src="/media/pictures/invite-hero.jpg" />');
   });
 
   it('sends a test email with the EDM reply-to and bcc applied', async () => {
@@ -2452,6 +2582,7 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
           _pointers: { event: '12' },
           sender: 'events@example.com',
           subject: { mis: 'You are invited' },
+          featured_image: '/media/pictures/invite-hero.jpg',
           _blocks: [
             { _type: 'paragraph', _weight: 0, subject: { mis: 'Welcome' }, body: { mis: 'See you there' } },
             // Reproduces the old editor bug: saving omitted #1@_type, so CMS
@@ -2492,8 +2623,10 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
       eventName: string;
       sender: string;
       subject: { name: string; value: string };
+      featured_image_field: { name: string; value: string; templateName: string };
       blocks: Array<{ fields: Array<{ name: string; value: string }>; deleteAction: string }>;
       previewHref: string;
+      previewPublishAction: string;
       previewLangs: Array<{ href: string }>;
       responseSwitchFields: Array<{ name: string; value: string }>;
     };
@@ -2505,6 +2638,11 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(payload.name).toBe('Save the date');
     expect(payload.sender).toBe('events@example.com');
     expect(payload.subject).toMatchObject({ name: '.subject|mis', value: 'You are invited' });
+    expect(payload.featured_image_field).toMatchObject({
+      name: '@featured_image',
+      value: '/media/pictures/invite-hero.jpg',
+      templateName: 'snippets/pagefield/picture/basic',
+    });
     // The paragraph block is rendered with #<index> field names + a delete action.
     expect(payload.blocks[0].fields[0]).toMatchObject({ name: '#0.subject|mis', value: 'Welcome' });
     expect(payload.blocks[0].deleteAction).toBe('block-delete:0');
@@ -2514,12 +2652,16 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     // The preview pane is embedded as a same-origin iframe, scoped to the language,
     // with per-language tabs that retarget it.
     expect(payload.previewHref).toBe('/admin/plugins/events/edm/50/preview?language=mis');
+    expect(payload.previewPublishAction).toBe('/admin/plugins/events/edm/50/preview?language=mis');
     expect(payload.previewLangs.some((lang) => lang.href === '/admin/plugins/events/edm/50/preview?language=en')).toBe(true);
     expect(payload.responseSwitchFields[0]).toMatchObject({ name: '@quick_confirm', value: 'no' });
 
     const html = await renderedText(response);
     expect(html).toContain('name="@sender"');
     expect(html).toContain('name=".subject|mis"');
+    expect(html).toContain('data-picture-url type="text" name="@featured_image"');
+    expect(html.indexOf('name=".heading|mis"')).toBeLessThan(html.indexOf('name="@featured_image"'));
+    expect(html.indexOf('name="@featured_image"')).toBeLessThan(html.indexOf('name=".body|mis"'));
     expect(html).toContain('name="#0.subject|mis"');
     expect(html).toContain('name="#0.body|mis"');
     expect(html).toContain('name="#0@_type" value="paragraph"');
@@ -2537,6 +2679,8 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     expect(htmlWithPresence).toContain('id="presence-bar"');
     expect(htmlWithPresence).toContain('data-page-id="50"');
     expect(htmlWithPresence).toContain('data-editor-form');
+    expect(htmlWithPresence).toContain('method="post" action="/admin/plugins/events/edm/50/preview?language=mis" target="_blank"');
+    expect(htmlWithPresence).toContain('<script src="/admin/plugins/events/assets/editor-scroll.js" defer></script>');
   });
 
   it('uses a supported-type selector for RSVP custom-input rows', async () => {
@@ -2564,9 +2708,10 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
 
     const payload = await response.clone().json() as {
-      blocks: Array<{ rows: Array<{ fields: Array<{ inputName: string; type: string; options: Array<{ value: string; selected: boolean }> }> }> }>;
+      blocks: Array<{ rows: Array<{ canDelete: boolean; fields: Array<{ inputName: string; type: string; options: Array<{ value: string; selected: boolean }> }> }> }>;
     };
     const typeField = payload.blocks[0].rows[0].fields.find((field) => field.inputName === '#0.custom_input[0]@type');
+    expect(payload.blocks[0].rows[0].canDelete).toBe(false);
     expect(typeField?.type).toBe('select');
     expect(typeField?.options).toEqual(expect.arrayContaining([
       expect.objectContaining({ value: 'select', selected: true }),
@@ -2576,6 +2721,40 @@ describe('EDM edit view (plugin-rendered page editor)', () => {
     const html = await renderedText(response);
     expect(html).toContain('name="#0.custom_input[0]@type"');
     expect(html).toContain('>Select<');
+    expect(html).not.toContain('value="block-item-delete:0|custom_input|0"');
+  });
+
+  it('shows Custom Input remove buttons when more than one input remains', async () => {
+    const context = editContext();
+    const page = context.page as { lect: string };
+    page.lect = JSON.stringify({
+      _type: 'edm',
+      _pointers: { event: '12' },
+      _blocks: [{
+        _type: 'rsvp-custom',
+        _weight: 0,
+        custom_input: [
+          { type: 'text', label: { mis: 'Dietary requirements' } },
+          { type: 'text', label: { mis: 'Accessibility requirements' } },
+        ],
+      }],
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
+      if (url.pathname === '/__cms/pages/12') return Response.json({ page: { id: 12, page_type: 'event', name: 'Gala', lect: {} } });
+      return new Response('not found', { status: 404 });
+    }));
+
+    const response = await plugin.fetch(request('/__plugin/edit', {
+      method: 'POST',
+      headers: { 'x-plugin-secret': 'shared-secret', 'content-type': 'application/json' },
+      body: JSON.stringify(context),
+    }), env({ CMS_URL: 'https://cms.test', PLUGIN_SECRET: 'shared-secret' }));
+
+    expect(response.status).toBe(200);
+    const html = await renderedText(response);
+    expect(html).toContain('value="block-item-delete:0|custom_input|0"');
+    expect(html).toContain('value="block-item-delete:0|custom_input|1"');
   });
 
   it('renders the new event override with simple details and use cases', async () => {
