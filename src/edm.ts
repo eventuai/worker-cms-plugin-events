@@ -883,7 +883,7 @@ async function queueGuestList(cms: CmsClient, views: Fetcher, env: EdmEnv, edmId
   // sending, so it only logs.
   if (deliveries.length && cms.hasActingUser) {
     try {
-      await cms.chargeUsage('send_edm', deliveries.length, {
+      await cms.chargeCredits('send_edm', deliveries.length, {
         entityType: 'edm',
         entityId: edmId,
         note: `Send to guest list ${listId}`,

@@ -186,7 +186,7 @@ describe('plugin contract', () => {
   it('declares the full admin credit action list', async () => {
     const response = await plugin.fetch(request('/__plugin/manifest'), env({ PLUGIN_SECRET: 'shared-secret' }));
     const manifest = await response.json() as {
-      credits: Array<{ key: string; charge: string; page_type?: string; unit?: string }>;
+      credits: Array<{ key: string; charge: string; page_type?: string; unit?: string; currency?: string }>;
     };
 
     expect(manifest.credits.map((credit) => credit.key)).toEqual([
@@ -197,6 +197,8 @@ describe('plugin contract', () => {
       'create_label',
       'send_edm',
       'send_test_edm',
+      'send_sms',
+      'send_whatsapp',
       'duplicate_event',
       'archive_event',
       'delete_event',
@@ -223,6 +225,13 @@ describe('plugin contract', () => {
       'label',
     ]);
     expect(manifest.credits.filter((credit) => credit.charge === 'metered').every((credit) => Boolean(credit.unit))).toBe(true);
+    // Message delivery costs the operator real money, so it is priced in the
+    // premium wallet; everything else stays on ordinary credits.
+    const byCurrency = new Map(manifest.credits.map((credit) => [credit.key, credit.currency ?? 'credit']));
+    expect(byCurrency.get('send_sms')).toBe('diamond');
+    expect(byCurrency.get('send_whatsapp')).toBe('diamond');
+    expect(byCurrency.get('send_edm')).toBe('credit');
+    expect(byCurrency.get('create_event')).toBe('credit');
   });
 
   it('creates sample RSVP and QR EDMs for a new RSVP/QR event', async () => {

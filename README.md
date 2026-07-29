@@ -147,6 +147,32 @@ overrides the API endpoint (tests).
   `X-SES-*` headers; misconfiguration surfaces the backend's own error in the
   admin panel (e.g. SES "Email address is not verified").
 
+## Credit costs
+
+Every chargeable action is declared in `src/manifest.json` under `credits`; an
+admin sets the prices in the CMS under **Plugins → Events → Credits**, and the
+host does the charging. Costs are metered in one of the CMS's two currencies:
+
+- **Credits** (default, no `currency` field) — page creates, EDM sends, guest
+  imports, exports and the rest of the admin actions.
+- **Diamonds** (`"currency": "diamond"`) — `send_sms` and `send_whatsapp`.
+  Message delivery costs the operator real money, so it is billed from the
+  premium wallet, which has its own per-user balance and shared pool and never
+  draws on a user's credits.
+
+The two message costs are **declared ahead of the sender**: they can be priced
+today, and the guest blueprint already carries `@phone`, but this plugin has no
+SMS or WhatsApp delivery path yet, so nothing charges them. Whatever ships that
+delivery charges them the same way EDM sends do:
+
+```ts
+await cms.chargeCredits('send_sms', recipients.length, { entityType: 'guest_list', entityId: listId });
+```
+
+A 402 from that call means the diamond wallet is short; the admin error panel
+reads the `credit.currency` the host returns and tells the user which balance
+to top up.
+
 ## Status
 
 - [x] All event/RSVP/EDM blueprints + blocks + block lists + event taxonomies;

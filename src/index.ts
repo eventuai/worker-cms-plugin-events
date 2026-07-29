@@ -20,6 +20,7 @@ import {
   PLUGIN_ID,
   attr,
   chargeCreditAction,
+  creditShortfall,
   checkins,
   compareByWeightThenName,
   computeGuestListSummary,
@@ -512,9 +513,13 @@ async function handleAdmin(request: Request, env: PluginEnv, url: URL, ctx?: Exe
         );
       }
       if (error.code === 'insufficient_credits') {
+        // The host meters two wallets and says which one fell short, so the
+        // message names what to top up rather than always saying "credits".
+        const shortfall = creditShortfall(error);
+        const money = shortfall?.currency === 'diamond' ? 'diamonds' : 'credits';
         return errorPanel(
           env.VIEWS,
-          'You do not have enough credits for this action, so nothing was changed. Check your balance on your profile page, or ask an administrator to top it up.',
+          `You do not have enough ${money} for this action, so nothing was changed. Check your balance on your profile page, or ask an administrator to top it up.`,
           false,
           jsonOnly,
         );
