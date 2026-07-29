@@ -208,7 +208,7 @@ function sampleRsvpEdm(event: CmsPage): { kind: string; name: string; lect: Reco
       thankyou_body: { mis: 'We have received your response.' },
       decline_heading: { mis: 'Thank you for letting us know' },
       decline_body: { mis: 'We are sorry you cannot join us this time.' },
-      quick_confirm: 'yes',
+      quick_confirm: 'no',
       _pointers: { event: String(event.id) },
     },
   };

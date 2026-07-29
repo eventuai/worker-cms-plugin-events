@@ -25,10 +25,11 @@
     <mj-style>p { margin-top:0; }</mj-style>
   </mj-head>
   <mj-body background-color="{{ bg_color }}">
-{% if tokens.heading != blank or tokens.body != blank %}
+{% if tokens.heading != blank or tokens.featured_image != blank or tokens.body != blank %}
     <mj-section>
       <mj-column>
         {% if tokens.heading != blank %}<mj-text mj-class="headline">{{ tokens.heading }}</mj-text>{% endif %}
+        {% if tokens.featured_image != blank %}<mj-image src="{{ tokens.featured_image }}" />{% endif %}
         {% if tokens.body != blank %}<mj-text>{{ tokens.body }}</mj-text>{% endif %}
       </mj-column>
     </mj-section>

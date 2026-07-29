@@ -1,8 +1,8 @@
 (function () {
   'use strict';
 
-  var nameInput = document.getElementById('event-name');
-  var slugInput = document.getElementById('event-slug');
+  var nameInput = document.getElementById('event-name') || document.getElementById('edm-name');
+  var slugInput = document.getElementById('event-slug') || document.getElementById('edm-slug');
   if (!nameInput || !slugInput) return;
 
   var slugEdited = Boolean(slugInput.value);

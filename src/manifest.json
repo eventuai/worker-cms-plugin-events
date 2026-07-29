@@ -21,6 +21,8 @@
     { "key": "create_label", "label": "Create a label template", "description": "Charged when a new event label template is created. Free until priced.", "charge": "page_create", "page_type": "label" },
     { "key": "send_edm", "label": "Send EDM email", "description": "Charged per recipient when sending an EDM to guests or guest lists. Free until priced.", "charge": "metered", "unit": "recipient" },
     { "key": "send_test_edm", "label": "Send test EDM email", "description": "Charged per test email sent from the EDM editor. Free until priced.", "charge": "metered", "unit": "email" },
+    { "key": "send_sms", "label": "Send SMS message", "description": "Charged per SMS delivered to a guest phone number. Priced in diamonds: every message costs the operator real money. Free until priced.", "charge": "metered", "unit": "message", "currency": "diamond" },
+    { "key": "send_whatsapp", "label": "Send WhatsApp message", "description": "Charged per WhatsApp message delivered to a guest phone number. Priced in diamonds: every message costs the operator real money. Free until priced.", "charge": "metered", "unit": "message", "currency": "diamond" },
     { "key": "duplicate_event", "label": "Duplicate an event", "description": "Charged per duplicate-event operation. Created events, lists and guests may also be charged by their page-create prices. Free until priced.", "charge": "metered", "unit": "operation" },
     { "key": "archive_event", "label": "Archive or restore an event", "description": "Charged per event archive or restore operation. Free until priced.", "charge": "metered", "unit": "operation" },
     { "key": "delete_event", "label": "Delete an event", "description": "Charged per event cascade-delete operation. Free until priced.", "charge": "metered", "unit": "operation" },
@@ -49,6 +51,7 @@
   ],
   "assets": [
     { "path": "/assets/event-new.js", "label": "New event auto slug" },
+    { "path": "/assets/editor-scroll.js", "label": "Plugin editor scroll restoration" },
     { "path": "/assets/all-guests-embedded.js", "label": "Progressive all-guests table rendering" },
     { "path": "/assets/long-running-submit.js", "label": "Long-running form loading state" },
     { "path": "/assets/import-continue.js", "label": "Resumable import and deletion continuation" },
@@ -67,7 +70,7 @@
         "keep": [
           "name", "first_name", "last_name", "prefix", "zh_hant_name", "zh_hans_name",
           "email", "organization", "job_title", "status", "plus_guests",
-          "prefer_language", "allow_refill", "not_send", "response"
+          "prefer_language", "refill", "not_send", "response"
         ]
       },
       "edm": { "drop": ["sender", "reply_to", "bcc"] }
@@ -89,7 +92,6 @@
       "guest": [
         "*mail_list",
         "*contact",
-        "@allow_refill:switch",
         "@picture:picture", 
         "@email:email", 
         "@primary_guest", 
@@ -123,7 +125,8 @@
         {
           "response": ["@status", "@date", "@message"],
           "checkin": ["@status", "@date", "@message"],
-          "sent_edm": ["@edm", "@date", "@message"]
+          "sent_edm": ["@edm", "@date", "@message"],
+          "refill": ["@edm"]
         }
       ],
       "label": [
@@ -134,7 +137,7 @@
         "@button_color", "@button_text_color", "@headline_font_size", "@headline_padding",
         "@table_padding", "@paragraph_bottom_margin",
         "*event", "@sender", "@reply_to", "@bcc",
-        "subject", "heading", "body:richtext/md", "landing_subject", "date_text", "time",
+        "subject", "heading", "@featured_image:picture", "body:richtext/md", "landing_subject", "date_text", "time",
         "address_1", "address_2", "address_3",
         "thankyou_heading:text", "thankyou_body:richtext/md", "@thankyou_picture:picture",
         "decline_heading:text", "decline_body:richtext/md",

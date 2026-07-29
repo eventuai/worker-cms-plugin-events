@@ -21,6 +21,17 @@ import {
   CmsNotConfiguredError,
   blocks,
 } from '@lionrockjs/worker-cms-plugin';
+import {
+  creditShortfall,
+  withCredits,
+  type CmsCredit,
+  type CmsCreditCharge,
+  type CmsCreditCurrency,
+  type CmsCreditMethods,
+  type CmsCreditQuote,
+  type CmsCreditShortfall,
+  type CmsCreditsInfo,
+} from '@lionrockjs/worker-cms-plugin-decorator-credits';
 import { plusGuestDetails } from './plus-guests';
 
 /** Manifest id — must equal MANIFEST.id and the CMS-registered plugin id. */
@@ -40,6 +51,13 @@ export {
   pointer,
   type CmsClientEnv,
   type CmsPageInput,
+  creditShortfall,
+  type CmsCredit,
+  type CmsCreditCharge,
+  type CmsCreditCurrency,
+  type CmsCreditQuote,
+  type CmsCreditShortfall,
+  type CmsCreditsInfo,
 };
 
 export interface GuestListSummary {
@@ -107,34 +125,6 @@ export interface CmsLimit {
   usage: number | null;
 }
 
-/** One cost from the host's `GET /__cms/credits` — declared in this plugin's
- *  manifest, priced host-side. `value` is credits per page create / per unit. */
-export interface CmsCredit {
-  key: string;
-  label: string;
-  description: string;
-  charge: 'page_create' | 'metered';
-  page_type: string | null;
-  unit: string;
-  value: number;
-  configured: boolean;
-}
-
-export interface CmsCreditsInfo {
-  /** Acting user's balance, or null when no acting user is set. */
-  balance: number | null;
-  credits: CmsCredit[];
-}
-
-export interface CmsCreditQuote {
-  key: string;
-  unit_cost: number;
-  quantity: number;
-  total: number;
-  balance: number | null;
-  affordable: boolean;
-}
-
 /** Expands a selector into the CMS request fields, e.g. prefix 'source_' → source_pointer_key. */
 function selectorFields(selector: CollectionSelector, prefix: 'source_' | ''): Record<string, unknown> {
   return 'pointerKey' in selector
@@ -143,6 +133,11 @@ function selectorFields(selector: CollectionSelector, prefix: 'source_' | ''): R
 }
 
 export class CmsClient extends BaseCmsClient {
+  declare credits: CmsCreditMethods['credits'];
+  declare creditQuote: CmsCreditMethods['creditQuote'];
+  declare chargeCredits: CmsCreditMethods['chargeCredits'];
+  declare reportCreditUsage: CmsCreditMethods['reportCreditUsage'];
+
   /** The base `call`/`json` are private, so duplicateChildren keeps its own copy of the link config. */
   private readonly link: { base: string; secret: string };
   private actingUserId: string | null = null;
@@ -157,6 +152,7 @@ export class CmsClient extends BaseCmsClient {
       fetcher: (input, init) => globalThis.fetch(input, this.withActingUser(init)),
     });
     this.link = { base: (env.CMS_URL ?? '').replace(/\/+$/, ''), secret: env.PLUGIN_SECRET ?? '' };
+    return withCredits(this);
   }
 
   /**
@@ -167,7 +163,7 @@ export class CmsClient extends BaseCmsClient {
    */
   actAs(userId: string | number | null | undefined): this {
     this.actingUserId = userId === null || userId === undefined || userId === '' ? null : String(userId);
-    return this;
+    return withCredits(this);
   }
 
   get hasActingUser(): boolean {
@@ -430,72 +426,6 @@ export class CmsClient extends BaseCmsClient {
   }
 
   /**
-   * This plugin's declared credit costs with effective prices, plus the acting
-   * user's balance when one is set (CMS `GET /__cms/credits`). Read-only UX
-   * helper — the host charges regardless.
-   */
-  async credits(): Promise<CmsCreditsInfo> {
-    const response = await globalThis.fetch(`${this.link.base}/__cms/credits`, {
-      headers: this.linkHeaders(),
-    });
-    if (!response.ok) {
-      const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
-      throw new CmsApiError(response.status, code, 'GET', '/credits');
-    }
-    return await response.json() as CmsCreditsInfo;
-  }
-
-  /**
-   * Affordability pre-check for a declared cost (CMS `GET /__cms/credits/quote`)
-   * — verify a long job fits the balance BEFORE starting it. Deducts nothing.
-   */
-  async creditQuote(key: string, quantity: number): Promise<CmsCreditQuote> {
-    const params = new URLSearchParams({ key, quantity: String(quantity) });
-    const response = await globalThis.fetch(`${this.link.base}/__cms/credits/quote?${params}`, {
-      headers: this.linkHeaders(),
-    });
-    if (!response.ok) {
-      const code = await response.text().then((text) => text.trim().slice(0, 160) || 'error').catch(() => 'error');
-      throw new CmsApiError(response.status, code, 'GET', '/credits/quote');
-    }
-    return await response.json() as CmsCreditQuote;
-  }
-
-  /**
-   * Reports metered usage for a manifest-declared cost (CMS `POST
-   * /__cms/credits/charge`). The host prices it from its own configuration and
-   * deducts from the acting user; throws CmsApiError 402 (insufficient_credits)
-   * when the balance is short.
-   */
-  async chargeUsage(
-    key: string,
-    quantity: number,
-    opts: { entityType?: string; entityId?: string | number; note?: string } = {},
-  ): Promise<{ charged: number; balance: number | null }> {
-    const response = await globalThis.fetch(`${this.link.base}/__cms/credits/charge`, {
-      method: 'POST',
-      headers: this.linkHeaders({ 'content-type': 'application/json' }),
-      body: JSON.stringify({
-        key,
-        quantity,
-        entity_type: opts.entityType,
-        entity_id: opts.entityId,
-        note: opts.note,
-      }),
-    });
-    if (!response.ok) {
-      const code = await response.text()
-        .then((text) => {
-          try { return (JSON.parse(text) as { error?: string }).error || 'error'; } catch { return text.trim().slice(0, 160) || 'error'; }
-        })
-        .catch(() => 'error');
-      throw new CmsApiError(response.status, code, 'POST', '/credits/charge');
-    }
-    const result = await response.json() as { charged: number; balance: number | null };
-    return result;
-  }
-
-  /**
    * Server-side bulk clone of a parent's children (CMS `POST /pages/duplicate`).
    * Pushes the copy work to the CMS Worker — no page data streams out and back —
    * and follows the host's `next_cursor` until done, so an arbitrarily large
@@ -602,7 +532,7 @@ export async function chargeCreditAction(
 ): Promise<void> {
   if (!cms.hasActingUser || quantity <= 0) return;
   try {
-    await cms.chargeUsage(key, quantity, opts);
+    await cms.chargeCredits(key, quantity, opts);
   } catch (error) {
     if (error instanceof CmsApiError && error.status === 402) throw error;
     console.error(`[events-suite] ${key} charge failed (non-blocking)`, error);
